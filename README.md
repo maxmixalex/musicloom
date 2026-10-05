@@ -4,7 +4,7 @@ MusicLoom is a local music-library organizer and synchronization tool for keepin
 
 It is a compiled rewrite of a personal Python `musicorg` workflow originally built around **MusicBee → Salt Player (Android)**. The rewrite focuses first on preserving the existing organization, lyrics, cover, and playlist behavior while removing the Python/NumPy/PythonMonkey/WASM/PyNCM runtime stack and making unchanged libraries genuinely incremental.
 
-> **Status:** early rewrite. The native fingerprint core, Netease WEAPI client, LRC model, path planner, persistent state foundation, development CLI, and WinUI 3 shell are in place. Full media-tag I/O and end-to-end library synchronization are the next milestones.
+> **Status:** early but runnable rewrite. Native AFP, Netease WEAPI, persistent state, library scanning/planning, a development CLI, and a WinUI 3 dry-run UI are in place. The current scan path is read-only; full tag writing, audio decoding/resampling, and end-to-end sync are the next milestones.
 
 ## Why a rewrite?
 
@@ -20,22 +20,33 @@ MusicLoom's target is:
 Audio → native PCM → native AFP → small WEAPI client
 ```
 
-A second goal is more important than microbenchmarks: after an initial successful sync, an unchanged library should require **zero Netease requests and zero audio-file writes**.
+A second goal is more important than microbenchmarks: after an initial successful sync, an unchanged library should require **zero metadata parsing, zero Netease requests, and zero audio-file writes**.
 
 ## Projects
 
-- `MusicLoom.Core` — configuration, incremental state, LRC, library layout, playlist mapping
+- `MusicLoom.Core` — configuration, incremental state, LRC, library layout, playlist mapping, dry-run planning
+- `MusicLoom.Metadata` — replaceable local metadata adapter; currently ATL.NET
 - `MusicLoom.AudioFingerprint` — native implementation of the recovered Netease fingerprint algorithm
 - `MusicLoom.Netease` — minimal WEAPI client for fingerprint matching and lyrics
-- `MusicLoom.Cli` — diagnostics / automation frontend, NativeAOT-ready
+- `MusicLoom.Cli` — diagnostics / automation frontend, NativeAOT
 - `MusicLoom.App` — Windows UI using WinUI 3
 - `MusicLoom.Tests` — dependency-free golden/regression harness
+
+## Dry-run scanning
+
+MusicLoom currently scans the same seven formats as the Python tool:
+
+`.mp3`, `.flac`, `.m4a`, `.ogg`, `.wav`, `.opus`, `.wma`.
+
+A scan produces `Unchanged`, `New`, `Modified`, or `Error` entries and does **not** modify music files. If a source file matches its persistent state entry and its destination still exists, MusicLoom skips metadata parsing entirely.
+
+ATL.NET is isolated behind `ITrackMetadataReader`. It was selected over TagLibSharp2 for the first scanner because ATL uses stream/seek based parsing while TagLibSharp2 0.6.0 currently reads the entire file into memory for `ReadFromFile`.
 
 ## Native AFP progress
 
 The fingerprint implementation no longer depends on the old Emscripten module. Current golden checks include:
 
-- the complete encrypted/Base64 output for a zero PCM vector, directly captured from the original WASM;
+- the decoded wire payload for a zero PCM vector captured from the original WASM;
 - exact peak coordinates for a deterministic 24,000-sample reference vector;
 - amplitude tolerance checks against the recovered implementation.
 
@@ -47,7 +58,14 @@ The remaining fidelity work is focused on FFT floating-point ordering for pathol
 musicloom fingerprint-pcm <3s-8khz-mono-f32le.pcm>
 musicloom config-check [config.json]
 musicloom state-info [.musicloom/state.json]
+musicloom scan [config.json] [.musicloom/state.json]
 ```
+
+`scan` is read-only and prints pending changes.
+
+## Windows UI
+
+The WinUI 3 app exposes the same dry-run planner as the CLI. Enter the config/state paths and choose **Scan library** to see totals and pending paths. The UI does not have separate sync semantics: all planning logic lives in Core.
 
 ## Configuration
 
@@ -55,6 +73,6 @@ musicloom state-info [.musicloom/state.json]
 
 ## Build
 
-Core projects target .NET 10. CI runs core build/tests and NativeAOT CLI verification on the `home-docker` runner. The WinUI 3 project is validated separately on Windows.
+Core projects target .NET 10. CI runs regression tests and NativeAOT CLI publishing on the `home-docker` runner. WinUI 3 and Windows NativeAOT are validated separately on GitHub's Windows runner.
 
 See [`docs/architecture.md`](docs/architecture.md) and [`docs/legacy-behavior.md`](docs/legacy-behavior.md).
