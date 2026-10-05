@@ -94,34 +94,86 @@ jobs:
           }
           $xbf | ForEach-Object { $_.FullName }
 
-      - name: Launch published WinUI app
+      - name: Launch WinUI build and publish outputs
         shell: pwsh
         run: |
-          $marker = Join-Path $PWD "artifacts/app-win-x64/.launch-ok"
-          $env:MUSICLOOM_SMOKE_MARKER = $marker
-          $exe = Join-Path $PWD "artifacts/app-win-x64/MusicLoom.App.exe"
-          $process = Start-Process -FilePath $exe -PassThru
+          function Test-MusicLoomLaunch {
+            param(
+              [Parameter(Mandatory = $true)][string]$Exe,
+              [Parameter(Mandatory = $true)][string]$Label
+            )
 
-          try {
-            $deadline = (Get-Date).AddSeconds(15)
-            while ((Get-Date) -lt $deadline -and -not (Test-Path $marker)) {
-              if ($process.HasExited) {
-                throw "Published WinUI app exited before its main window activated. Exit code: $($process.ExitCode)"
+            $safeLabel = $Label -replace '[^A-Za-z0-9_.-]', '-'
+            $marker = Join-Path $PWD "artifacts/$safeLabel.launch-ok"
+            $trace = Join-Path $PWD "artifacts/$safeLabel.startup.log"
+            Remove-Item $marker, $trace -Force -ErrorAction SilentlyContinue
+
+            $env:MUSICLOOM_SMOKE_MARKER = $marker
+            $env:MUSICLOOM_STARTUP_TRACE = $trace
+            $startedAt = Get-Date
+            $process = Start-Process -FilePath $Exe -PassThru
+            $failure = $null
+
+            try {
+              $deadline = (Get-Date).AddSeconds(15)
+              while ((Get-Date) -lt $deadline -and -not (Test-Path $marker)) {
+                if ($process.HasExited) {
+                  $failure = "$Label exited before its main window activated. Exit code: $($process.ExitCode)"
+                  break
+                }
+                Start-Sleep -Milliseconds 250
               }
-              Start-Sleep -Milliseconds 250
-            }
 
-            if (-not (Test-Path $marker)) {
-              throw "Published WinUI app did not activate its main window within 15 seconds."
-            }
+              if (-not $failure -and -not (Test-Path $marker)) {
+                $failure = "$Label did not activate its main window within 15 seconds."
+              }
 
-            Get-Content $marker
+              if (Test-Path $trace) {
+                Write-Host "=== $Label startup trace ==="
+                Get-Content $trace
+              } else {
+                Write-Host "=== $Label startup trace: no trace file ==="
+              }
+
+              if ($failure) {
+                Write-Host "=== Windows Application events since launch ==="
+                Get-WinEvent -FilterHashtable @{
+                  LogName = 'Application'
+                  StartTime = $startedAt.AddSeconds(-2)
+                } -ErrorAction SilentlyContinue |
+                  Where-Object {
+                    $_.Message -match 'MusicLoom|Microsoft\.UI\.Xaml|0xc000027b|C000027B'
+                  } |
+                  Select-Object TimeCreated, Id, ProviderName, LevelDisplayName, Message |
+                  Format-List |
+                  Out-String -Width 4096 |
+                  Write-Host
+
+                Write-Error $failure
+                return $false
+              }
+
+              Write-Host "=== $Label activated ==="
+              Get-Content $marker
+              return $true
+            }
+            finally {
+              if (-not $process.HasExited) {
+                Stop-Process -Id $process.Id -Force
+              }
+              Remove-Item Env:MUSICLOOM_SMOKE_MARKER -ErrorAction SilentlyContinue
+              Remove-Item Env:MUSICLOOM_STARTUP_TRACE -ErrorAction SilentlyContinue
+            }
           }
-          finally {
-            if (-not $process.HasExited) {
-              Stop-Process -Id $process.Id -Force
-            }
-            Remove-Item Env:MUSICLOOM_SMOKE_MARKER -ErrorAction SilentlyContinue
+
+          $buildExe = Join-Path $PWD "src/MusicLoom.App/bin/x64/Release/net10.0-windows10.0.26100.0/win-x64/MusicLoom.App.exe"
+          $publishExe = Join-Path $PWD "artifacts/app-win-x64/MusicLoom.App.exe"
+
+          $buildOk = Test-MusicLoomLaunch -Exe $buildExe -Label "build-output"
+          $publishOk = Test-MusicLoomLaunch -Exe $publishExe -Label "publish-output"
+
+          if (-not $buildOk -or -not $publishOk) {
+            throw "WinUI launch smoke test failed."
           }
 
       - name: Upload Windows CLI
