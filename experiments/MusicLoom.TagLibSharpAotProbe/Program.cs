@@ -87,38 +87,62 @@ static void WriteLyrics(
         id3.RemoveFrame(frame);
     }
 
-    SynchronisedLyricsFrame sylt = new(
-        description: string.Empty,
-        language: "eng",
-        type: SynchedTextType.Lyrics,
-        encoding: StringType.UTF8)
-    {
-        Format = TimestampFormat.AbsoluteMilliseconds,
-        Text = lines
-            .Select(static line => new SynchedText(line.Timestamp, line.Text))
-            .ToArray(),
-    };
-    id3.AddFrame(sylt);
-
-    UnsynchronisedLyricsFrame uslt = new(
-        description: "Lyrics",
-        language: "eng",
-        encoding: StringType.UTF8)
-    {
-        Text = lrc,
-    };
-    id3.AddFrame(uslt);
-
-    UserTextInformationFrame txxx =
-        UserTextInformationFrame.Get(
-            id3,
-            "LYRICS",
-            StringType.UTF8,
-            create: true);
-    txxx.TextEncoding = StringType.UTF8;
-    txxx.Text = [lrc];
+    id3.AddFrame(new MutagenCompatibleFrame(
+        "SYLT",
+        BuildSyltPayload(lines)));
+    id3.AddFrame(new MutagenCompatibleFrame(
+        "USLT",
+        BuildUsltPayload(lrc)));
+    id3.AddFrame(new MutagenCompatibleFrame(
+        "TXXX",
+        BuildTxxxPayload(lrc)));
 
     file.Save();
+}
+
+static byte[] BuildSyltPayload(
+    IReadOnlyList<(int Timestamp, string Text)> lines)
+{
+    using MemoryStream stream = new();
+    stream.WriteByte((byte)StringType.UTF8);
+    stream.Write("eng"u8);
+    stream.WriteByte((byte)TimestampFormat.AbsoluteMilliseconds);
+    stream.WriteByte((byte)SynchedTextType.Lyrics);
+    stream.WriteByte(0); // empty description
+
+    Span<byte> timestamp = stackalloc byte[4];
+    foreach ((int time, string text) in lines)
+    {
+        stream.Write(Encoding.UTF8.GetBytes(text));
+        stream.WriteByte(0);
+        BinaryPrimitives.WriteInt32BigEndian(timestamp, time);
+        stream.Write(timestamp);
+    }
+
+    return stream.ToArray();
+}
+
+static byte[] BuildUsltPayload(string lrc)
+{
+    using MemoryStream stream = new();
+    stream.WriteByte((byte)StringType.UTF8);
+    stream.Write("eng"u8);
+    stream.Write(Encoding.UTF8.GetBytes("Lyrics"));
+    stream.WriteByte(0);
+    stream.Write(Encoding.UTF8.GetBytes(lrc));
+    stream.WriteByte(0);
+    return stream.ToArray();
+}
+
+static byte[] BuildTxxxPayload(string lrc)
+{
+    using MemoryStream stream = new();
+    stream.WriteByte((byte)StringType.UTF8);
+    stream.Write(Encoding.UTF8.GetBytes("LYRICS"));
+    stream.WriteByte(0);
+    stream.Write(Encoding.UTF8.GetBytes(lrc));
+    stream.WriteByte(0);
+    return stream.ToArray();
 }
 
 static void WritePcm16Wave(string path)
@@ -248,6 +272,48 @@ static void Equal<T>(T expected, T actual)
     {
         throw new InvalidOperationException(
             $"expected '{expected}', got '{actual}'");
+    }
+}
+
+internal sealed class MutagenCompatibleFrame : Frame
+{
+    private readonly string _id;
+    private readonly byte[] _payload;
+
+    public MutagenCompatibleFrame(string id, byte[] payload)
+        : base((ReadOnlyByteVector)id, version: 4)
+    {
+        if (id.Length != 4)
+        {
+            throw new ArgumentException(
+                "ID3v2 frame IDs must contain exactly four characters.",
+                nameof(id));
+        }
+
+        _id = id;
+        _payload = payload;
+    }
+
+    protected override void ParseFields(ByteVector data, byte version)
+    {
+        throw new NotSupportedException(
+            "MutagenCompatibleFrame is write-only.");
+    }
+
+    protected override ByteVector RenderFields(byte version)
+    {
+        if (version != 4)
+        {
+            throw new NotSupportedException(
+                $"Mutagen-compatible lyrics are emitted as ID3v2.4, not v2.{version}.");
+        }
+
+        return new ByteVector(_payload);
+    }
+
+    public override Frame Clone()
+    {
+        return new MutagenCompatibleFrame(_id, [.. _payload]);
     }
 }
 
