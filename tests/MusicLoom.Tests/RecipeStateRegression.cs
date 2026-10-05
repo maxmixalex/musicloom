@@ -13,6 +13,7 @@ internal static class RecipeStateRegression
     {
         await LyricsToggleUsesCachedMetadataAsync();
         await DestinationChangeUsesCachedMetadataAsync();
+        await NegativeEnrichmentTtlAsync();
     }
 
     private static async Task LyricsToggleUsesCachedMetadataAsync()
@@ -182,6 +183,171 @@ internal static class RecipeStateRegression
             Equal(
                 Path.GetFullPath(expectedDestination),
                 Path.GetFullPath(plan.Entries[0].DestinationPath ?? string.Empty));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static async Task NegativeEnrichmentTtlAsync()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "musicloom-negative-ttl-" + Guid.NewGuid().ToString("N"));
+        string sourceRoot = Path.Combine(root, "source");
+        string destinationRoot = Path.Combine(root, "destination");
+        Directory.CreateDirectory(sourceRoot);
+        Directory.CreateDirectory(destinationRoot);
+
+        try
+        {
+            string sourcePath = Path.Combine(sourceRoot, "track.mp3");
+            await File.WriteAllBytesAsync(sourcePath, [1, 2, 3, 4]);
+
+            MusicLoomSettings settings = new()
+            {
+                Path = new PathSettings
+                {
+                    SourceDirectory = sourceRoot,
+                    DestinationDirectory = destinationRoot,
+                },
+                Organizer = new OrganizerSettings
+                {
+                    Lyrics = new LyricsSettings
+                    {
+                        Enabled = true,
+                        OverrideExisting = false,
+                    },
+                },
+            };
+
+            string destinationPath = Path.Combine(
+                destinationRoot,
+                "Album Artist",
+                "Album",
+                "track.mp3");
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            File.Copy(sourcePath, destinationPath);
+
+            FileInfo source = new(sourcePath);
+            DateTimeOffset now = new(
+                2026,
+                10,
+                5,
+                20,
+                0,
+                0,
+                TimeSpan.Zero);
+
+            TrackState BaseState() => new()
+            {
+                SourcePath = sourcePath,
+                SourceSize = source.Length,
+                SourceLastWriteUtcTicks = source.LastWriteTimeUtc.Ticks,
+                DestinationPath = destinationPath,
+                RecipeVersion = SyncRecipe.For(settings),
+                MetadataCaptured = true,
+                Artist = "Artist",
+                AlbumArtist = "Album Artist",
+                Album = "Album",
+                HasEmbeddedArt = false,
+                ProcessedAt = now,
+            };
+
+            CountingRecipeMetadataReader reader = new();
+
+            StateDocument freshNoMatch = new();
+            freshNoMatch.Tracks[sourcePath] = BaseState() with
+            {
+                Recognition = RecognitionState.NoMatch,
+                RecognitionCheckedAt = now - TimeSpan.FromHours(23),
+            };
+
+            LibraryPlan freshNoMatchPlan = await new LibraryScanner(reader)
+                .BuildPlanAsync(
+                    settings,
+                    freshNoMatch,
+                    now: now);
+            Equal(1, freshNoMatchPlan.UnchangedCount);
+            Equal(0, reader.ReadCount);
+
+            StateDocument staleNoMatch = new();
+            staleNoMatch.Tracks[sourcePath] = BaseState() with
+            {
+                Recognition = RecognitionState.NoMatch,
+                RecognitionCheckedAt = now - TimeSpan.FromHours(25),
+            };
+
+            LibraryPlan staleNoMatchPlan = await new LibraryScanner(reader)
+                .BuildPlanAsync(
+                    settings,
+                    staleNoMatch,
+                    now: now);
+            Equal(1, staleNoMatchPlan.ModifiedCount);
+            Equal(false, staleNoMatchPlan.Entries[0].NeedsAudioCopy);
+            Equal(
+                "Enrichment retry is due.",
+                staleNoMatchPlan.Entries[0].Detail ?? string.Empty);
+            Equal(0, reader.ReadCount);
+
+            StateDocument freshNoLyrics = new();
+            freshNoLyrics.Tracks[sourcePath] = BaseState() with
+            {
+                Recognition = RecognitionState.Matched,
+                RecognitionCheckedAt = now - TimeSpan.FromDays(30),
+                NeteaseSongId = 123,
+                Lyrics = LyricsState.NoLyrics,
+                LyricsCheckedAt = now - TimeSpan.FromHours(23),
+            };
+
+            LibraryPlan freshNoLyricsPlan = await new LibraryScanner(reader)
+                .BuildPlanAsync(
+                    settings,
+                    freshNoLyrics,
+                    now: now);
+            Equal(1, freshNoLyricsPlan.UnchangedCount);
+            Equal(0, reader.ReadCount);
+
+            StateDocument staleNoLyrics = new();
+            staleNoLyrics.Tracks[sourcePath] = BaseState() with
+            {
+                Recognition = RecognitionState.Matched,
+                RecognitionCheckedAt = now - TimeSpan.FromDays(30),
+                NeteaseSongId = 123,
+                Lyrics = LyricsState.NoLyrics,
+                LyricsCheckedAt = now - TimeSpan.FromHours(25),
+            };
+
+            LibraryPlan staleNoLyricsPlan = await new LibraryScanner(reader)
+                .BuildPlanAsync(
+                    settings,
+                    staleNoLyrics,
+                    now: now);
+            Equal(1, staleNoLyricsPlan.ModifiedCount);
+            Equal(false, staleNoLyricsPlan.Entries[0].NeedsAudioCopy);
+            Equal(
+                "Enrichment retry is due.",
+                staleNoLyricsPlan.Entries[0].Detail ?? string.Empty);
+            Equal(0, reader.ReadCount);
+
+            StateDocument written = new();
+            written.Tracks[sourcePath] = BaseState() with
+            {
+                Recognition = RecognitionState.Matched,
+                RecognitionCheckedAt = now - TimeSpan.FromDays(365),
+                NeteaseSongId = 123,
+                Lyrics = LyricsState.Written,
+                LyricsCheckedAt = now - TimeSpan.FromDays(365),
+            };
+
+            LibraryPlan writtenPlan = await new LibraryScanner(reader)
+                .BuildPlanAsync(
+                    settings,
+                    written,
+                    now: now);
+            Equal(1, writtenPlan.UnchangedCount);
+            Equal(0, reader.ReadCount);
         }
         finally
         {
