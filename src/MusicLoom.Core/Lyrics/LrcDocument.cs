@@ -109,15 +109,15 @@ public sealed partial class LrcDocument
         StringBuilder builder = new();
         foreach ((string key, string value) in Metadata)
         {
-            builder.Append('[').Append(key).Append(':').Append(value).AppendLine("]");
+            builder.Append('[').Append(key).Append(':').Append(value).Append("]\n");
         }
 
         foreach (LrcLine line in Lines)
         {
-            builder.AppendLine(line.ToString());
+            builder.Append(line).Append('\n');
         }
 
-        return builder.ToString().TrimEnd('\r', '\n');
+        return builder.ToString().TrimEnd('\n');
     }
 
     [GeneratedRegex(@"\[(\d{2}):(\d{2})\.(\d{2,3})\]", RegexOptions.CultureInvariant)]
