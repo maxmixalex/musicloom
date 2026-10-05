@@ -4,7 +4,7 @@ MusicLoom is a local music-library organizer and synchronization tool for keepin
 
 It is a compiled rewrite of a personal Python `musicorg` workflow originally built around **MusicBee → Salt Player (Android)**. The rewrite focuses first on preserving the existing organization, lyrics, cover, and playlist behavior while removing the Python/NumPy/PythonMonkey/WASM/PyNCM runtime stack and making unchanged libraries genuinely incremental.
 
-> **Status:** early but runnable rewrite. Native AFP, Netease WEAPI, recipe-aware incremental state, local materialization, Windows Media Foundation decoding, legacy-compatible lyric writing for ID3/Vorbis/MP4, a development CLI, and a WinUI 3 dry-run UI are in place. End-to-end transactional sync is the next major milestone.
+> **Status:** early but runnable rewrite. Native AFP, Netease WEAPI, recipe-aware incremental state, local materialization, Windows Media Foundation decoding, legacy-compatible lyric writing for ID3/Vorbis/MP4, and the provider-neutral transactional sync executor are in place. The WinUI 3 app still exposes dry-run only; wiring the executor into the Windows UI is the next major milestone.
 
 ## Why a rewrite?
 

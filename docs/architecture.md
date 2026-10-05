@@ -131,3 +131,23 @@ A separate format corpus pins the TagLib# upstream test samples by commit and ex
 - WMA: no lyric mutation, matching the old MusicOrg unsupported branch.
 
 The corpus also verifies that `overrideExisting=false` is byte-for-byte non-mutating and that unrelated metadata such as the source title survives lyric writes.
+
+
+## Transactional sync execution
+
+`SyncExecutor` composes the existing local materializer with provider-neutral recognition and lyrics interfaces. It deliberately distinguishes a completed negative enrichment result from a retryable failure.
+
+For every new or modified track:
+
+1. local files / covers / playlists are materialized first;
+2. if lyrics are disabled, the current recipe completes immediately;
+3. the lyric writer probes the destination **before any network call**;
+4. an unsupported target, or existing lyrics with `overrideExisting=false`, completes non-fatally with zero recognition/lyrics requests;
+5. recognition runs only when no reusable song ID exists;
+6. a valid "no match" response is recorded as `RecognitionState.NoMatch` and completes non-fatally;
+7. an empty lyric response is recorded as `LyricsState.NoLyrics` and completes non-fatally;
+8. a successful write records a SHA-256 fingerprint of the normalized LF-only LRC payload.
+
+Transport, decoding, and tag-write exceptions are different: useful partial state is persisted, but the current recipe is **not** marked complete. On the next scan the source metadata snapshot and destination path remain reusable, so the retry can run with `NeedsAudioCopy=false`. If recognition already succeeded before a lyric-fetch failure, the stored song ID is reused and fingerprint recognition is skipped on the retry.
+
+This intentionally improves on the old one-day TTL cache: a successful match/no-match/no-lyrics outcome does not force repeated network work on every warm run, while genuine exceptions remain retryable.
