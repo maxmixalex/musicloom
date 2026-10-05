@@ -1,0 +1,45 @@
+name: Windows Audio Format Corpus
+
+on:
+  pull_request:
+    paths:
+      - "src/MusicLoom.Audio.Windows/**"
+      - "src/MusicLoom.AudioFingerprint/**"
+      - "tests/MusicLoom.WindowsAudioCorpus/**"
+      - ".github/workflows/windows-audio-corpus.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: musicloom-windows-audio-corpus-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  corpus:
+    name: Media Foundation / NativeAOT
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout MusicLoom
+        uses: actions/checkout@v7
+
+      - name: Checkout pinned TagLib# samples
+        uses: actions/checkout@v7
+        with:
+          repository: mono/taglib-sharp
+          ref: da41dc30756189217624d8fdde3c70956e7341f9
+          path: .fixtures/taglib-sharp
+          sparse-checkout: tests/TaglibSharp.Tests/samples
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run managed decoder corpus
+        run: dotnet run --project tests/MusicLoom.WindowsAudioCorpus/MusicLoom.WindowsAudioCorpus.csproj -c Release -- .fixtures\taglib-sharp\tests\TaglibSharp.Tests\samples
+
+      - name: Publish decoder corpus with NativeAOT
+        run: dotnet publish tests/MusicLoom.WindowsAudioCorpus/MusicLoom.WindowsAudioCorpus.csproj -c Release -r win-x64 --self-contained true -o artifacts/windows-audio-corpus
+
+      - name: Run NativeAOT decoder corpus
+        run: .\artifacts\windows-audio-corpus\MusicLoom.WindowsAudioCorpus.exe .fixtures\taglib-sharp\tests\TaglibSharp.Tests\samples
