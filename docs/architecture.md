@@ -81,3 +81,10 @@ Golden vectors are taken directly from the original WASM used by MusicOrg.
 ## UI
 
 `MusicLoom.App` is a WinUI 3 app built on Windows App SDK. It is intentionally thin. The current Overview page runs the shared dry-run scanner, displays totals, and lists pending entries. Configuration editing, detailed filtering, and actual sync execution will be layered on top of the same Core plan rather than reimplemented in XAML code-behind.
+
+
+## Windows audio decoding
+
+The legacy recognizer decodes audio with PyAV, resamples to 8 kHz mono float32, discards leading resampled frames whose RMS is below 0.01, then collects exactly 24,000 samples. Short non-silent input is padded with zeroes; entirely silent input produces no recognition window.
+
+`MusicLoom.Audio.Windows` reproduces that pipeline with Windows Media Foundation through NAudio 3.1.0. The silence decision is isolated in `FingerprintWindowCollector` and regression-tested. Media Foundation does not expose the same decoder/resampler frame boundaries as PyAV, so the rewrite preserves the threshold-and-whole-block semantics but cannot promise identical start-sample selection for pathological fade-ins. The generated AFP pipeline itself remains independently golden-tested.

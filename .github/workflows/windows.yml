@@ -46,6 +46,15 @@ jobs:
       - name: Publish CLI with NativeAOT
         run: dotnet publish src/MusicLoom.Cli/MusicLoom.Cli.csproj -c Release -r win-x64 --self-contained true -o artifacts/cli-win-x64
 
+      - name: Run Windows audio decoder smoke test
+        run: dotnet run --project tests/MusicLoom.Windows.Tests/MusicLoom.Windows.Tests.csproj -c Release
+
+      - name: Publish Windows audio smoke test with NativeAOT
+        run: dotnet publish tests/MusicLoom.Windows.Tests/MusicLoom.Windows.Tests.csproj -c Release -r win-x64 --self-contained true -o artifacts/windows-audio-smoke
+
+      - name: Run NativeAOT Windows audio smoke test
+        run: .\artifacts\windows-audio-smoke\MusicLoom.Windows.Tests.exe
+
       - name: Restore WinUI
         run: dotnet restore src/MusicLoom.App/MusicLoom.App.csproj -r win-x64
 
