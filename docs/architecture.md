@@ -201,3 +201,18 @@ The live WinUI path also validates the incremental state path. A state file may 
 
 
 Negative enrichment timestamps are accepted as fresh only when their age is between zero and the 24-hour TTL. A clock rollback or future timestamp therefore causes a safe retry instead of extending a negative cache indefinitely.
+
+
+## Failure isolation and state recovery
+
+Destination mutation is designed so a single filesystem failure does not poison the whole batch.
+
+- audio and cover copies are written to a uniquely named sibling temporary file and atomically moved into place only after the copy and timestamp preservation succeed;
+- playlist text uses the same sibling-temp/replace pattern;
+- per-track, cover, and playlist I/O failures are returned as structured materialization errors while unrelated resources continue;
+- a track whose audio materialization failed is never sent to recognition/lyrics and is never marked complete in state;
+- state writes use a uniquely named temporary file and retain the last successfully loaded/saved primary as `.bak`;
+- if the primary state JSON is unreadable but the backup is valid, `StateStore` recovers the backup and exposes a warning so the UI can tell the user what happened;
+- after backup recovery, the next save deliberately does not overwrite the good backup with the damaged primary.
+
+State-store failures themselves remain fatal: if MusicLoom cannot safely persist resumable state, the live run stops rather than claiming progress it cannot prove.

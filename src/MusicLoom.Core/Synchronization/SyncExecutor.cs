@@ -76,6 +76,25 @@ public sealed class SyncExecutor
             plan,
             cancellationToken);
 
+        List<TrackSyncError> errors = local.Errors
+            .Select(static error => new TrackSyncError(
+                error.SourcePath,
+                error.Kind switch
+                {
+                    LocalMaterializeErrorKind.Track => "copy-audio",
+                    LocalMaterializeErrorKind.Cover => "copy-cover",
+                    LocalMaterializeErrorKind.Playlist => "write-playlist",
+                    _ => "materialize",
+                },
+                error.Message))
+            .ToList();
+
+        HashSet<string> failedTrackSources = local.Errors
+            .Where(static error =>
+                error.Kind == LocalMaterializeErrorKind.Track)
+            .Select(static error => error.SourcePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         StateDocument updatedState = state with
         {
             RecipeVersion = SyncRecipe.CurrentVersion,
@@ -84,7 +103,6 @@ public sealed class SyncExecutor
                 StringComparer.OrdinalIgnoreCase),
         };
 
-        List<TrackSyncError> errors = [];
         int completedTracks = 0;
         int existingLyrics = 0;
         int writtenLyrics = 0;
@@ -93,8 +111,9 @@ public sealed class SyncExecutor
         int unsupportedLyrics = 0;
 
         PlanEntry[] work = plan.Entries
-            .Where(static entry =>
-                entry.Status is PlanEntryStatus.New or PlanEntryStatus.Modified)
+            .Where(entry =>
+                (entry.Status is PlanEntryStatus.New or PlanEntryStatus.Modified)
+                && !failedTrackSources.Contains(entry.SourcePath))
             .ToArray();
 
         try
