@@ -70,6 +70,23 @@ jobs:
       - name: Publish NativeAOT app
         run: dotnet publish src/MusicLoom.App/MusicLoom.App.csproj -c Release -r win-x64 -p:Platform=x64 --self-contained true --no-restore -o artifacts/app-win-x64
 
+      - name: Verify SAT app bundle
+        shell: pwsh
+        run: |
+          $required = @(
+            "MusicLoom.App.exe",
+            "config.example.json",
+            "SAT-0.1.md",
+            "LICENSE",
+            "THIRD_PARTY_NOTICES.md"
+          )
+          foreach ($name in $required) {
+            $path = Join-Path "artifacts/app-win-x64" $name
+            if (-not (Test-Path $path)) {
+              throw "Missing SAT bundle file: $path"
+            }
+          }
+
       - name: Upload Windows CLI
         uses: actions/upload-artifact@v6
         with:
