@@ -102,7 +102,7 @@ public sealed partial class MainWindow : Window
         try
         {
             using NeteaseClient client = new();
-            MediaFoundationFingerprintPcmDecoder decoder = new();
+            CompositeFingerprintPcmDecoder decoder = new();
             NeteaseTrackProvider provider = new(client, decoder);
             TagLibSharpLyricsWriter lyricsWriter = new();
             SyncExecutor executor = new(

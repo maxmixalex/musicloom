@@ -6,6 +6,9 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="NAudio.Wasapi" Version="3.1.0" />
+    <PackageReference Include="NAudio.Vorbis" Version="3.0.0" />
+    <PackageReference Include="NLayer.NAudioSupport" Version="3.0.0" />
+    <PackageReference Include="Concentus.Oggfile" Version="1.0.7" />
     <ProjectReference Include="../MusicLoom.AudioFingerprint/MusicLoom.AudioFingerprint.csproj" />
   </ItemGroup>
 </Project>
