@@ -4,7 +4,7 @@ MusicLoom is a local music-library organizer and synchronization tool for keepin
 
 It is a compiled rewrite of a personal Python `musicorg` workflow originally built around **MusicBee → Salt Player (Android)**. The rewrite focuses first on preserving the existing organization, lyrics, cover, and playlist behavior while removing the Python/NumPy/PythonMonkey/WASM/PyNCM runtime stack and making unchanged libraries genuinely incremental.
 
-> **Status:** early but runnable rewrite. Native AFP, Netease WEAPI, recipe-aware incremental state, local materialization, Windows Media Foundation decoding, legacy-compatible lyric writing for ID3/Vorbis/MP4, the transactional sync executor, and a guarded WinUI 3 live-sync flow are in place.
+> **Status:** early but runnable rewrite. Native AFP, Netease WEAPI, recipe-aware incremental state, local materialization, a seven-format composite audio decoder, legacy-compatible lyric writing for ID3/Vorbis/MP4, the transactional sync executor, and a guarded WinUI 3 live-sync flow are in place.
 
 ## Why a rewrite?
 
@@ -43,6 +43,18 @@ MusicLoom currently scans the same seven formats as the Python tool:
 A scan produces `Unchanged`, `New`, `Modified`, or `Error` entries and does **not** modify music files. If a source file matches its persistent state entry and its destination still exists, MusicLoom skips metadata parsing entirely.
 
 ATL.NET is isolated behind `ITrackMetadataReader` and is used for scanning because it reads through stream/seek-oriented parsers. TagLibSharp2 0.6.0 currently uses `ReadAllBytes` in its file readers, so it is not used on the scan hot path. Mutation is separate: `MusicLoom.Tagging` uses classic TagLib# 2.3.0 with explicit format classes, avoiding its reflection-based factory in NativeAOT code.
+
+## Windows audio decoding
+
+Recognition no longer relies on one system codec stack. `MusicLoom.Audio.Windows` uses a composite NativeAOT-safe decoder:
+
+- MP3 → NLayer
+- WAV → NAudio PCM reader
+- Ogg Vorbis → NAudio.Vorbis / NVorbis
+- Opus → Concentus.Oggfile / Concentus, decoded directly to 8 kHz
+- FLAC / M4A / WMA → Windows Media Foundation
+
+All seven legacy formats are exercised against a pinned real/synthetic corpus, both managed and after NativeAOT publish.
 
 ## Native AFP progress
 
