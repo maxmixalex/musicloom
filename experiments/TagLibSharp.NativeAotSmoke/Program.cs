@@ -1,3 +1,4 @@
+using IOFile = System.IO.File;
 using System.Buffers.Binary;
 using System.Text;
 using TagLib;
@@ -34,7 +35,7 @@ try
 }
 finally
 {
-    File.Delete(path);
+    IOFile.Delete(path);
 }
 
 static void WriteLyrics(
@@ -47,15 +48,19 @@ static void WriteLyrics(
         new TagLib.File.LocalFileAbstraction(path),
         ReadStyle.None);
 
-    Tag tagBase = file.GetTag(TagTypes.Id3v2, create: true)
+    TagLib.Tag tagBase = file.GetTag(TagTypes.Id3v2, create: true)
         ?? throw new InvalidOperationException("Could not create ID3v2 tag.");
     TagLib.Id3v2.Tag tag = (TagLib.Id3v2.Tag)tagBase;
 
-    tag.RemoveFrames(FrameType.SYLT);
-    tag.RemoveFrames(FrameType.USLT);
+    ByteVector syltId = "SYLT";
+    ByteVector usltId = "USLT";
+    ByteVector txxxId = "TXXX";
+
+    tag.RemoveFrames(syltId);
+    tag.RemoveFrames(usltId);
 
     foreach (UserTextInformationFrame frame in tag
-        .GetFrames<UserTextInformationFrame>(FrameType.TXXX)
+        .GetFrames<UserTextInformationFrame>(txxxId)
         .Where(static frame =>
             string.Equals(frame.Description, "LYRICS", StringComparison.OrdinalIgnoreCase))
         .ToArray())
@@ -276,7 +281,7 @@ static string ReadText(
 
 static IReadOnlyList<Id3Frame> ReadId3FramesFromWave(string path)
 {
-    byte[] wave = File.ReadAllBytes(path);
+    byte[] wave = IOFile.ReadAllBytes(path);
     if (!wave.AsSpan(0, 4).SequenceEqual("RIFF"u8)
         || !wave.AsSpan(8, 4).SequenceEqual("WAVE"u8))
     {
@@ -365,15 +370,15 @@ static void WriteTestWave(string path)
     "fmt "u8.CopyTo(data.AsSpan(12));
     BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(16, 4), 16);
     BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(20, 2), 1);
-    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(22, 2), channels);
+    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(22, 2), (short)channels);
     BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(24, 4), sampleRate);
     BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(28, 4), sampleRate * blockAlign);
-    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(32, 2), blockAlign);
-    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(34, 2), bitsPerSample);
+    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(32, 2), (short)blockAlign);
+    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(34, 2), (short)bitsPerSample);
     "data"u8.CopyTo(data.AsSpan(36));
     BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(40, 4), dataSize);
 
-    File.WriteAllBytes(path, data);
+    IOFile.WriteAllBytes(path, data);
 }
 
 static void Equal<T>(T expected, T actual)
