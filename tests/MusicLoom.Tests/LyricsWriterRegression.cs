@@ -34,9 +34,15 @@ internal static class LyricsWriterRegression
 
             Track track = new(path);
             LyricsInfo synchronized = track.Lyrics.Single(
-                static info => info.SynchronizedLyrics.Count > 0);
+                static info =>
+                    info.Format == LyricsInfo.LyricsFormat.SYNCHRONIZED
+                    && info.Description.Length == 0
+                    && info.SynchronizedLyrics.Count > 0);
             LyricsInfo unsynchronized = track.Lyrics.Single(
-                static info => !string.IsNullOrEmpty(info.UnsynchronizedLyrics));
+                static info =>
+                    info.Format == LyricsInfo.LyricsFormat.UNSYNCHRONIZED
+                    && info.Description == "Lyrics"
+                    && !string.IsNullOrEmpty(info.UnsynchronizedLyrics));
 
             Equal("eng", synchronized.LanguageCode);
             Equal(string.Empty, synchronized.Description);
@@ -98,7 +104,10 @@ internal static class LyricsWriterRegression
             Equal(
                 replacement.ToString(),
                 overwrittenTrack.Lyrics.Single(
-                    static info => !string.IsNullOrEmpty(info.UnsynchronizedLyrics))
+                    static info =>
+                        info.Format == LyricsInfo.LyricsFormat.UNSYNCHRONIZED
+                        && info.Description == "Lyrics"
+                        && !string.IsNullOrEmpty(info.UnsynchronizedLyrics))
                     .UnsynchronizedLyrics);
         }
         finally
