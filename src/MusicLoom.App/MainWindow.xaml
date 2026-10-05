@@ -34,7 +34,7 @@
             <TextBlock x:Name="PageTitle" Text="Overview" Style="{ThemeResource TitleTextBlockStyle}" />
             <TextBlock
                 x:Name="PageSubtitle"
-                Text="Keep the desktop source library and mobile target library in sync without rebuilding unchanged tracks."
+                Text="Preview what MusicLoom would change without writing to the music library."
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 TextWrapping="Wrap" />
           </StackPanel>
@@ -45,19 +45,43 @@
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
               Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
               CornerRadius="8">
-            <Grid ColumnSpacing="24">
+            <Grid ColumnSpacing="16" RowSpacing="16">
               <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <StackPanel Spacing="8">
-                <TextBlock Text="Ready to configure" Style="{ThemeResource SubtitleTextBlockStyle}" />
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+
+              <TextBox
+                  x:Name="ConfigPathBox"
+                  Header="Configuration"
+                  Text="config.json"
+                  PlaceholderText="Path to config.json" />
+              <TextBox
+                  x:Name="StatePathBox"
+                  Grid.Column="1"
+                  Header="Incremental state"
+                  Text=".musicloom\state.json"
+                  PlaceholderText="Path to state.json" />
+              <Button
+                  x:Name="ScanButton"
+                  Grid.Column="2"
+                  Content="Scan library"
+                  Click="ScanButton_Click"
+                  VerticalAlignment="Bottom" />
+
+              <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="10">
+                <ProgressRing x:Name="ScanProgressRing" Width="20" Height="20" IsActive="False" />
                 <TextBlock
-                    Text="MusicLoom is being rebuilt around an incremental native core. The first UI milestone will configure the existing MusicBee → Salt Player workflow without changing its lyrics, cover, or playlist semantics."
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    TextWrapping="Wrap" />
+                    x:Name="ScanStatusText"
+                    Text="Dry-run only: MusicLoom will not modify audio files."
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
               </StackPanel>
-              <Button Grid.Column="1" Content="Choose library" VerticalAlignment="Center" IsEnabled="False" />
             </Grid>
           </Border>
 
@@ -66,26 +90,49 @@
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <Border Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
               <StackPanel Spacing="4">
                 <TextBlock Text="Tracks" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock Text="—" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock x:Name="TracksValue" Text="—" FontSize="28" FontWeight="SemiBold" />
               </StackPanel>
             </Border>
             <Border Grid.Column="1" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
               <StackPanel Spacing="4">
                 <TextBlock Text="Pending changes" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock Text="—" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock x:Name="PendingValue" Text="—" FontSize="28" FontWeight="SemiBold" />
               </StackPanel>
             </Border>
             <Border Grid.Column="2" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
               <StackPanel Spacing="4">
-                <TextBlock Text="Last sync" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock Text="Never" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Text="Errors" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock x:Name="ErrorsValue" Text="—" FontSize="28" FontWeight="SemiBold" />
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="3" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Last scan" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock x:Name="LastScanValue" Text="Never" FontSize="28" FontWeight="SemiBold" />
               </StackPanel>
             </Border>
           </Grid>
+
+          <Border
+              Padding="16"
+              BorderThickness="1"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+              CornerRadius="8">
+            <StackPanel Spacing="12">
+              <TextBlock Text="Pending plan" Style="{ThemeResource SubtitleTextBlockStyle}" />
+              <TextBlock
+                  Text="Only new, modified, missing-output, and error entries are listed here. Unchanged tracks are skipped before metadata parsing."
+                  TextWrapping="Wrap"
+                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+              <ListView x:Name="PlanList" MaxHeight="480" />
+            </StackPanel>
+          </Border>
         </StackPanel>
       </Grid>
     </ScrollViewer>
