@@ -28,13 +28,15 @@ public sealed class LibraryScanner
         MusicLoomSettings settings,
         StateDocument state,
         IProgress<ScanProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? now = null)
     {
         LibraryPathSafety.Validate(settings);
 
         string sourceRoot = Path.GetFullPath(settings.Path.SourceDirectory);
         string destinationRoot = Path.GetFullPath(settings.Path.DestinationDirectory);
         string expectedRecipe = SyncRecipe.For(settings);
+        DateTimeOffset effectiveNow = now ?? DateTimeOffset.UtcNow;
 
         if (!Directory.Exists(sourceRoot))
         {
@@ -99,10 +101,16 @@ public sealed class LibraryScanner
                         trackState.RecipeVersion,
                         expectedRecipe,
                         StringComparison.Ordinal);
+                bool enrichmentFresh =
+                    StateStore.IsEnrichmentFresh(
+                        trackState,
+                        settings,
+                        effectiveNow);
 
                 if (destinationMatchesState
                     && destinationExists
-                    && recipeMatches)
+                    && recipeMatches
+                    && enrichmentFresh)
                 {
                     entries.Add(new PlanEntry(
                         sourcePath,
@@ -116,7 +124,9 @@ public sealed class LibraryScanner
                     ? "Destination path changed."
                     : !destinationExists
                         ? "Destination file is missing."
-                        : "Processing recipe changed.";
+                        : !recipeMatches
+                            ? "Processing recipe changed."
+                            : "Enrichment retry is due.";
 
                 entries.Add(new PlanEntry(
                     sourcePath,
@@ -152,6 +162,12 @@ public sealed class LibraryScanner
                         trackState.RecipeVersion,
                         expectedRecipe,
                         StringComparison.Ordinal);
+                bool enrichmentFresh =
+                    trackState is not null
+                    && StateStore.IsEnrichmentFresh(
+                        trackState,
+                        settings,
+                        effectiveNow);
 
                 bool needsAudioCopy =
                     trackState is null
@@ -175,7 +191,9 @@ public sealed class LibraryScanner
                                     ? "Refreshing metadata state."
                                     : !recipeMatches
                                         ? "Processing recipe changed."
-                                        : "Refreshing metadata state.";
+                                        : !enrichmentFresh
+                                            ? "Enrichment retry is due."
+                                            : "Refreshing metadata state.";
 
                 entries.Add(new PlanEntry(
                     sourcePath,
