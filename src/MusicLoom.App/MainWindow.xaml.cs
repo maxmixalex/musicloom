@@ -36,15 +36,15 @@ public sealed partial class MainWindow : Window
         // Re-scan immediately before confirmation so a stale plan can never
         // be applied after the source library or configuration changed.
         if (!await ScanLibraryAsync(clearInfoBar: true)
-            || _settings is null
-            || _state is null
-            || _stateStore is null
-            || _plan is null)
+            || _settings is not MusicLoomSettings settings
+            || _state is not StateDocument state
+            || _stateStore is not StateStore stateStore
+            || _plan is not LibraryPlan plan)
         {
             return;
         }
 
-        if (_plan.ErrorCount > 0)
+        if (plan.ErrorCount > 0)
         {
             ShowInfo(
                 InfoBarSeverity.Error,
@@ -53,7 +53,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (_plan.PendingCount == 0)
+        if (plan.PendingCount == 0)
         {
             ShowInfo(
                 InfoBarSeverity.Success,
@@ -62,7 +62,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        string networkText = _settings.Organizer.Lyrics.Enabled
+        string networkText = settings.Organizer.Lyrics.Enabled
             ? "Lyrics enrichment is enabled. Netease is contacted only for tracks that still need writable lyrics."
             : "Lyrics enrichment is disabled. This sync makes no Netease requests.";
 
@@ -76,11 +76,11 @@ public sealed partial class MainWindow : Window
             Content = new TextBlock
             {
                 Text =
-                    $"{_plan.PendingCount:N0} tracks have pending work.\n" +
-                    $"{_plan.AudioCopyCount:N0} audio files will be copied or rematerialized.\n" +
-                    $"{_plan.PendingCount - _plan.AudioCopyCount:N0} tracks need enrichment/state work only.\n\n" +
-                    $"Destination: {_settings.Path.DestinationDirectory}\n" +
-                    $"State: {_stateStore.Path}\n\n" +
+                    $"{plan.PendingCount:N0} tracks have pending work.\n" +
+                    $"{plan.AudioCopyCount:N0} audio files will be copied or rematerialized.\n" +
+                    $"{plan.PendingCount - plan.AudioCopyCount:N0} tracks need enrichment/state work only.\n\n" +
+                    $"Destination: {settings.Path.DestinationDirectory}\n" +
+                    $"State: {stateStore.Path}\n\n" +
                     networkText +
                     "\n\nThe source library is never modified.",
                 TextWrapping = TextWrapping.Wrap,
@@ -93,7 +93,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _syncCancellation = new CancellationTokenSource();
+        using CancellationTokenSource syncCancellation = new();
+        _syncCancellation = syncCancellation;
         SetBusy(busy: true, syncing: true);
         SyncInfoBar.IsOpen = false;
         ScanStatusText.Text = "Materializing local files, covers, and playlists…";
@@ -118,12 +119,12 @@ public sealed partial class MainWindow : Window
             });
 
             SyncExecutionSummary summary = await executor.ExecuteAsync(
-                _settings,
-                _plan,
-                _state,
-                _stateStore,
+                settings,
+                plan,
+                state,
+                stateStore,
                 progress,
-                _syncCancellation.Token);
+                syncCancellation.Token);
 
             string message =
                 $"{summary.Local.CopiedTracks:N0} audio copies · " +
@@ -169,7 +170,6 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            _syncCancellation.Dispose();
             _syncCancellation = null;
             SetBusy(busy: false, syncing: false);
         }
@@ -180,14 +180,15 @@ public sealed partial class MainWindow : Window
 
     private void CancelSyncButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_syncCancellation is null)
+        CancellationTokenSource? cancellation = _syncCancellation;
+        if (cancellation is null)
         {
             return;
         }
 
         CancelSyncButton.IsEnabled = false;
         ScanStatusText.Text = "Cancelling after the current operation…";
-        _syncCancellation.Cancel();
+        cancellation.Cancel();
     }
 
     private async Task<bool> ScanLibraryAsync(bool clearInfoBar)
