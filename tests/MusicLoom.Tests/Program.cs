@@ -1,3 +1,6 @@
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
 using MusicLoom.AudioFingerprint;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.Planning;
@@ -34,8 +37,10 @@ static void FingerprintZeroVector()
 {
     float[] samples = new float[NeteaseFingerprint.RequiredSampleCount];
     FingerprintResult result = NeteaseFingerprint.Generate(samples);
-    const string expected = "uLsYcabnjbmgFsxqyv/mkZoFEdC1Xl9UO2/XY36Uegs7Yaj4A1AgMunhIHePtEaGnYqN5+YzcvMR0utzqQbYBQ==";
-    Equal(expected, result.Encoded);
+    const string legacyWasm = "uLsYcabnjbmgFsxqyv/mkZoFEdC1Xl9UO2/XY36Uegs7Yaj4A1AgMunhIHePtEaGnYqN5+YzcvMR0utzqQbYBQ==";
+    byte[] expectedRaw = DecodeFingerprint(legacyWasm);
+    byte[] actualRaw = DecodeFingerprint(result.Encoded);
+    True(expectedRaw.AsSpan().SequenceEqual(actualRaw));
     Equal(0, result.Peaks.Count);
 }
 
@@ -117,6 +122,23 @@ static void PlaylistParsing()
     ]);
     Equal(1, paths.Count);
     Equal("D:\\MUSIC\\Example.flac", paths[0]);
+}
+
+static byte[] DecodeFingerprint(string encoded)
+{
+    byte[] encrypted = Convert.FromBase64String(encoded);
+    using Aes aes = Aes.Create();
+    aes.Key = Encoding.ASCII.GetBytes("4B97221F27F02907");
+    aes.Mode = CipherMode.ECB;
+    aes.Padding = PaddingMode.PKCS7;
+    using ICryptoTransform decryptor = aes.CreateDecryptor();
+    byte[] compressed = decryptor.TransformFinalBlock(encrypted, 0, encrypted.Length);
+
+    using MemoryStream input = new(compressed);
+    using ZLibStream zlib = new(input, CompressionMode.Decompress);
+    using MemoryStream output = new();
+    zlib.CopyTo(output);
+    return output.ToArray();
 }
 
 static void Equal<T>(T expected, T actual)
