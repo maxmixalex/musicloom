@@ -44,6 +44,18 @@ A scan produces `Unchanged`, `New`, `Modified`, or `Error` entries and does **no
 
 ATL.NET is isolated behind `ITrackMetadataReader` and is used for scanning because it reads through stream/seek-oriented parsers. TagLibSharp2 0.6.0 currently uses `ReadAllBytes` in its file readers, so it is not used on the scan hot path. Mutation is separate: `MusicLoom.Tagging` uses classic TagLib# 2.3.0 with explicit format classes, avoiding its reflection-based factory in NativeAOT code.
 
+## Windows audio decoding
+
+Recognition uses a composite NativeAOT-safe Windows decoder instead of assuming every format is available through system codecs:
+
+- MP3 → NLayer
+- WAV → NAudio PCM reader
+- Ogg Vorbis → NAudio.Vorbis / NVorbis
+- Opus → Concentus.Oggfile / Concentus
+- FLAC / M4A / WMA → Windows Media Foundation
+
+All seven legacy formats are exercised against pinned real/synthetic fixtures in both managed and NativeAOT runs.
+
 ## Native AFP progress
 
 The fingerprint implementation no longer depends on the old Emscripten module. Current golden checks include:
