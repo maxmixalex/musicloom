@@ -10,6 +10,7 @@ namespace MusicLoom.Netease;
 public sealed class NeteaseClient : IDisposable
 {
     private const string Host = "https://music.163.com";
+    private const string CsrfToken = "";
     private static readonly MediaTypeWithQualityHeaderValue JsonMediaType = new("application/json");
     private readonly HttpClient _httpClient;
     private readonly bool _ownsClient;
@@ -63,7 +64,7 @@ public sealed class NeteaseClient : IDisposable
         long songId,
         CancellationToken cancellationToken = default)
     {
-        string json = FormattableString.Invariant($"{{\"id\":\"{songId}\",\"lv\":\"-1\",\"tv\":\"-1\",\"rv\":\"-1\"}}");
+        string json = BuildLyricsPayload(songId);
         using JsonDocument document = await PostWeApiAsync(
             "/weapi/song/lyric",
             json,
@@ -99,6 +100,22 @@ public sealed class NeteaseClient : IDisposable
         return MatchFingerprintAsync(fingerprint.Encoded, cancellationToken);
     }
 
+    public async Task<long?> MatchFileAsync(
+        IFingerprintPcmDecoder decoder,
+        string audioFilePath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(decoder);
+
+        float[]? samples = await decoder.DecodeAsync(audioFilePath, cancellationToken);
+        if (samples is null)
+        {
+            return null;
+        }
+
+        return await MatchSamplesAsync(samples, cancellationToken);
+    }
+
     public void Dispose()
     {
         if (_ownsClient)
@@ -119,10 +136,13 @@ public sealed class NeteaseClient : IDisposable
             ["encSecKey"] = envelope.EncSecKey,
         });
 
-        using HttpRequestMessage request = new(HttpMethod.Post, Host + path);
+        using HttpRequestMessage request = new(
+            HttpMethod.Post,
+            Host + path + "?csrf_token=" + Uri.EscapeDataString(CsrfToken));
         request.Content = form;
         request.Headers.Referrer = new Uri(Host);
-        request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/MusicLoom");
+        request.Headers.UserAgent.ParseAdd(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/MusicLoom");
         request.Headers.TryAddWithoutValidation("Cookie", _cookieHeader);
         request.Headers.Accept.Add(JsonMediaType);
 
@@ -148,6 +168,24 @@ public sealed class NeteaseClient : IDisposable
             writer.WriteString("times", "1");
             writer.WriteString("decrypt", "1");
             writer.WriteString("rawdata", fingerprint);
+            writer.WriteString("csrf_token", CsrfToken);
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static string BuildLyricsPayload(long songId)
+    {
+        using MemoryStream stream = new();
+        using (Utf8JsonWriter writer = new(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("id", songId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            writer.WriteString("lv", "-1");
+            writer.WriteString("tv", "-1");
+            writer.WriteString("rv", "-1");
+            writer.WriteString("csrf_token", CsrfToken);
             writer.WriteEndObject();
         }
 

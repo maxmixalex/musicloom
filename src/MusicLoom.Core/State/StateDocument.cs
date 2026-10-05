@@ -17,10 +17,17 @@ public sealed record TrackState
     public string? DestinationPath { get; init; }
     public long? NeteaseSongId { get; init; }
     public string? LyricsFingerprint { get; init; }
+    public bool MetadataCaptured { get; init; }
+    public string? Artist { get; init; }
+    public string? AlbumArtist { get; init; }
+    public string? Album { get; init; }
+    public bool HasEmbeddedArt { get; init; }
     public DateTimeOffset ProcessedAt { get; init; }
 }
 
 public static class SyncRecipe
 {
-    public const string CurrentVersion = "1";
+    // v2 persists the metadata needed for album/cover planning so warm scans
+    // can remain metadata-I/O free without losing grouping information.
+    public const string CurrentVersion = "2";
 }
