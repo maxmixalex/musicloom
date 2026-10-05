@@ -44,7 +44,7 @@ public sealed class MediaFoundationFingerprintPcmDecoder : IFingerprintPcmDecode
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            int bytesRead = resampler.Read(buffer, 0, buffer.Length);
+            int bytesRead = resampler.Read(buffer.AsSpan());
             if (bytesRead == 0)
             {
                 break;
