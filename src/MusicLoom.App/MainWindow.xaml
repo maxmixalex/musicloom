@@ -1,0 +1,93 @@
+<Window
+    x:Class="MusicLoom.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="MusicLoom">
+  <NavigationView
+      x:Name="Navigation"
+      IsBackButtonVisible="Collapsed"
+      IsSettingsVisible="True"
+      PaneDisplayMode="Left"
+      SelectionChanged="Navigation_SelectionChanged">
+    <NavigationView.MenuItems>
+      <NavigationViewItem Content="Overview" Tag="overview">
+        <NavigationViewItem.Icon><SymbolIcon Symbol="Home" /></NavigationViewItem.Icon>
+      </NavigationViewItem>
+      <NavigationViewItem Content="Library" Tag="library">
+        <NavigationViewItem.Icon><SymbolIcon Symbol="Audio" /></NavigationViewItem.Icon>
+      </NavigationViewItem>
+      <NavigationViewItem Content="Playlists" Tag="playlists">
+        <NavigationViewItem.Icon><SymbolIcon Symbol="Bullets" /></NavigationViewItem.Icon>
+      </NavigationViewItem>
+      <NavigationViewItem Content="Activity" Tag="activity">
+        <NavigationViewItem.Icon><SymbolIcon Symbol="Sync" /></NavigationViewItem.Icon>
+      </NavigationViewItem>
+    </NavigationView.MenuItems>
+
+    <ScrollViewer>
+      <Grid Padding="32" MaxWidth="1180" HorizontalAlignment="Stretch">
+        <StackPanel Spacing="24">
+          <StackPanel Spacing="6">
+            <TextBlock x:Name="PageTitle" Text="Overview" Style="{ThemeResource TitleTextBlockStyle}" />
+            <TextBlock
+                x:Name="PageSubtitle"
+                Text="Keep the desktop source library and mobile target library in sync without rebuilding unchanged tracks."
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextWrapping="Wrap" />
+          </StackPanel>
+
+          <Border
+              Padding="24"
+              BorderThickness="1"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+              CornerRadius="8">
+            <Grid ColumnSpacing="24">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Spacing="8">
+                <TextBlock Text="Ready to configure" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                <TextBlock
+                    Text="MusicLoom is being rebuilt around an incremental native core. The first UI milestone will configure the existing MusicBee → Salt Player workflow without changing its lyrics, cover, or playlist semantics."
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+              </StackPanel>
+              <Button Grid.Column="1" Content="Choose library" VerticalAlignment="Center" IsEnabled="False" />
+            </Grid>
+          </Border>
+
+          <Grid ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Tracks" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="—" FontSize="28" FontWeight="SemiBold" />
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Pending changes" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="—" FontSize="28" FontWeight="SemiBold" />
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Last sync" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="Never" FontSize="28" FontWeight="SemiBold" />
+              </StackPanel>
+            </Border>
+          </Grid>
+        </StackPanel>
+      </Grid>
+    </ScrollViewer>
+  </NavigationView>
+</Window>

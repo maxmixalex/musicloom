@@ -1,0 +1,20 @@
+{
+  "verbose": true,
+  "path": {
+    "sourceDirectory": "D:\\MUSIC",
+    "destinationDirectory": "D:\\MUSIC_org",
+    "sourcePlaylistDirectory": "C:\\Users\\User\\Music\\Playlists\\MusicBee",
+    "destinationPlaylistBase": "/storage/emulated/0/Music/"
+  },
+  "organizer": {
+    "lyrics": {
+      "enabled": true,
+      "overrideExisting": true
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "fmt": "{levelname} [{name}] {message}",
+    "datefmt": "%Y-%m-%d %H:%M:%S"
+  }
+}

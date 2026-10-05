@@ -1,0 +1,40 @@
+name: Windows UI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/MusicLoom.App/**"
+      - "src/MusicLoom.Core/**"
+      - "Directory.Build.props"
+      - ".github/workflows/windows.yml"
+  pull_request:
+    paths:
+      - "src/MusicLoom.App/**"
+      - "src/MusicLoom.Core/**"
+      - "Directory.Build.props"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+
+jobs:
+  winui:
+    name: WinUI 3 / NativeAOT
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore src/MusicLoom.App/MusicLoom.App.csproj -r win-x64
+
+      - name: Build WinUI shell
+        run: dotnet build src/MusicLoom.App/MusicLoom.App.csproj -c Release -r win-x64 -p:Platform=x64 --no-restore
+
+      - name: Publish NativeAOT app
+        run: dotnet publish src/MusicLoom.App/MusicLoom.App.csproj -c Release -r win-x64 -p:Platform=x64 --self-contained true --no-restore -o artifacts/app-win-x64

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PublishAot>true</PublishAot>
+    <StripSymbols>true</StripSymbols>
+    <OptimizationPreference>Speed</OptimizationPreference>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MusicLoom.Core/MusicLoom.Core.csproj" />
+    <ProjectReference Include="../MusicLoom.AudioFingerprint/MusicLoom.AudioFingerprint.csproj" />
+    <ProjectReference Include="../MusicLoom.Netease/MusicLoom.Netease.csproj" />
+  </ItemGroup>
+</Project>

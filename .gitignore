@@ -1,0 +1,12 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+*.swp
+*.tmp
+artifacts/
+.cache/
+.musicloom/
+MusicLoom.settings.json
