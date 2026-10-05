@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Text;
 using TagLib;
 using TagLib.Id3v2;
+using IOFile = System.IO.File;
 
 string path = Path.Combine(
     Path.GetTempPath(),
@@ -48,7 +49,7 @@ try
 }
 finally
 {
-    File.Delete(path);
+    IOFile.Delete(path);
 }
 
 static void WriteLyrics(
@@ -185,12 +186,12 @@ static void WritePcm16Wave(string path)
         offset += 2;
     }
 
-    File.WriteAllBytes(path, data);
+    IOFile.WriteAllBytes(path, data);
 }
 
 static IReadOnlyList<Id3Frame> ReadId3FramesFromWave(string path)
 {
-    byte[] wave = File.ReadAllBytes(path);
+    byte[] wave = IOFile.ReadAllBytes(path);
     if (!wave.AsSpan(0, 4).SequenceEqual("RIFF"u8)
         || !wave.AsSpan(8, 4).SequenceEqual("WAVE"u8))
     {
