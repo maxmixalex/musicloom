@@ -151,3 +151,18 @@ For every new or modified track:
 Transport, decoding, and tag-write exceptions are different: useful partial state is persisted, but the current recipe is **not** marked complete. On the next scan the source metadata snapshot and destination path remain reusable, so the retry can run with `NeedsAudioCopy=false`. If recognition already succeeded before a lyric-fetch failure, the stored song ID is reused and fingerprint recognition is skipped on the retry.
 
 This intentionally improves on the old one-day TTL cache: a successful match/no-match/no-lyrics outcome does not force repeated network work on every warm run, while genuine exceptions remain retryable.
+
+
+## Live Windows sync safety
+
+The WinUI shell keeps planning and mutation as separate user actions:
+
+1. **Scan library** is read-only and builds the shared `LibraryPlan`.
+2. **Apply sync** first performs another scan, so a stale plan cannot be applied after files/configuration changed.
+3. Plans containing scan errors are not writable from the UI.
+4. A confirmation dialog shows pending tracks, actual audio copies, enrichment-only work, destination root, state path, and whether Netease can be contacted.
+5. Only after explicit confirmation does the UI compose `MediaFoundationFingerprintPcmDecoder + NeteaseTrackProvider + TagLibSharpLyricsWriter + SyncExecutor`.
+
+`LibraryPathSafety` rejects an empty source/destination, an identical source and destination, and any destination nested inside the source tree. This prevents the organizer from recursively scanning and re-copying its own output.
+
+Cancellation is cooperative. The executor stages per-track partial state before external enrichment work and writes the accumulated state with a non-cancelled token when cancellation is observed. A subsequent scan can therefore reuse source metadata and already materialized destinations instead of starting the track from scratch.
