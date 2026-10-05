@@ -271,31 +271,16 @@ public static class NeteaseFingerprint
 
     private static byte[] ZlibStore(ReadOnlySpan<byte> input)
     {
-        const int maxStoredBlockSize = 65_535;
-        int blockCount = Math.Max(1, (input.Length + maxStoredBlockSize - 1) / maxStoredBlockSize);
-        byte[] result = new byte[2 + input.Length + (blockCount * 5) + 4];
-        int outputOffset = 0;
-        result[outputOffset++] = 0x78;
-        result[outputOffset++] = 0x01;
-
-        int inputOffset = 0;
-        for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
+        using MemoryStream output = new();
+        using (System.IO.Compression.ZLibStream compressor = new(
+            output,
+            System.IO.Compression.CompressionLevel.Optimal,
+            leaveOpen: true))
         {
-            int length = Math.Min(maxStoredBlockSize, input.Length - inputOffset);
-            bool final = blockIndex == blockCount - 1;
-            result[outputOffset++] = final ? (byte)0x01 : (byte)0x00;
-            BinaryPrimitives.WriteUInt16LittleEndian(result.AsSpan(outputOffset, 2), (ushort)length);
-            outputOffset += 2;
-            BinaryPrimitives.WriteUInt16LittleEndian(result.AsSpan(outputOffset, 2), (ushort)(length ^ 0xffff));
-            outputOffset += 2;
-            input.Slice(inputOffset, length).CopyTo(result.AsSpan(outputOffset, length));
-            inputOffset += length;
-            outputOffset += length;
+            compressor.Write(input);
         }
 
-        uint adler = Adler32(input);
-        BinaryPrimitives.WriteUInt32BigEndian(result.AsSpan(outputOffset, 4), adler);
-        return result;
+        return output.ToArray();
     }
 
     private static byte[] EncryptAes128EcbPkcs7(byte[] input)
@@ -306,20 +291,6 @@ public static class NeteaseFingerprint
         aes.Padding = PaddingMode.PKCS7;
         using ICryptoTransform encryptor = aes.CreateEncryptor();
         return encryptor.TransformFinalBlock(input, 0, input.Length);
-    }
-
-    private static uint Adler32(ReadOnlySpan<byte> input)
-    {
-        const uint modulus = 65_521;
-        uint first = 1;
-        uint second = 0;
-        foreach (byte value in input)
-        {
-            first = (first + value) % modulus;
-            second = (second + first) % modulus;
-        }
-
-        return (second << 16) | first;
     }
 
     private static float WasmLogF(float value)
