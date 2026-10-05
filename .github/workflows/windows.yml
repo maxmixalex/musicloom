@@ -149,7 +149,7 @@ jobs:
                   Out-String -Width 4096 |
                   Write-Host
 
-                Write-Error $failure
+                Write-Host "FAIL: $failure"
                 return $false
               }
 
