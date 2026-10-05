@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="z440.atl.core" Version="7.18.0" />
+    <ProjectReference Include="../MusicLoom.Core/MusicLoom.Core.csproj" />
+  </ItemGroup>
+</Project>
