@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   corpus:
-    name: Media Foundation / NativeAOT
+    name: Composite decoder / NativeAOT
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -35,11 +35,11 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Run managed decoder corpus
+      - name: Run managed composite decoder corpus
         run: dotnet run --project tests/MusicLoom.WindowsAudioCorpus/MusicLoom.WindowsAudioCorpus.csproj -c Release -- .fixtures\taglib-sharp\tests\TaglibSharp.Tests\samples
 
-      - name: Publish decoder corpus with NativeAOT
+      - name: Publish composite decoder corpus with NativeAOT
         run: dotnet publish tests/MusicLoom.WindowsAudioCorpus/MusicLoom.WindowsAudioCorpus.csproj -c Release -r win-x64 --self-contained true -o artifacts/windows-audio-corpus
 
-      - name: Run NativeAOT decoder corpus
+      - name: Run NativeAOT composite decoder corpus
         run: .\artifacts\windows-audio-corpus\MusicLoom.WindowsAudioCorpus.exe .fixtures\taglib-sharp\tests\TaglibSharp.Tests\samples
