@@ -130,7 +130,7 @@ jobs:
 
               if (Test-Path $trace) {
                 Write-Host "=== $Label startup trace ==="
-                Get-Content $trace
+                Get-Content $trace | ForEach-Object { Write-Host $_ }
               } else {
                 Write-Host "=== $Label startup trace: no trace file ==="
               }
@@ -154,7 +154,7 @@ jobs:
               }
 
               Write-Host "=== $Label activated ==="
-              Get-Content $marker
+              Get-Content $marker | ForEach-Object { Write-Host $_ }
               return $true
             }
             finally {
