@@ -8,9 +8,14 @@ public partial class App : Application
 
     public App()
     {
+        StartupTrace.Mark("App.ctor.enter");
+        StartupTrace.Mark("App.InitializeComponent.before");
         InitializeComponent();
+        StartupTrace.Mark("App.InitializeComponent.after");
 
+        StartupTrace.Mark("AppDiagnostics.Initialize.before");
         AppDiagnostics.Initialize();
+        StartupTrace.Mark("AppDiagnostics.Initialize.after");
         UnhandledException += OnUnhandledException;
         TaskScheduler.UnobservedTaskException +=
             OnUnobservedTaskException;
@@ -21,7 +26,10 @@ public partial class App : Application
     protected override void OnLaunched(
         LaunchActivatedEventArgs args)
     {
+        StartupTrace.Mark("App.OnLaunched.enter");
+        StartupTrace.Mark("MainWindow.ctor.before");
         _window = new MainWindow();
+        StartupTrace.Mark("MainWindow.ctor.after");
 
         string? smokeMarker =
             Environment.GetEnvironmentVariable(
@@ -53,7 +61,9 @@ public partial class App : Application
             };
         }
 
+        StartupTrace.Mark("MainWindow.Activate.before");
         _window.Activate();
+        StartupTrace.Mark("MainWindow.Activate.after");
     }
 
     private static void OnUnhandledException(
