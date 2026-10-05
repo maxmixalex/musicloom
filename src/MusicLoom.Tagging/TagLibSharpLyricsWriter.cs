@@ -3,6 +3,8 @@ using System.Text;
 using MusicLoom.Core.Lyrics;
 using TagLib;
 using TagLib.Id3v2;
+using TagLib.Mpeg4;
+using TagLib.Ogg;
 
 namespace MusicLoom.Tagging;
 
@@ -11,6 +13,63 @@ public sealed class TagLibSharpLyricsWriter : ITrackLyricsWriter
     private static readonly ReadOnlyByteVector SyltId = "SYLT";
     private static readonly ReadOnlyByteVector UsltId = "USLT";
     private static readonly ReadOnlyByteVector TxxxId = "TXXX";
+
+    public ValueTask<LyricsProbeResult> ProbeAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        string extension = Path.GetExtension(path);
+        LyricsProbeResult result;
+
+        if (IsId3(extension))
+        {
+            using TagLib.File file = OpenId3File(path, extension);
+            TagLib.Id3v2.Tag? id3 =
+                file.GetTag(TagTypes.Id3v2, create: false) as TagLib.Id3v2.Tag;
+
+            bool present = id3 is not null
+                && (id3.GetFrames(SyltId).Any()
+                    || id3.GetFrames(UsltId).Any());
+            result = new LyricsProbeResult(
+                present ? LyricsProbeStatus.Present : LyricsProbeStatus.Missing);
+        }
+        else if (IsXiph(extension))
+        {
+            using TagLib.File file = OpenXiphFile(path, extension);
+            XiphComment? tag =
+                file.GetTag(TagTypes.Xiph, create: false) as XiphComment;
+
+            bool present = tag is not null
+                && (tag.GetField("LYRICS").Length > 0
+                    || tag.GetField("LYRICSENG").Length > 0);
+            result = new LyricsProbeResult(
+                present ? LyricsProbeStatus.Present : LyricsProbeStatus.Missing);
+        }
+        else if (extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+        {
+            TagLib.File.IFileAbstraction abstraction =
+                new TagLib.File.LocalFileAbstraction(path);
+            using TagLib.Mpeg4.File file =
+                new(abstraction, ReadStyle.None);
+
+            AppleTag? tag =
+                file.GetTag(TagTypes.Apple, create: false) as AppleTag;
+            result = new LyricsProbeResult(
+                !string.IsNullOrEmpty(tag?.Lyrics)
+                    ? LyricsProbeStatus.Present
+                    : LyricsProbeStatus.Missing);
+        }
+        else
+        {
+            result = new LyricsProbeResult(
+                LyricsProbeStatus.UnsupportedFormat,
+                $"Legacy lyrics are not supported for '{extension}'.");
+        }
+
+        return ValueTask.FromResult(result);
+    }
 
     public ValueTask<LyricsWriteResult> WriteAsync(
         string path,
@@ -21,14 +80,39 @@ public sealed class TagLibSharpLyricsWriter : ITrackLyricsWriter
         cancellationToken.ThrowIfCancellationRequested();
 
         string extension = Path.GetExtension(path);
-        if (!IsSupported(extension))
+        string lrc = lyrics.ToString();
+
+        LyricsWriteResult result;
+        if (IsId3(extension))
         {
-            return ValueTask.FromResult(new LyricsWriteResult(
+            result = WriteId3(path, extension, lyrics, lrc, overrideExisting);
+        }
+        else if (IsXiph(extension))
+        {
+            result = WriteXiph(path, extension, lrc, overrideExisting);
+        }
+        else if (extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+        {
+            result = WriteMp4(path, lrc, overrideExisting);
+        }
+        else
+        {
+            result = new LyricsWriteResult(
                 LyricsWriteStatus.UnsupportedFormat,
-                $"Legacy-compatible ID3 lyrics are not enabled for '{extension}'."));
+                $"Legacy lyrics are not enabled for '{extension}'.");
         }
 
-        using TagLib.File file = OpenFile(path, extension);
+        return ValueTask.FromResult(result);
+    }
+
+    private static LyricsWriteResult WriteId3(
+        string path,
+        string extension,
+        LrcDocument lyrics,
+        string lrc,
+        bool overrideExisting)
+    {
+        using TagLib.File file = OpenId3File(path, extension);
         TagLib.Tag tag = file.GetTag(TagTypes.Id3v2, create: true)
             ?? throw new InvalidOperationException(
                 $"Could not create an ID3v2 tag for '{path}'.");
@@ -47,9 +131,9 @@ public sealed class TagLibSharpLyricsWriter : ITrackLyricsWriter
 
         if (hasExistingLyrics && !overrideExisting)
         {
-            return ValueTask.FromResult(new LyricsWriteResult(
+            return new LyricsWriteResult(
                 LyricsWriteStatus.SkippedExisting,
-                "The file already contains synchronized or unsynchronized lyrics."));
+                "The file already contains synchronized or unsynchronized lyrics.");
         }
 
         // Mutagen 1.47 writes ID3v2.4 by default. Keep the same version so
@@ -71,8 +155,6 @@ public sealed class TagLibSharpLyricsWriter : ITrackLyricsWriter
             id3.RemoveFrame(frame);
         }
 
-        string lrc = lyrics.ToString();
-
         id3.AddFrame(new MutagenCompatibleFrame(
             "SYLT",
             BuildSyltPayload(lyrics.Lines)));
@@ -84,24 +166,101 @@ public sealed class TagLibSharpLyricsWriter : ITrackLyricsWriter
             BuildTxxxPayload(lrc)));
 
         file.Save();
-        return ValueTask.FromResult(new LyricsWriteResult(LyricsWriteStatus.Written));
+        return new LyricsWriteResult(LyricsWriteStatus.Written);
     }
 
-    private static bool IsSupported(string extension) =>
+    private static LyricsWriteResult WriteXiph(
+        string path,
+        string extension,
+        string lrc,
+        bool overrideExisting)
+    {
+        using TagLib.File file = OpenXiphFile(path, extension);
+        XiphComment tag = file.GetTag(TagTypes.Xiph, create: true) as XiphComment
+            ?? throw new InvalidOperationException(
+                $"Could not obtain a Xiph/Vorbis comment for '{path}'.");
+
+        // Mutagen's VCommentDict is case-insensitive. The legacy sequence
+        // lyrics -> LYRICS -> LYRICSENG therefore serializes as exactly these
+        // two fields: LYRICS and LYRICSENG.
+        bool hasExistingLyrics =
+            tag.GetField("LYRICS").Length > 0
+            || tag.GetField("LYRICSENG").Length > 0;
+
+        if (hasExistingLyrics && !overrideExisting)
+        {
+            return new LyricsWriteResult(
+                LyricsWriteStatus.SkippedExisting,
+                "The file already contains Vorbis lyrics.");
+        }
+
+        tag.RemoveField("LYRICS");
+        tag.RemoveField("LYRICSENG");
+        tag.SetField("LYRICS", lrc);
+        tag.SetField("LYRICSENG", lrc);
+
+        file.Save();
+        return new LyricsWriteResult(LyricsWriteStatus.Written);
+    }
+
+    private static LyricsWriteResult WriteMp4(
+        string path,
+        string lrc,
+        bool overrideExisting)
+    {
+        TagLib.File.IFileAbstraction abstraction =
+            new TagLib.File.LocalFileAbstraction(path);
+        using TagLib.Mpeg4.File file =
+            new(abstraction, ReadStyle.None);
+
+        AppleTag tag = file.GetTag(TagTypes.Apple, create: true) as AppleTag
+            ?? throw new InvalidOperationException(
+                $"Could not obtain an Apple tag for '{path}'.");
+
+        if (!string.IsNullOrEmpty(tag.Lyrics) && !overrideExisting)
+        {
+            return new LyricsWriteResult(
+                LyricsWriteStatus.SkippedExisting,
+                "The file already contains MP4 lyrics.");
+        }
+
+        // The old Mutagen writer emits only the standard ©lyr atom.
+        tag.Lyrics = lrc;
+        file.Save();
+        return new LyricsWriteResult(LyricsWriteStatus.Written);
+    }
+
+    private static bool IsId3(string extension) =>
         extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase)
         || extension.Equals(".wav", StringComparison.OrdinalIgnoreCase);
 
-    private static TagLib.File OpenFile(string path, string extension)
+    private static bool IsXiph(string extension) =>
+        extension.Equals(".flac", StringComparison.OrdinalIgnoreCase)
+        || extension.Equals(".ogg", StringComparison.OrdinalIgnoreCase)
+        || extension.Equals(".opus", StringComparison.OrdinalIgnoreCase);
+
+    private static TagLib.File OpenId3File(
+        string path,
+        string extension)
     {
         TagLib.File.IFileAbstraction abstraction =
             new TagLib.File.LocalFileAbstraction(path);
 
-        if (extension.Equals(".wav", StringComparison.OrdinalIgnoreCase))
-        {
-            return new TagLib.Riff.File(abstraction, ReadStyle.None);
-        }
+        return extension.Equals(".wav", StringComparison.OrdinalIgnoreCase)
+            ? new TagLib.Riff.File(abstraction, ReadStyle.None)
+            : new TagLib.Mpeg.AudioFile(abstraction, ReadStyle.None);
+    }
 
-        return new TagLib.Mpeg.AudioFile(abstraction, ReadStyle.None);
+    private static TagLib.File OpenXiphFile(
+        string path,
+        string extension)
+    {
+        TagLib.File.IFileAbstraction abstraction =
+            new TagLib.File.LocalFileAbstraction(path);
+
+        return extension.Equals(".flac", StringComparison.OrdinalIgnoreCase)
+            ? new TagLib.Flac.File(abstraction, ReadStyle.None)
+            : new TagLib.Ogg.File(abstraction, ReadStyle.None);
     }
 
     private static byte[] BuildSyltPayload(IReadOnlyList<LrcLine> lines)

@@ -11,6 +11,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MusicLoom.Tests/MusicLoom.Tests.csproj" />
+    <Project Path="tests/MusicLoom.FormatCorpus/MusicLoom.FormatCorpus.csproj" />
     <Project Path="tests/MusicLoom.Windows.Tests/MusicLoom.Windows.Tests.csproj" />
   </Folder>
 </Solution>

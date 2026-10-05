@@ -110,9 +110,9 @@ The materializer intentionally does not persist final sync state yet. State must
 
 ## Lyrics writing compatibility
 
-Lyrics mutation is behind `ITrackLyricsWriter` and deliberately separated from metadata scanning. The first production writer is `TagLibSharpLyricsWriter` in `MusicLoom.Tagging`, currently enabled for MP3 and WAV.
+Lyrics mutation is behind `ITrackLyricsWriter` and deliberately separated from metadata scanning. `TagLibSharpLyricsWriter` in `MusicLoom.Tagging` covers the same writable formats as the Python implementation: MP3/WAV via ID3, FLAC/Ogg/Opus via Xiph/Vorbis comments, and M4A via the Apple `©lyr` atom.
 
-Classic TagLib# 2.3.0 is used here because it performs seek/stream-based in-place media mutation. The NativeAOT path does **not** call the reflection-based `TagLib.File.Create` factory; it explicitly constructs `TagLib.Mpeg.AudioFile` or `TagLib.Riff.File`.
+Classic TagLib# 2.3.0 is used here because it performs seek/stream-based in-place media mutation. The NativeAOT path does **not** call the reflection-based `TagLib.File.Create` factory; it explicitly constructs `TagLib.Mpeg.AudioFile`, `TagLib.Riff.File`, `TagLib.Flac.File`, `TagLib.Ogg.File`, or `TagLib.Mpeg4.File`.
 
 For one merged LRC document, MusicLoom writes the exact ID3 payloads produced by Mutagen 1.47.0 in the Python implementation:
 
@@ -122,6 +122,12 @@ For one merged LRC document, MusicLoom writes the exact ID3 payloads produced by
 
 The writer uses a small write-only custom TagLib# frame type so the **payload bytes**, not merely the semantic fields, match the Mutagen 1.47.0 reference. Regression tests cover both generated WAV and MP3 files, preserve unrelated TXXX fields across overwrite, and verify `overrideExisting=false` leaves files byte-for-byte unchanged.
 
-The full regression harness is published and executed under NativeAOT on both Linux and Windows, so TagLib# compatibility remains continuously exercised rather than relying on a one-off probe.
+The full regression harness is published and executed under NativeAOT on both Linux and Windows, so the ID3 path remains continuously exercised rather than relying on a one-off probe.
 
-Vorbis/FLAC/Opus and MP4 writing remain disabled until equivalent format-specific round-trip tests exist. WMA lyric mutation remains unsupported to match the old MusicOrg boundary.
+A separate format corpus pins the TagLib# upstream test samples by commit and exercises real FLAC, Ogg Vorbis, Opus, and M4A containers in both managed and NativeAOT builds. The compatibility target is:
+
+- FLAC / Ogg / Opus: `LYRICS` and `LYRICSENG`. The Python source assigned `lyrics`, `LYRICS`, and `LYRICSENG`, but Mutagen's Vorbis dictionary is case-insensitive, so the first two collapse to one serialized field.
+- M4A: the standard Apple `©lyr` atom.
+- WMA: no lyric mutation, matching the old MusicOrg unsupported branch.
+
+The corpus also verifies that `overrideExisting=false` is byte-for-byte non-mutating and that unrelated metadata such as the source title survives lyric writes.
