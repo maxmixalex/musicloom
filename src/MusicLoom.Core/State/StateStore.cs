@@ -66,10 +66,4 @@ public sealed class StateStore
         return state.SourceSize == source.Length
             && state.SourceLastWriteUtcTicks == source.LastWriteTimeUtc.Ticks;
     }
-
-    public static bool IsSourceUnchanged(TrackState state, FileInfo source)
-    {
-        return state.RecipeVersion == SyncRecipe.CurrentVersion
-            && IsSourceVersionUnchanged(state, source);
-    }
 }

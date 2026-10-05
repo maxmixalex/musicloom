@@ -1,3 +1,5 @@
+using MusicLoom.Core.Configuration;
+
 namespace MusicLoom.Core.State;
 
 public sealed record StateDocument
@@ -13,7 +15,12 @@ public sealed record TrackState
     public long SourceSize { get; init; }
     public long SourceLastWriteUtcTicks { get; init; }
     public ulong QuickHash { get; init; }
-    public string RecipeVersion { get; init; } = SyncRecipe.CurrentVersion;
+
+    // This is the output recipe that completed successfully for this track.
+    // It is deliberately independent from whether the cached source metadata
+    // is still usable.
+    public string RecipeVersion { get; init; } = string.Empty;
+
     public string? DestinationPath { get; init; }
     public long? NeteaseSongId { get; init; }
     public string? LyricsFingerprint { get; init; }
@@ -27,7 +34,19 @@ public sealed record TrackState
 
 public static class SyncRecipe
 {
-    // v2 persists the metadata needed for album/cover planning so warm scans
-    // can remain metadata-I/O free without losing grouping information.
-    public const string CurrentVersion = "2";
+    // v3 separates source/metadata cache validity from completion of the
+    // configured output recipe.
+    public const string CurrentVersion = "3";
+
+    public static string For(MusicLoomSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        bool lyricsEnabled = settings.Organizer.Lyrics.Enabled;
+        bool overrideExisting =
+            lyricsEnabled && settings.Organizer.Lyrics.OverrideExisting;
+
+        return FormattableString.Invariant(
+            $"{CurrentVersion};lyrics={(lyricsEnabled ? 1 : 0)};override={(overrideExisting ? 1 : 0)}");
+    }
 }
