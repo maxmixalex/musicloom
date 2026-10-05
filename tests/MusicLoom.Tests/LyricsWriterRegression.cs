@@ -1,11 +1,25 @@
 using System.Buffers.Binary;
 using System.Text;
-using ATL;
 using MusicLoom.Core.Lyrics;
-using MusicLoom.Metadata;
+using MusicLoom.Tagging;
+using TagLib;
+using TagLib.Id3v2;
+using IOFile = System.IO.File;
 
 internal static class LyricsWriterRegression
 {
+    private const string ReferenceLrc =
+        "[ar:MusicLoom]\n[00:01.000]Hello\n[00:02.500]世界";
+
+    private const string ReferenceSyltHex =
+        "03656E6702010048656C6C6F00000003E8E4B896E7958C00000009C4";
+
+    private const string ReferenceUsltHex =
+        "03656E674C7972696373005B61723A4D757369634C6F6D5D0A5B30303A30312E3030305D48656C6C6F0A5B30303A30322E3530305DE4B896E7958C00";
+
+    private const string ReferenceTxxxHex =
+        "034C5952494353005B61723A4D757369634C6F6D5D0A5B30303A30312E3030305D48656C6C6F0A5B30303A30322E3530305DE4B896E7958C00";
+
     public static void Run()
     {
         RunAsync().GetAwaiter().GetResult();
@@ -13,63 +27,51 @@ internal static class LyricsWriterRegression
 
     private static async Task RunAsync()
     {
+        await VerifyFormatAsync(".wav", TestWaveFactory.WritePcm16);
+        await VerifyFormatAsync(".mp3", WriteMinimalMp3);
+    }
+
+    private static async Task VerifyFormatAsync(
+        string extension,
+        Action<string> createFile)
+    {
         string path = Path.Combine(
             Path.GetTempPath(),
-            $"musicloom-lyrics-{Guid.NewGuid():N}.wav");
+            $"musicloom-lyrics-{Guid.NewGuid():N}{extension}");
 
         try
         {
-            TestWaveFactory.WritePcm16(path);
+            createFile(path);
+            AddUnrelatedTxxx(path, extension);
 
-            LrcDocument lyrics = LrcDocument.Parse(
-                "[ar:MusicLoom]\n[00:01.000]Hello\n[00:02.500]世界");
-            string lrc = lyrics.ToString();
+            LrcDocument lyrics = LrcDocument.Parse(ReferenceLrc);
+            TagLibSharpLyricsWriter writer = new();
 
-            AtlLyricsWriter writer = new();
             LyricsWriteResult first = await writer.WriteAsync(
                 path,
                 lyrics,
                 overrideExisting: true);
             Equal(LyricsWriteStatus.Written, first.Status);
 
-            Track track = new(path);
-            LyricsInfo synchronized = track.Lyrics.FirstOrDefault(
-                static info => info.SynchronizedLyrics.Count == 2)
-                ?? throw new InvalidOperationException(
-                    "ATL did not expose the synchronized lyric content.");
+            IReadOnlyList<Id3Frame> frames = ReadId3Frames(path, extension);
+            AssertReferenceFrames(frames);
+            AssertKeepFrame(frames);
 
-            Equal(2, synchronized.SynchronizedLyrics.Count);
-            Equal(1_000, synchronized.SynchronizedLyrics[0].TimestampStart);
-            Equal("Hello", synchronized.SynchronizedLyrics[0].Text);
-            Equal(2_500, synchronized.SynchronizedLyrics[1].TimestampStart);
-            Equal("世界", synchronized.SynchronizedLyrics[1].Text);
+            byte[] beforeSkip = await IOFile.ReadAllBytesAsync(path);
+            LrcDocument replacement = LrcDocument.Parse(
+                "[00:03.000]replacement");
 
-            IReadOnlyList<Id3Frame> frames = ReadId3FramesFromWave(path);
-            Equal(1, frames.Count(static frame => frame.Id == "SYLT"));
-            Equal(1, frames.Count(static frame => frame.Id == "USLT"));
-            Equal(1, frames.Count(static frame => frame.Id == "TXXX"));
-
-            Id3Frame sylt = frames.Single(static frame => frame.Id == "SYLT");
-            AssertSylt(sylt, [(1_000, "Hello"), (2_500, "世界")]);
-
-            Id3Frame uslt = frames.Single(static frame => frame.Id == "USLT");
-            AssertUslt(uslt, "eng", "Lyrics", lrc);
-
-            Id3Frame txxx = frames.Single(static frame => frame.Id == "TXXX");
-            AssertTxxx(txxx, "LYRICS", lrc);
-
-            byte[] beforeSkip = await File.ReadAllBytesAsync(path);
-            LrcDocument replacement = LrcDocument.Parse("[00:03.000]replacement");
             LyricsWriteResult skipped = await writer.WriteAsync(
                 path,
                 replacement,
                 overrideExisting: false);
             Equal(LyricsWriteStatus.SkippedExisting, skipped.Status);
-            byte[] afterSkip = await File.ReadAllBytesAsync(path);
+
+            byte[] afterSkip = await IOFile.ReadAllBytesAsync(path);
             if (!beforeSkip.AsSpan().SequenceEqual(afterSkip))
             {
                 throw new InvalidOperationException(
-                    "overrideExisting=false changed a file that already had lyrics.");
+                    $"overrideExisting=false changed '{extension}' bytes.");
             }
 
             LyricsWriteResult overwritten = await writer.WriteAsync(
@@ -78,133 +80,144 @@ internal static class LyricsWriterRegression
                 overrideExisting: true);
             Equal(LyricsWriteStatus.Written, overwritten.Status);
 
-            IReadOnlyList<Id3Frame> overwrittenFrames = ReadId3FramesFromWave(path);
+            IReadOnlyList<Id3Frame> overwrittenFrames =
+                ReadId3Frames(path, extension);
             Equal(1, overwrittenFrames.Count(static frame => frame.Id == "SYLT"));
             Equal(1, overwrittenFrames.Count(static frame => frame.Id == "USLT"));
-            Equal(1, overwrittenFrames.Count(static frame => frame.Id == "TXXX"));
-            AssertUslt(
-                overwrittenFrames.Single(static frame => frame.Id == "USLT"),
-                "eng",
-                "Lyrics",
-                replacement.ToString());
-            AssertTxxx(
-                overwrittenFrames.Single(static frame => frame.Id == "TXXX"),
-                "LYRICS",
-                replacement.ToString());
+            Equal(1, CountTxxx(overwrittenFrames, "LYRICS"));
+            AssertKeepFrame(overwrittenFrames);
+
+            string expectedReplacement = replacement.ToString();
+            Equal(
+                expectedReplacement,
+                DecodeUslt(
+                    overwrittenFrames.Single(
+                        static frame => frame.Id == "USLT")));
+            Equal(
+                expectedReplacement,
+                DecodeTxxxValue(
+                    FindTxxx(overwrittenFrames, "LYRICS")));
         }
         finally
         {
-            File.Delete(path);
+            IOFile.Delete(path);
         }
     }
 
-    private static void AssertSylt(
-        Id3Frame frame,
-        IReadOnlyList<(int Timestamp, string Text)> expected)
+    private static void AssertReferenceFrames(
+        IReadOnlyList<Id3Frame> frames)
+    {
+        Equal(1, frames.Count(static frame => frame.Id == "SYLT"));
+        Equal(1, frames.Count(static frame => frame.Id == "USLT"));
+        Equal(1, CountTxxx(frames, "LYRICS"));
+
+        Equal(
+            ReferenceSyltHex,
+            Convert.ToHexString(
+                frames.Single(static frame => frame.Id == "SYLT").Data));
+        Equal(
+            ReferenceUsltHex,
+            Convert.ToHexString(
+                frames.Single(static frame => frame.Id == "USLT").Data));
+        Equal(
+            ReferenceTxxxHex,
+            Convert.ToHexString(
+                FindTxxx(frames, "LYRICS").Data));
+    }
+
+    private static void AddUnrelatedTxxx(
+        string path,
+        string extension)
+    {
+        using TagLib.File file = OpenTagFile(path, extension);
+        TagLib.Tag tag = file.GetTag(TagTypes.Id3v2, create: true)
+            ?? throw new InvalidOperationException("Could not create ID3v2 tag.");
+
+        TagLib.Id3v2.Tag id3 = (TagLib.Id3v2.Tag)tag;
+        id3.Version = 4;
+
+        UserTextInformationFrame keep = UserTextInformationFrame.Get(
+            id3,
+            "KEEP",
+            StringType.UTF8,
+            create: true);
+        keep.TextEncoding = StringType.UTF8;
+        keep.Text = ["untouched"];
+        file.Save();
+    }
+
+    private static TagLib.File OpenTagFile(
+        string path,
+        string extension)
+    {
+        TagLib.File.IFileAbstraction abstraction =
+            new TagLib.File.LocalFileAbstraction(path);
+
+        return extension.Equals(".wav", StringComparison.OrdinalIgnoreCase)
+            ? new TagLib.Riff.File(abstraction, ReadStyle.None)
+            : new TagLib.Mpeg.AudioFile(abstraction, ReadStyle.None);
+    }
+
+    private static void AssertKeepFrame(
+        IReadOnlyList<Id3Frame> frames)
+    {
+        Equal(1, CountTxxx(frames, "KEEP"));
+        Equal(
+            "untouched",
+            DecodeTxxxValue(FindTxxx(frames, "KEEP")));
+    }
+
+    private static int CountTxxx(
+        IReadOnlyList<Id3Frame> frames,
+        string description) =>
+        frames.Count(frame =>
+            frame.Id == "TXXX"
+            && string.Equals(
+                DecodeTxxxDescription(frame),
+                description,
+                StringComparison.Ordinal));
+
+    private static Id3Frame FindTxxx(
+        IReadOnlyList<Id3Frame> frames,
+        string description) =>
+        frames.Single(frame =>
+            frame.Id == "TXXX"
+            && string.Equals(
+                DecodeTxxxDescription(frame),
+                description,
+                StringComparison.Ordinal));
+
+    private static string DecodeTxxxDescription(Id3Frame frame)
     {
         ReadOnlySpan<byte> data = frame.Data;
-        if (data.Length < 7)
+        if (data.Length < 2 || data[0] != 3)
         {
-            throw new InvalidOperationException("SYLT payload is too short.");
+            throw new InvalidDataException(
+                "Expected UTF-8 TXXX payload.");
         }
 
-        Equal((byte)3, data[0]);
-        Equal("eng", Encoding.Latin1.GetString(data.Slice(1, 3)));
-        Equal((byte)2, data[4]);
-        Equal((byte)1, data[5]);
-
-        int offset = 6;
-        string description = ReadUtf8NullTerminated(data, ref offset);
-        Equal(string.Empty, description);
-
-        for (int index = 0; index < expected.Count; index++)
+        int separator = data[1..].IndexOf((byte)0);
+        if (separator < 0)
         {
-            if (offset >= data.Length)
-            {
-                throw new InvalidOperationException(
-                    $"SYLT ended before phrase {index}.");
-            }
-
-            Equal((byte)10, data[offset++]);
-            string text = ReadUtf8NullTerminated(data, ref offset);
-            if (offset + 4 > data.Length)
-            {
-                throw new InvalidOperationException(
-                    $"SYLT phrase {index} is missing its timestamp.");
-            }
-
-            int timestamp = BinaryPrimitives.ReadInt32BigEndian(data.Slice(offset, 4));
-            offset += 4;
-
-            Equal(expected[index].Text, text);
-            Equal(expected[index].Timestamp, timestamp);
+            throw new InvalidDataException(
+                "TXXX description is missing a terminator.");
         }
 
-        Equal(data.Length, offset);
+        return Encoding.UTF8.GetString(data.Slice(1, separator));
     }
 
-    private static void AssertUslt(
-        Id3Frame frame,
-        string expectedLanguage,
-        string expectedDescription,
-        string expectedLyrics)
+    private static string DecodeTxxxValue(Id3Frame frame)
     {
         ReadOnlySpan<byte> data = frame.Data;
-        if (data.Length < 5)
+        int separator = data[1..].IndexOf((byte)0);
+        if (separator < 0)
         {
-            throw new InvalidOperationException("USLT payload is too short.");
+            throw new InvalidDataException(
+                "TXXX description is missing a terminator.");
         }
 
-        Equal((byte)3, data[0]);
-        Equal(expectedLanguage, Encoding.Latin1.GetString(data.Slice(1, 3)));
-
-        int offset = 4;
-        string description = ReadUtf8NullTerminated(data, ref offset);
-        string lyrics = ReadUtf8ToEnd(data, offset);
-
-        Equal(expectedDescription, description);
-        Equal(expectedLyrics, lyrics);
-    }
-
-    private static void AssertTxxx(
-        Id3Frame frame,
-        string expectedDescription,
-        string expectedValue)
-    {
-        ReadOnlySpan<byte> data = frame.Data;
-        if (data.Length < 3)
-        {
-            throw new InvalidOperationException("TXXX payload is too short.");
-        }
-
-        Equal((byte)3, data[0]);
-        int offset = 1;
-        string description = ReadUtf8NullTerminated(data, ref offset);
-        string value = ReadUtf8ToEnd(data, offset);
-
-        Equal(expectedDescription, description);
-        Equal(expectedValue, value);
-    }
-
-    private static string ReadUtf8NullTerminated(
-        ReadOnlySpan<byte> data,
-        ref int offset)
-    {
-        int end = data[offset..].IndexOf((byte)0);
-        if (end < 0)
-        {
-            throw new InvalidDataException("ID3 text is missing its null terminator.");
-        }
-
-        string value = Encoding.UTF8.GetString(data.Slice(offset, end));
-        offset += end + 1;
-        return value;
-    }
-
-    private static string ReadUtf8ToEnd(ReadOnlySpan<byte> data, int offset)
-    {
-        ReadOnlySpan<byte> value = data[offset..];
-        while (!value.IsEmpty && value[^1] == 0)
+        ReadOnlySpan<byte> value = data[(separator + 2)..];
+        if (!value.IsEmpty && value[^1] == 0)
         {
             value = value[..^1];
         }
@@ -212,11 +225,48 @@ internal static class LyricsWriterRegression
         return Encoding.UTF8.GetString(value);
     }
 
-    private static IReadOnlyList<Id3Frame> ReadId3FramesFromWave(string path)
+    private static string DecodeUslt(Id3Frame frame)
     {
-        byte[] wave = File.ReadAllBytes(path);
-        if (!wave.AsSpan(0, 4).SequenceEqual("RIFF"u8)
-            || !wave.AsSpan(8, 4).SequenceEqual("WAVE"u8))
+        ReadOnlySpan<byte> data = frame.Data;
+        if (data.Length < 5 || data[0] != 3)
+        {
+            throw new InvalidDataException(
+                "Expected UTF-8 USLT payload.");
+        }
+
+        int descriptionEnd = data[4..].IndexOf((byte)0);
+        if (descriptionEnd < 0)
+        {
+            throw new InvalidDataException(
+                "USLT description is missing a terminator.");
+        }
+
+        ReadOnlySpan<byte> value =
+            data[(4 + descriptionEnd + 1)..];
+        if (!value.IsEmpty && value[^1] == 0)
+        {
+            value = value[..^1];
+        }
+
+        return Encoding.UTF8.GetString(value);
+    }
+
+    private static IReadOnlyList<Id3Frame> ReadId3Frames(
+        string path,
+        string extension)
+    {
+        byte[] data = IOFile.ReadAllBytes(path);
+        return extension.Equals(".wav", StringComparison.OrdinalIgnoreCase)
+            ? ReadId3FramesFromWave(data)
+            : ReadId3FramesFromMp3(data);
+    }
+
+    private static IReadOnlyList<Id3Frame> ReadId3FramesFromWave(
+        ReadOnlySpan<byte> wave)
+    {
+        if (wave.Length < 12
+            || !wave[..4].SequenceEqual("RIFF"u8)
+            || !wave.Slice(8, 4).SequenceEqual("WAVE"u8))
         {
             throw new InvalidDataException("Not a RIFF/WAVE file.");
         }
@@ -224,27 +274,55 @@ internal static class LyricsWriterRegression
         int offset = 12;
         while (offset + 8 <= wave.Length)
         {
-            string id = Encoding.ASCII.GetString(wave, offset, 4);
+            string id = Encoding.ASCII.GetString(wave.Slice(offset, 4));
             int size = BinaryPrimitives.ReadInt32LittleEndian(
-                wave.AsSpan(offset + 4, 4));
+                wave.Slice(offset + 4, 4));
+
             if (size < 0 || offset + 8 + size > wave.Length)
             {
-                throw new InvalidDataException($"Invalid RIFF chunk '{id}'.");
+                throw new InvalidDataException(
+                    $"Invalid RIFF chunk '{id}'.");
             }
 
-            if (id.Equals("id3 ", StringComparison.OrdinalIgnoreCase)
-                || id.Equals("ID3 ", StringComparison.OrdinalIgnoreCase))
+            if (id.Equals("id3 ", StringComparison.OrdinalIgnoreCase))
             {
-                return ReadId3Frames(wave.AsSpan(offset + 8, size));
+                return ParseId3(wave.Slice(offset + 8, size));
             }
 
             offset += 8 + size + (size & 1);
         }
 
-        throw new InvalidOperationException("WAV does not contain an embedded ID3 chunk.");
+        throw new InvalidOperationException(
+            "WAV does not contain embedded ID3.");
     }
 
-    private static IReadOnlyList<Id3Frame> ReadId3Frames(ReadOnlySpan<byte> tag)
+    private static IReadOnlyList<Id3Frame> ReadId3FramesFromMp3(
+        ReadOnlySpan<byte> mp3)
+    {
+        if (mp3.Length < 10 || !mp3[..3].SequenceEqual("ID3"u8))
+        {
+            throw new InvalidOperationException(
+                "MP3 does not start with ID3v2.");
+        }
+
+        int tagSize = DecodeSynchsafe(mp3.Slice(6, 4));
+        int totalSize = 10 + tagSize;
+        if ((mp3[5] & 0x10) != 0)
+        {
+            totalSize += 10;
+        }
+
+        if (totalSize > mp3.Length)
+        {
+            throw new InvalidDataException(
+                "MP3 ID3v2 tag extends past the file.");
+        }
+
+        return ParseId3(mp3[..Math.Min(mp3.Length, totalSize)]);
+    }
+
+    private static IReadOnlyList<Id3Frame> ParseId3(
+        ReadOnlySpan<byte> tag)
     {
         if (tag.Length < 10 || !tag[..3].SequenceEqual("ID3"u8))
         {
@@ -252,16 +330,7 @@ internal static class LyricsWriterRegression
         }
 
         int version = tag[3];
-        if (version is not (3 or 4))
-        {
-            throw new InvalidDataException($"Unexpected ID3v2 version {version}.");
-        }
-
-        if ((tag[5] & 0x40) != 0)
-        {
-            throw new InvalidDataException(
-                "Regression parser does not expect an ID3 extended header.");
-        }
+        Equal(4, version);
 
         int tagSize = DecodeSynchsafe(tag.Slice(6, 4));
         int end = Math.Min(tag.Length, 10 + tagSize);
@@ -277,27 +346,45 @@ internal static class LyricsWriterRegression
             }
 
             string id = Encoding.ASCII.GetString(header[..4]);
-            int size = version == 4
-                ? DecodeSynchsafe(header.Slice(4, 4))
-                : BinaryPrimitives.ReadInt32BigEndian(header.Slice(4, 4));
+            int size = DecodeSynchsafe(header.Slice(4, 4));
             if (size < 0 || offset + 10 + size > end)
             {
-                throw new InvalidDataException($"Invalid ID3 frame '{id}'.");
+                throw new InvalidDataException(
+                    $"Invalid ID3 frame '{id}'.");
             }
 
-            frames.Add(new Id3Frame(id, tag.Slice(offset + 10, size).ToArray()));
+            frames.Add(new Id3Frame(
+                id,
+                tag.Slice(offset + 10, size).ToArray()));
             offset += 10 + size;
         }
 
         return frames;
     }
 
-    private static int DecodeSynchsafe(ReadOnlySpan<byte> data)
+    private static int DecodeSynchsafe(
+        ReadOnlySpan<byte> data) =>
+        ((data[0] & 0x7F) << 21)
+        | ((data[1] & 0x7F) << 14)
+        | ((data[2] & 0x7F) << 7)
+        | (data[3] & 0x7F);
+
+    private static void WriteMinimalMp3(string path)
     {
-        return ((data[0] & 0x7F) << 21)
-            | ((data[1] & 0x7F) << 14)
-            | ((data[2] & 0x7F) << 7)
-            | (data[3] & 0x7F);
+        const int frameLength = 417;
+        const int frameCount = 4;
+        byte[] data = new byte[frameLength * frameCount];
+
+        for (int frame = 0; frame < frameCount; frame++)
+        {
+            int offset = frame * frameLength;
+            data[offset] = 0xFF;
+            data[offset + 1] = 0xFB;
+            data[offset + 2] = 0x90;
+            data[offset + 3] = 0x64;
+        }
+
+        IOFile.WriteAllBytes(path, data);
     }
 
     private static void Equal<T>(T expected, T actual)
@@ -305,7 +392,8 @@ internal static class LyricsWriterRegression
     {
         if (!EqualityComparer<T>.Default.Equals(expected, actual))
         {
-            throw new InvalidOperationException($"expected '{expected}', got '{actual}'");
+            throw new InvalidOperationException(
+                $"expected '{expected}', got '{actual}'");
         }
     }
 

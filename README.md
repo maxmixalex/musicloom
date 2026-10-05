@@ -4,7 +4,7 @@ MusicLoom is a local music-library organizer and synchronization tool for keepin
 
 It is a compiled rewrite of a personal Python `musicorg` workflow originally built around **MusicBee → Salt Player (Android)**. The rewrite focuses first on preserving the existing organization, lyrics, cover, and playlist behavior while removing the Python/NumPy/PythonMonkey/WASM/PyNCM runtime stack and making unchanged libraries genuinely incremental.
 
-> **Status:** early but runnable rewrite. Native AFP, Netease WEAPI, persistent state, library scanning/planning, a development CLI, and a WinUI 3 dry-run UI are in place. The current scan path is read-only; full tag writing, audio decoding/resampling, and end-to-end sync are the next milestones.
+> **Status:** early but runnable rewrite. Native AFP, Netease WEAPI, persistent state, incremental local materialization, Windows Media Foundation decoding, legacy-compatible ID3 lyric writing, a development CLI, and a WinUI 3 dry-run UI are in place. End-to-end transactional sync and the remaining Vorbis/MP4 lyric writers are the next milestones.
 
 ## Why a rewrite?
 
@@ -25,7 +25,8 @@ A second goal is more important than microbenchmarks: after an initial successfu
 ## Projects
 
 - `MusicLoom.Core` — configuration, incremental state, LRC, library layout, playlist mapping, dry-run planning
-- `MusicLoom.Metadata` — replaceable local metadata adapter; currently ATL.NET
+- `MusicLoom.Metadata` — streaming/seek-based read adapter; currently ATL.NET
+- `MusicLoom.Tagging` — mutation adapter; TagLib# with exact legacy ID3 payloads
 - `MusicLoom.AudioFingerprint` — native implementation of the recovered Netease fingerprint algorithm
 - `MusicLoom.Netease` — minimal WEAPI client for fingerprint matching and lyrics
 - `MusicLoom.Cli` — diagnostics / automation frontend, NativeAOT
@@ -40,7 +41,7 @@ MusicLoom currently scans the same seven formats as the Python tool:
 
 A scan produces `Unchanged`, `New`, `Modified`, or `Error` entries and does **not** modify music files. If a source file matches its persistent state entry and its destination still exists, MusicLoom skips metadata parsing entirely.
 
-ATL.NET is isolated behind `ITrackMetadataReader`. It was selected over TagLibSharp2 for the first scanner because ATL uses stream/seek based parsing while TagLibSharp2 0.6.0 currently reads the entire file into memory for `ReadFromFile`.
+ATL.NET is isolated behind `ITrackMetadataReader` and is used for scanning because it reads through stream/seek-oriented parsers. TagLibSharp2 0.6.0 currently uses `ReadAllBytes` in its file readers, so it is not used on the scan hot path. Mutation is separate: `MusicLoom.Tagging` uses classic TagLib# 2.3.0 with explicit format classes, avoiding its reflection-based factory in NativeAOT code.
 
 ## Native AFP progress
 
@@ -76,3 +77,8 @@ The WinUI 3 app exposes the same dry-run planner as the CLI. Enter the config/st
 Core projects target .NET 10. CI runs regression tests and NativeAOT CLI publishing on the `home-docker` runner. WinUI 3 and Windows NativeAOT are validated separately on GitHub's Windows runner.
 
 See [`docs/architecture.md`](docs/architecture.md) and [`docs/legacy-behavior.md`](docs/legacy-behavior.md).
+
+
+## Licensing note
+
+MusicLoom source remains MIT. The mutation layer depends on TagLib# 2.3.0, which is LGPL-2.1-only. NativeAOT can statically link managed dependencies into the native executable, so binary distributors must also satisfy the LGPL requirements applicable to that distribution model. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

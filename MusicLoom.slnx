@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/MusicLoom.Core/MusicLoom.Core.csproj" />
     <Project Path="src/MusicLoom.Metadata/MusicLoom.Metadata.csproj" />
+    <Project Path="src/MusicLoom.Tagging/MusicLoom.Tagging.csproj" />
     <Project Path="src/MusicLoom.AudioFingerprint/MusicLoom.AudioFingerprint.csproj" />
     <Project Path="src/MusicLoom.Audio.Windows/MusicLoom.Audio.Windows.csproj" />
     <Project Path="src/MusicLoom.Netease/MusicLoom.Netease.csproj" />

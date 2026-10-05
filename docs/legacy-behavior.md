@@ -44,7 +44,7 @@ The legacy implementation recognizes a track with Netease's `shazam_v2` audio ma
 The tag-writing compatibility target remains:
 
 - ID3: `SYLT`, `USLT`, and `TXXX:LYRICS`
-- Vorbis comments: legacy `lyrics`, `LYRICS`, and `LYRICSENG` behavior
+- Vorbis comments: the Python code assigns `lyrics`, `LYRICS`, and `LYRICSENG`, but Mutagen treats Vorbis keys case-insensitively; the serialized compatibility target is therefore `LYRICS` + `LYRICSENG`
 - MP4: `©lyr`
 
 MusicLoom does not currently reinterpret these choices based on Salt Player for Windows. Android Salt Player and Salt Player for Windows are treated as distinct products with potentially different behavior.
