@@ -17,7 +17,7 @@
     <OptimizationPreference>Speed</OptimizationPreference>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001" />
     <ProjectReference Include="../MusicLoom.Core/MusicLoom.Core.csproj" />
     <ProjectReference Include="../MusicLoom.Audio.Windows/MusicLoom.Audio.Windows.csproj" />
     <ProjectReference Include="../MusicLoom.Metadata/MusicLoom.Metadata.csproj" />
