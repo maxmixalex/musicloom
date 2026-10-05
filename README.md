@@ -4,7 +4,7 @@ MusicLoom is a local music-library organizer and synchronization tool for keepin
 
 It is a compiled rewrite of a personal Python `musicorg` workflow originally built around **MusicBee → Salt Player (Android)**. The rewrite focuses first on preserving the existing organization, lyrics, cover, and playlist behavior while removing the Python/NumPy/PythonMonkey/WASM/PyNCM runtime stack and making unchanged libraries genuinely incremental.
 
-> **Status:** early but runnable rewrite. Native AFP, Netease WEAPI, recipe-aware incremental state, local materialization, Windows Media Foundation decoding, legacy-compatible lyric writing for ID3/Vorbis/MP4, the transactional sync executor, and a guarded WinUI 3 live-sync flow are in place.
+> **Status:** first-SAT candidate. Native AFP, Netease WEAPI, recipe-aware incremental state, atomic/resumable sync, legacy-compatible lyric writing for ID3/Vorbis/MP4, and a guarded WinUI 3 scan/review/apply workflow are in place.
 
 ## Why a rewrite?
 
@@ -77,7 +77,7 @@ The WinUI 3 app exposes the same planner as the CLI. **Scan library** is read-on
 
 Core projects target .NET 10. CI runs regression tests and NativeAOT CLI publishing on the `home-docker` runner. WinUI 3 and Windows NativeAOT are validated separately on GitHub's Windows runner.
 
-See [`docs/architecture.md`](docs/architecture.md) and [`docs/legacy-behavior.md`](docs/legacy-behavior.md).
+See [`docs/architecture.md`](docs/architecture.md), [`docs/legacy-behavior.md`](docs/legacy-behavior.md), and the first [`SAT checklist`](docs/sat-01.md).
 
 
 ## Licensing note

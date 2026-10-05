@@ -9,156 +9,438 @@
   <NavigationView
       x:Name="Navigation"
       IsBackButtonVisible="Collapsed"
-      IsSettingsVisible="True"
+      IsSettingsVisible="False"
       PaneDisplayMode="Left"
       SelectionChanged="Navigation_SelectionChanged">
     <NavigationView.MenuItems>
       <NavigationViewItem Content="Overview" Tag="overview">
-        <NavigationViewItem.Icon><SymbolIcon Symbol="Home" /></NavigationViewItem.Icon>
+        <NavigationViewItem.Icon>
+          <SymbolIcon Symbol="Home" />
+        </NavigationViewItem.Icon>
       </NavigationViewItem>
-      <NavigationViewItem Content="Library" Tag="library">
-        <NavigationViewItem.Icon><SymbolIcon Symbol="Audio" /></NavigationViewItem.Icon>
-      </NavigationViewItem>
-      <NavigationViewItem Content="Playlists" Tag="playlists">
-        <NavigationViewItem.Icon><SymbolIcon Symbol="Bullets" /></NavigationViewItem.Icon>
+      <NavigationViewItem Content="Plan" Tag="plan">
+        <NavigationViewItem.Icon>
+          <SymbolIcon Symbol="Bullets" />
+        </NavigationViewItem.Icon>
       </NavigationViewItem>
       <NavigationViewItem Content="Activity" Tag="activity">
-        <NavigationViewItem.Icon><SymbolIcon Symbol="Sync" /></NavigationViewItem.Icon>
+        <NavigationViewItem.Icon>
+          <SymbolIcon Symbol="Sync" />
+        </NavigationViewItem.Icon>
       </NavigationViewItem>
     </NavigationView.MenuItems>
 
-    <ScrollViewer>
-      <Grid Padding="32" MaxWidth="1180" HorizontalAlignment="Stretch">
-        <StackPanel Spacing="24">
-          <StackPanel Spacing="6">
-            <TextBlock x:Name="PageTitle" Text="Overview" Style="{ThemeResource TitleTextBlockStyle}" />
-            <TextBlock
-                x:Name="PageSubtitle"
-                Text="Scan first, review the plan, then explicitly apply it to the destination library."
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                TextWrapping="Wrap" />
-          </StackPanel>
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
 
-          <Border
-              Padding="24"
-              BorderThickness="1"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-              CornerRadius="8">
-            <Grid ColumnSpacing="16" RowSpacing="16">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-              </Grid.RowDefinitions>
+      <InfoBar
+          x:Name="SyncInfoBar"
+          Grid.Row="0"
+          Margin="24,16,24,0"
+          IsOpen="False"
+          IsClosable="True"
+          Severity="Informational" />
 
-              <TextBox
-                  x:Name="ConfigPathBox"
-                  Header="Configuration"
-                  Text="config.json"
-                  PlaceholderText="Path to config.json" />
-              <TextBox
-                  x:Name="StatePathBox"
-                  Grid.Column="1"
-                  Header="Incremental state"
-                  Text=".musicloom\state.json"
-                  PlaceholderText="Path to state.json" />
-              <Button
-                  x:Name="ScanButton"
-                  Grid.Column="2"
-                  Content="Scan library"
-                  Click="ScanButton_Click"
-                  VerticalAlignment="Bottom" />
-              <Button
-                  x:Name="ApplySyncButton"
-                  Grid.Column="3"
-                  Content="Apply sync"
-                  Click="ApplySyncButton_Click"
-                  IsEnabled="False"
-                  VerticalAlignment="Bottom" />
-
-              <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="10">
-                <ProgressRing x:Name="ScanProgressRing" Width="20" Height="20" IsActive="False" />
+      <Grid Grid.Row="1">
+        <ScrollViewer
+            x:Name="OverviewPage"
+            Visibility="Visible">
+          <Grid
+              Padding="32"
+              MaxWidth="1180"
+              HorizontalAlignment="Stretch">
+            <StackPanel Spacing="24">
+              <StackPanel Spacing="6">
                 <TextBlock
-                    x:Name="ScanStatusText"
-                    Text="Scan is read-only. Apply sync only writes under the destination library."
-                    VerticalAlignment="Center"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    Text="Overview"
+                    Style="{ThemeResource TitleTextBlockStyle}" />
+                <TextBlock
+                    Text="Scan first, review the plan, then explicitly apply it. MusicLoom never writes into the source library."
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
               </StackPanel>
 
-              <Button
-                  x:Name="CancelSyncButton"
-                  Grid.Row="1"
-                  Grid.Column="3"
-                  Content="Cancel"
-                  Click="CancelSyncButton_Click"
-                  Visibility="Collapsed"
-                  HorizontalAlignment="Right" />
-            </Grid>
-          </Border>
+              <Border
+                  Padding="24"
+                  BorderThickness="1"
+                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                  CornerRadius="8">
+                <Grid
+                    ColumnSpacing="12"
+                    RowSpacing="14">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
 
-          <InfoBar
-              x:Name="SyncInfoBar"
-              IsOpen="False"
-              IsClosable="True"
-              Severity="Informational" />
+                  <TextBox
+                      x:Name="ConfigPathBox"
+                      Header="Configuration"
+                      PlaceholderText="Path to config.json"
+                      TextChanged="SetupPath_TextChanged" />
+                  <Button
+                      x:Name="BrowseConfigButton"
+                      Grid.Column="1"
+                      Content="Browse…"
+                      Click="BrowseConfigButton_Click"
+                      VerticalAlignment="Bottom" />
 
-          <Grid ColumnSpacing="16">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Border Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-              <StackPanel Spacing="4">
-                <TextBlock Text="Tracks" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock x:Name="TracksValue" Text="—" FontSize="28" FontWeight="SemiBold" />
-              </StackPanel>
-            </Border>
-            <Border Grid.Column="1" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-              <StackPanel Spacing="4">
-                <TextBlock Text="Pending changes" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock x:Name="PendingValue" Text="—" FontSize="28" FontWeight="SemiBold" />
-                <TextBlock x:Name="AudioCopiesText" Text="— audio copies" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-              </StackPanel>
-            </Border>
-            <Border Grid.Column="2" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-              <StackPanel Spacing="4">
-                <TextBlock Text="Errors" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock x:Name="ErrorsValue" Text="—" FontSize="28" FontWeight="SemiBold" />
-              </StackPanel>
-            </Border>
-            <Border Grid.Column="3" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-              <StackPanel Spacing="4">
-                <TextBlock Text="Last scan" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock x:Name="LastScanValue" Text="Never" FontSize="28" FontWeight="SemiBold" />
-              </StackPanel>
-            </Border>
-          </Grid>
+                  <TextBox
+                      x:Name="StatePathBox"
+                      Grid.Column="2"
+                      Header="Incremental state"
+                      PlaceholderText="Path to state.json"
+                      TextChanged="SetupPath_TextChanged" />
+                  <Button
+                      x:Name="BrowseStateFolderButton"
+                      Grid.Column="3"
+                      Content="Choose folder…"
+                      Click="BrowseStateFolderButton_Click"
+                      VerticalAlignment="Bottom" />
 
-          <Border
-              Padding="16"
-              BorderThickness="1"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-              CornerRadius="8">
-            <StackPanel Spacing="12">
-              <TextBlock Text="Pending plan" Style="{ThemeResource SubtitleTextBlockStyle}" />
-              <TextBlock
-                  Text="Copy means an audio file must be materialized; enrich means only the processing recipe remains. Cover and playlist rows are planned independently, so they can be applied even when every audio track is unchanged."
-                  TextWrapping="Wrap"
-                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-              <ListView x:Name="PlanList" MaxHeight="480" />
+                  <StackPanel
+                      Grid.Row="1"
+                      Grid.ColumnSpan="4"
+                      Orientation="Horizontal"
+                      Spacing="10">
+                    <Button
+                        x:Name="ScanButton"
+                        Content="Scan library"
+                        Click="ScanButton_Click" />
+                    <Button
+                        x:Name="ReviewPlanButton"
+                        Content="Review plan"
+                        Click="ReviewPlanButton_Click"
+                        IsEnabled="False" />
+                    <Button
+                        x:Name="ApplySyncButton"
+                        Content="Apply sync"
+                        Click="ApplySyncButton_Click"
+                        IsEnabled="False" />
+                    <Button
+                        x:Name="CancelSyncButton"
+                        Content="Cancel"
+                        Click="CancelSyncButton_Click"
+                        Visibility="Collapsed" />
+                    <Button
+                        x:Name="OpenDestinationButton"
+                        Content="Open destination"
+                        Click="OpenDestinationButton_Click"
+                        IsEnabled="False" />
+                  </StackPanel>
+
+                  <StackPanel
+                      Grid.Row="2"
+                      Grid.ColumnSpan="4"
+                      Spacing="8">
+                    <TextBlock
+                        x:Name="ScanStatusText"
+                        Text="Ready. Scan is read-only; Apply sync writes only to the destination/state locations."
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                    <ProgressBar
+                        x:Name="OperationProgressBar"
+                        Minimum="0"
+                        Maximum="100"
+                        Height="4"
+                        IsIndeterminate="False"
+                        Visibility="Collapsed" />
+                  </StackPanel>
+                </Grid>
+              </Border>
+
+              <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border
+                    Padding="20"
+                    CornerRadius="8"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <StackPanel Spacing="4">
+                    <TextBlock
+                        Text="Tracks"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock
+                        x:Name="TracksValue"
+                        Text="—"
+                        FontSize="28"
+                        FontWeight="SemiBold" />
+                  </StackPanel>
+                </Border>
+
+                <Border
+                    Grid.Column="1"
+                    Padding="20"
+                    CornerRadius="8"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <StackPanel Spacing="4">
+                    <TextBlock
+                        Text="Pending"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock
+                        x:Name="PendingValue"
+                        Text="—"
+                        FontSize="28"
+                        FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="PendingBreakdownText"
+                        Text="Scan to build a plan"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+
+                <Border
+                    Grid.Column="2"
+                    Padding="20"
+                    CornerRadius="8"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <StackPanel Spacing="4">
+                    <TextBlock
+                        Text="Errors"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock
+                        x:Name="ErrorsValue"
+                        Text="—"
+                        FontSize="28"
+                        FontWeight="SemiBold" />
+                  </StackPanel>
+                </Border>
+
+                <Border
+                    Grid.Column="3"
+                    Padding="20"
+                    CornerRadius="8"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <StackPanel Spacing="4">
+                    <TextBlock
+                        Text="Last scan"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock
+                        x:Name="LastScanValue"
+                        Text="Never"
+                        FontSize="28"
+                        FontWeight="SemiBold" />
+                  </StackPanel>
+                </Border>
+              </Grid>
+
+              <Border
+                  Padding="20"
+                  BorderThickness="1"
+                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                  CornerRadius="8">
+                <Grid
+                    ColumnSpacing="24"
+                    RowSpacing="12">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+
+                  <TextBlock Text="Source" FontWeight="SemiBold" />
+                  <TextBlock
+                      x:Name="SourceLibraryValue"
+                      Grid.Column="1"
+                      Text="Not loaded"
+                      TextWrapping="Wrap" />
+
+                  <TextBlock
+                      Grid.Row="1"
+                      Text="Destination"
+                      FontWeight="SemiBold" />
+                  <TextBlock
+                      x:Name="DestinationLibraryValue"
+                      Grid.Row="1"
+                      Grid.Column="1"
+                      Text="Not loaded"
+                      TextWrapping="Wrap" />
+
+                  <TextBlock
+                      Grid.Row="2"
+                      Text="Lyrics"
+                      FontWeight="SemiBold" />
+                  <TextBlock
+                      x:Name="LyricsModeValue"
+                      Grid.Row="2"
+                      Grid.Column="1"
+                      Text="Not loaded"
+                      TextWrapping="Wrap" />
+
+                  <TextBlock
+                      Grid.Row="3"
+                      Text="State"
+                      FontWeight="SemiBold" />
+                  <TextBlock
+                      x:Name="StateStatusValue"
+                      Grid.Row="3"
+                      Grid.Column="1"
+                      Text="Not loaded"
+                      TextWrapping="Wrap" />
+                </Grid>
+              </Border>
             </StackPanel>
-          </Border>
-        </StackPanel>
+          </Grid>
+        </ScrollViewer>
+
+        <ScrollViewer
+            x:Name="PlanPage"
+            Visibility="Collapsed">
+          <Grid
+              Padding="32"
+              MaxWidth="1180"
+              HorizontalAlignment="Stretch">
+            <StackPanel Spacing="20">
+              <StackPanel Spacing="6">
+                <TextBlock
+                    Text="Plan"
+                    Style="{ThemeResource TitleTextBlockStyle}" />
+                <TextBlock
+                    Text="Review exactly what will be copied, enriched, or regenerated before applying sync."
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+              </StackPanel>
+
+              <Border
+                  Padding="16"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                  CornerRadius="8">
+                <Grid ColumnSpacing="12">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBox
+                      x:Name="PlanSearchBox"
+                      PlaceholderText="Search source, destination, or reason"
+                      TextChanged="PlanSearchBox_TextChanged" />
+                  <ComboBox
+                      x:Name="PlanFilterBox"
+                      Grid.Column="1"
+                      Header="Show"
+                      SelectionChanged="PlanFilterBox_SelectionChanged">
+                    <ComboBoxItem Content="All pending" Tag="all" />
+                    <ComboBoxItem Content="Audio copy" Tag="copy" />
+                    <ComboBoxItem Content="Enrichment" Tag="enrich" />
+                    <ComboBoxItem Content="Cover" Tag="cover" />
+                    <ComboBoxItem Content="Playlist" Tag="playlist" />
+                    <ComboBoxItem Content="Errors" Tag="error" />
+                  </ComboBox>
+                  <TextBlock
+                      x:Name="PlanVisibleCountText"
+                      Grid.Column="2"
+                      Text="0 items"
+                      VerticalAlignment="Bottom"
+                      Margin="4,0,0,8"
+                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </Grid>
+              </Border>
+
+              <Border
+                  Padding="12"
+                  BorderThickness="1"
+                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                  CornerRadius="8">
+                <ListView
+                    x:Name="PlanList"
+                    MinHeight="360"
+                    MaxHeight="680" />
+              </Border>
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+
+        <ScrollViewer
+            x:Name="ActivityPage"
+            Visibility="Collapsed">
+          <Grid
+              Padding="32"
+              MaxWidth="1180"
+              HorizontalAlignment="Stretch">
+            <StackPanel Spacing="20">
+              <StackPanel Spacing="6">
+                <TextBlock
+                    Text="Activity"
+                    Style="{ThemeResource TitleTextBlockStyle}" />
+                <TextBlock
+                    Text="Recent scans, sync results, recoveries, and user-visible errors. Full technical details are written to the diagnostic log."
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+              </StackPanel>
+
+              <Border
+                  Padding="20"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                  CornerRadius="8">
+                <StackPanel Spacing="8">
+                  <TextBlock
+                      x:Name="LastRunTitle"
+                      Text="No sync run yet"
+                      Style="{ThemeResource SubtitleTextBlockStyle}" />
+                  <TextBlock
+                      x:Name="LastRunSummaryText"
+                      Text="Scan a library, review the plan, then apply sync when ready."
+                      TextWrapping="Wrap"
+                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+              </Border>
+
+              <StackPanel
+                  Orientation="Horizontal"
+                  Spacing="10">
+                <Button
+                    Content="Open log folder"
+                    Click="OpenLogFolderButton_Click" />
+                <Button
+                    Content="Clear activity"
+                    Click="ClearActivityButton_Click" />
+                <TextBlock
+                    x:Name="LogPathText"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+              </StackPanel>
+
+              <Border
+                  Padding="12"
+                  BorderThickness="1"
+                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                  CornerRadius="8">
+                <ListView
+                    x:Name="ActivityList"
+                    MinHeight="320"
+                    MaxHeight="680" />
+              </Border>
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
       </Grid>
-    </ScrollViewer>
+    </Grid>
   </NavigationView>
 </Window>

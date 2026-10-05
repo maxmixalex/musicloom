@@ -101,8 +101,15 @@ Golden vectors are taken directly from the original WASM used by MusicOrg.
 
 ## UI
 
-`MusicLoom.App` is a WinUI 3 app built on Windows App SDK. It is intentionally thin. The current Overview page runs the shared dry-run scanner, displays totals, and lists pending entries. Configuration editing, detailed filtering, and actual sync execution will be layered on top of the same Core plan rather than reimplemented in XAML code-behind.
+`MusicLoom.App` is a WinUI 3 shell over the same scanner/planner/executor used by the regression harness.
 
+The SAT UI has three real surfaces:
+
+- **Overview** — configuration/state selection, read-only scan, source/destination summary, pending counts, guarded Apply sync, cancellation, and destination access;
+- **Plan** — searchable/filterable Copy / Enrich / Cover / Playlist / Error rows generated from the shared `LibraryPlan`;
+- **Activity** — scan/sync summaries, retryable errors, state-recovery warnings, and access to the rotating diagnostic log.
+
+Every Apply sync performs a fresh scan before confirmation. User-facing messages avoid raw stack traces; full exceptions go to the diagnostic log under the user's local application-data directory. The default state file also lives under local application data rather than beside the executable.
 
 ## Windows audio decoding
 
