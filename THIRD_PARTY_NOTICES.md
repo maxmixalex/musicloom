@@ -29,4 +29,33 @@ NativeAOT may statically link managed dependencies into a native executable. Any
 - License: MIT
 - Upstream: naudio/NAudio
 
-Used for Windows Media Foundation decoding/resampling in the Windows audio adapter.
+Used for Windows Media Foundation decoding of FLAC, M4A and WMA, plus shared audio primitives.
+
+## NLayer
+
+- Package: `NLayer.NAudioSupport`
+- Version: 3.0.0
+- License: MIT
+- Upstream: naudio/NLayer
+
+Used for fully managed MP3 decoding. MusicLoom requests `DownmixToMono` during decode before resampling to the fingerprint sample rate.
+
+## NAudio.Vorbis / NVorbis
+
+- Package: `NAudio.Vorbis`
+- Version: 3.0.0
+- License: MIT
+- Upstream: naudio/Vorbis
+- Decoder dependency: NVorbis (MIT, NVorbis/NVorbis)
+
+Used for Ogg Vorbis decoding without relying on optional Windows codecs.
+
+## Concentus.Oggfile / Concentus
+
+- Package: `Concentus.Oggfile`
+- Version: 1.0.7
+- License: MIT
+- Upstream: lostromb/concentus.oggfile
+- Codec dependency: Concentus 2.2.2 (Opus/BSD-style license, lostromb/concentus)
+
+Used for Ogg Opus parsing and decoding. MusicLoom requests 8 kHz output directly from the Opus decoder for fingerprinting.
