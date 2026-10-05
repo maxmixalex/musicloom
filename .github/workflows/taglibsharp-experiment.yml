@@ -1,0 +1,50 @@
+name: TagLibSharp NativeAOT Experiment
+
+on:
+  pull_request:
+    paths:
+      - "experiments/TagLibSharp.NativeAotSmoke/**"
+      - ".github/workflows/taglibsharp-experiment.yml"
+  workflow_dispatch:
+
+jobs:
+  windows-aot:
+    name: TagLibSharp / Windows NativeAOT
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Run managed smoke test
+        run: dotnet run --project experiments/TagLibSharp.NativeAotSmoke/TagLibSharp.NativeAotSmoke.csproj -c Release
+      - name: Publish NativeAOT
+        run: dotnet publish experiments/TagLibSharp.NativeAotSmoke/TagLibSharp.NativeAotSmoke.csproj -c Release -r win-x64 --self-contained true -o artifacts/taglibsharp-aot
+      - name: Run NativeAOT smoke test
+        run: .\artifacts\taglibsharp-aot\TagLibSharp.NativeAotSmoke.exe
+
+  linux-aot:
+    name: TagLibSharp / home-docker NativeAOT
+    runs-on: home-docker
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Use runner-local .NET directories
+        shell: bash
+        run: |
+          echo "DOTNET_INSTALL_DIR=$RUNNER_TEMP/dotnet" >> "$GITHUB_ENV"
+          echo "DOTNET_CLI_HOME=$RUNNER_TEMP/dotnet-home" >> "$GITHUB_ENV"
+          echo "NUGET_PACKAGES=$RUNNER_TEMP/nuget-packages" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Run managed smoke test
+        run: dotnet run --project experiments/TagLibSharp.NativeAotSmoke/TagLibSharp.NativeAotSmoke.csproj -c Release
+      - name: Publish NativeAOT
+        run: dotnet publish experiments/TagLibSharp.NativeAotSmoke/TagLibSharp.NativeAotSmoke.csproj -c Release -r linux-x64 --self-contained true -o artifacts/taglibsharp-aot
+      - name: Run NativeAOT smoke test
+        run: ./artifacts/taglibsharp-aot/TagLibSharp.NativeAotSmoke
