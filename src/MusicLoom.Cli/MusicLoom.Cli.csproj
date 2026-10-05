@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../MusicLoom.Core/MusicLoom.Core.csproj" />
+    <ProjectReference Include="../MusicLoom.Metadata/MusicLoom.Metadata.csproj" />
     <ProjectReference Include="../MusicLoom.AudioFingerprint/MusicLoom.AudioFingerprint.csproj" />
     <ProjectReference Include="../MusicLoom.Netease/MusicLoom.Netease.csproj" />
   </ItemGroup>
