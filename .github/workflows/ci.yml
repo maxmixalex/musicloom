@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: musicloom-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   core:
     name: Core / NativeAOT
@@ -31,3 +35,10 @@ jobs:
 
       - name: Publish CLI with NativeAOT
         run: dotnet publish src/MusicLoom.Cli/MusicLoom.Cli.csproj -c Release -r linux-x64 --self-contained true -o artifacts/cli-linux-x64
+
+      - name: Upload Linux CLI
+        uses: actions/upload-artifact@v6
+        with:
+          name: musicloom-cli-linux-x64
+          path: artifacts/cli-linux-x64/**
+          if-no-files-found: error
