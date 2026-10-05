@@ -14,6 +14,63 @@ public sealed class TagLibSharpLyricsWriter : ITrackLyricsWriter
     private static readonly ReadOnlyByteVector UsltId = "USLT";
     private static readonly ReadOnlyByteVector TxxxId = "TXXX";
 
+    public ValueTask<LyricsProbeResult> ProbeAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        string extension = Path.GetExtension(path);
+        LyricsProbeResult result;
+
+        if (IsId3(extension))
+        {
+            using TagLib.File file = OpenId3File(path, extension);
+            TagLib.Id3v2.Tag? id3 =
+                file.GetTag(TagTypes.Id3v2, create: false) as TagLib.Id3v2.Tag;
+
+            bool present = id3 is not null
+                && (id3.GetFrames(SyltId).Any()
+                    || id3.GetFrames(UsltId).Any());
+            result = new LyricsProbeResult(
+                present ? LyricsProbeStatus.Present : LyricsProbeStatus.Missing);
+        }
+        else if (IsXiph(extension))
+        {
+            using TagLib.File file = OpenXiphFile(path, extension);
+            XiphComment? tag =
+                file.GetTag(TagTypes.Xiph, create: false) as XiphComment;
+
+            bool present = tag is not null
+                && (tag.GetField("LYRICS").Length > 0
+                    || tag.GetField("LYRICSENG").Length > 0);
+            result = new LyricsProbeResult(
+                present ? LyricsProbeStatus.Present : LyricsProbeStatus.Missing);
+        }
+        else if (extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+        {
+            TagLib.File.IFileAbstraction abstraction =
+                new TagLib.File.LocalFileAbstraction(path);
+            using TagLib.Mpeg4.File file =
+                new(abstraction, ReadStyle.None);
+
+            AppleTag? tag =
+                file.GetTag(TagTypes.Apple, create: false) as AppleTag;
+            result = new LyricsProbeResult(
+                !string.IsNullOrEmpty(tag?.Lyrics)
+                    ? LyricsProbeStatus.Present
+                    : LyricsProbeStatus.Missing);
+        }
+        else
+        {
+            result = new LyricsProbeResult(
+                LyricsProbeStatus.UnsupportedFormat,
+                $"Legacy lyrics are not supported for '{extension}'.");
+        }
+
+        return ValueTask.FromResult(result);
+    }
+
     public ValueTask<LyricsWriteResult> WriteAsync(
         string path,
         LrcDocument lyrics,
