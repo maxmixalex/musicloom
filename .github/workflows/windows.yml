@@ -43,6 +43,12 @@ jobs:
       - name: Run regression harness
         run: dotnet run --project tests/MusicLoom.Tests/MusicLoom.Tests.csproj -c Release --no-build
 
+      - name: Publish regression harness with NativeAOT
+        run: dotnet publish tests/MusicLoom.Tests/MusicLoom.Tests.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -o artifacts/regression-win-x64
+
+      - name: Run NativeAOT regression harness
+        run: .\artifacts\regression-win-x64\MusicLoom.Tests.exe
+
       - name: Publish CLI with NativeAOT
         run: dotnet publish src/MusicLoom.Cli/MusicLoom.Cli.csproj -c Release -r win-x64 --self-contained true -o artifacts/cli-win-x64
 

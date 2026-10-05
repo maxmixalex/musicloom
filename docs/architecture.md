@@ -7,7 +7,8 @@ MusicLoom.App (WinUI 3) ─────┐
                              │
 MusicLoom.Cli ───────────────┼── MusicLoom.Core
                              │        │
-                             │        ├── MusicLoom.Metadata (ATL adapter)
+                             │        ├── MusicLoom.Metadata (ATL read adapter)
+                             │        ├── MusicLoom.Tagging (TagLib# mutation)
                              │        └── MusicLoom.Netease
                              │                 │
                              └──────── MusicLoom.AudioFingerprint
@@ -108,14 +109,18 @@ The materializer intentionally does not persist final sync state yet. State must
 
 ## Lyrics writing compatibility
 
-Lyrics mutation is behind `ITrackLyricsWriter`. The first enabled implementation is the legacy ID3 path for MP3 and WAV.
+Lyrics mutation is behind `ITrackLyricsWriter` and deliberately separated from metadata scanning. The first production writer is `TagLibSharpLyricsWriter` in `MusicLoom.Tagging`, currently enabled for MP3 and WAV.
 
-For one merged LRC document, `AtlLyricsWriter` deliberately writes the same three logical representations as the Python/Mutagen implementation:
+Classic TagLib# 2.3.0 is used here because it performs seek/stream-based in-place media mutation. The NativeAOT path does **not** call the reflection-based `TagLib.File.Create` factory; it explicitly constructs `TagLib.Mpeg.AudioFile` or `TagLib.Riff.File`.
 
-- synchronized ID3v2 `SYLT`, language `eng`, timestamp format 2 (absolute milliseconds), content type 1, empty description;
-- unsynchronized ID3v2 `USLT`, language `eng`, description `Lyrics`, containing the full LRC text;
-- a user-defined text frame `TXXX:LYRICS`, also containing the full LRC text.
+For one merged LRC document, MusicLoom writes the exact ID3 payloads produced by Mutagen 1.47.0 in the Python implementation:
 
-The regression corpus uses a generated WAV file, writes embedded ID3v2 through ATL, reopens it semantically, and also parses the raw RIFF/ID3 frame table to prove all three frame types exist. `overrideExisting=false` is verified to leave the file byte-for-byte unchanged.
+- ID3v2.4 `SYLT`, UTF-8, language `eng`, timestamp format 2 (absolute milliseconds), content type 1, empty description;
+- ID3v2.4 `USLT`, UTF-8, language `eng`, description `Lyrics`, containing the full LRC text;
+- ID3v2.4 `TXXX:LYRICS`, UTF-8, containing the same full LRC text.
+
+The writer uses a small write-only custom TagLib# frame type so the **payload bytes**, not merely the semantic fields, match the Mutagen 1.47.0 reference. Regression tests cover both generated WAV and MP3 files, preserve unrelated TXXX fields across overwrite, and verify `overrideExisting=false` leaves files byte-for-byte unchanged.
+
+The full regression harness is published and executed under NativeAOT on both Linux and Windows, so TagLib# compatibility remains continuously exercised rather than relying on a one-off probe.
 
 Vorbis/FLAC/Opus and MP4 writing remain disabled until equivalent format-specific round-trip tests exist. WMA lyric mutation remains unsupported to match the old MusicOrg boundary.
