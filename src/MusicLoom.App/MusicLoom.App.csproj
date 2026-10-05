@@ -23,6 +23,18 @@
     <ProjectReference Include="../MusicLoom.Tagging/MusicLoom.Tagging.csproj" />
     <ProjectReference Include="../MusicLoom.Netease/MusicLoom.Netease.csproj" />
   </ItemGroup>
+  <Target Name="CopyWinUiResourcesForNativeAot"
+          AfterTargets="Publish"
+          Condition="'$(PublishAot)' == 'true' and '$(WindowsPackageType)' == 'None'">
+    <ItemGroup>
+      <_MusicLoomWinUiResource Include="$(OutputPath)**\*.xbf" />
+      <_MusicLoomWinUiResource Include="$(OutputPath)$(AssemblyName).pri" />
+    </ItemGroup>
+    <Copy
+        SourceFiles="@(_MusicLoomWinUiResource)"
+        DestinationFiles="@(_MusicLoomWinUiResource->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+        SkipUnchangedFiles="true" />
+  </Target>
   <ItemGroup>
     <Content Include="../../config.example.json" Link="config.example.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
