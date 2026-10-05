@@ -221,7 +221,9 @@ public sealed partial class MainWindow : Window
 
             MusicLoomSettings settings =
                 await SettingsLoader.LoadAsync(configPath);
-            LibraryPathSafety.Validate(settings);
+            LibraryPathSafety.ValidateStatePath(
+                settings,
+                statePath);
 
             StateStore stateStore = new(statePath);
             StateDocument state = await stateStore.LoadAsync();
