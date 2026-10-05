@@ -10,6 +10,9 @@ internal static class LibraryPathSafetyRegression
         string source = Path.Combine(root, "source");
         string sibling = Path.Combine(root, "destination");
         string nested = Path.Combine(source, "output");
+        string destinationParent = Path.Combine(root, "destination-parent");
+        string sourceInsideDestination =
+            Path.Combine(destinationParent, "source");
 
         Directory.CreateDirectory(source);
 
@@ -30,6 +33,16 @@ internal static class LibraryPathSafetyRegression
                 {
                     SourceDirectory = source,
                     DestinationDirectory = nested,
+                },
+            });
+
+            Directory.CreateDirectory(sourceInsideDestination);
+            ExpectInvalid(new MusicLoomSettings
+            {
+                Path = new PathSettings
+                {
+                    SourceDirectory = sourceInsideDestination,
+                    DestinationDirectory = destinationParent,
                 },
             });
 
