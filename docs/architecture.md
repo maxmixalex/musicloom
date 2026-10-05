@@ -150,6 +150,8 @@ For every new or modified track:
 
 Transport, decoding, and tag-write exceptions are different: useful partial state is persisted, but the current recipe is **not** marked complete. On the next scan the source metadata snapshot and destination path remain reusable, so the retry can run with `NeedsAudioCopy=false`. If recognition already succeeded before a lyric-fetch failure, the stored song ID is reused and fingerprint recognition is skipped on the retry.
 
+Negative provider results intentionally follow the old metadata-cache cadence instead of becoming permanent. `RecognitionState.NoMatch` and `LyricsState.NoLyrics` satisfy the current recipe for 24 hours. After that TTL expires, the scanner emits a metadata-I/O-free `Modified` entry with `NeedsAudioCopy=false`, so only the relevant enrichment call is retried. Written lyrics, pre-existing lyrics, and unsupported formats remain stable for the current recipe.
+
 This intentionally improves on the old one-day TTL cache: a successful match/no-match/no-lyrics outcome does not force repeated network work on every warm run, while genuine exceptions remain retryable.
 
 
