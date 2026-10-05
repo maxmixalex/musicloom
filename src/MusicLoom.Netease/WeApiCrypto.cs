@@ -64,7 +64,17 @@ internal static class WeApiCrypto
         byte[] bytes = Encoding.UTF8.GetBytes(reversed);
         BigInteger message = new(bytes, isUnsigned: true, isBigEndian: true);
         BigInteger encrypted = BigInteger.ModPow(message, Exponent, Modulus);
-        return encrypted.ToString("x").PadLeft(256, '0');
+        string hex = encrypted.ToString("x");
+
+        // BigInteger's hexadecimal formatter may prepend a sign-preserving zero
+        // nibble for positive values whose high bit is set. PyNCM serializes the
+        // RSA integer as exactly 128 bytes / 256 lowercase hex characters.
+        if (hex.Length > 256 && hex[0] == '0')
+        {
+            hex = hex[1..];
+        }
+
+        return hex.PadLeft(256, '0');
     }
 }
 
