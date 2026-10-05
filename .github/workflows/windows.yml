@@ -87,6 +87,36 @@ jobs:
             }
           }
 
+      - name: Launch published WinUI app
+        shell: pwsh
+        run: |
+          $marker = Join-Path $PWD "artifacts/app-win-x64/.launch-ok"
+          $env:MUSICLOOM_SMOKE_MARKER = $marker
+          $exe = Join-Path $PWD "artifacts/app-win-x64/MusicLoom.App.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+
+          try {
+            $deadline = (Get-Date).AddSeconds(15)
+            while ((Get-Date) -lt $deadline -and -not (Test-Path $marker)) {
+              if ($process.HasExited) {
+                throw "Published WinUI app exited before its main window activated. Exit code: $($process.ExitCode)"
+              }
+              Start-Sleep -Milliseconds 250
+            }
+
+            if (-not (Test-Path $marker)) {
+              throw "Published WinUI app did not activate its main window within 15 seconds."
+            }
+
+            Get-Content $marker
+          }
+          finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+            }
+            Remove-Item Env:MUSICLOOM_SMOKE_MARKER -ErrorAction SilentlyContinue
+          }
+
       - name: Upload Windows CLI
         uses: actions/upload-artifact@v6
         with:
