@@ -21,6 +21,8 @@ internal static class SyncExecutorRegression
         await NoMatchIsNonFatalAsync();
         await LyricsWritePersistsEnrichmentStateAsync();
         await RetryableFailureKeepsWarmMetadataAndAvoidsRecopyAsync();
+        await PeriodicCheckpointPersistsBeforeFinalSaveAsync();
+        await RetryableErrorCheckpointsImmediatelyAsync();
         await CancellationPersistsPartialStateAsync();
     }
 
@@ -214,6 +216,65 @@ internal static class SyncExecutorRegression
         Equal("Processing recipe changed.", retryPlan.Entries[0].Detail ?? string.Empty);
     }
 
+    private static async Task PeriodicCheckpointPersistsBeforeFinalSaveAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: false,
+            overrideExisting: false);
+
+        FakeRecognizer recognizer = new(TrackRecognitionResult.Matched(42));
+        FakeLyricsProvider lyricsProvider = new(
+            LyricsLookupResult.NoLyrics());
+        FakeLyricsWriter writer = new(LyricsProbeStatus.Missing);
+        CountingStateStore stateStore = new(fixture.StateStore.Path);
+
+        SyncExecutor executor = new(
+            new LocalLibraryMaterializer(),
+            recognizer,
+            lyricsProvider,
+            writer,
+            checkpointInterval: 1);
+
+        SyncExecutionSummary summary = await executor.ExecuteAsync(
+            fixture.Settings,
+            fixture.Plan,
+            fixture.State,
+            stateStore);
+
+        Equal(1, summary.CompletedTracks);
+        Equal(2, stateStore.SaveCount);
+    }
+
+    private static async Task RetryableErrorCheckpointsImmediatelyAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: true);
+
+        FakeRecognizer recognizer = new(
+            new InvalidOperationException("simulated network failure"));
+        FakeLyricsProvider lyricsProvider = new(
+            LyricsLookupResult.NoLyrics());
+        FakeLyricsWriter writer = new(LyricsProbeStatus.Missing);
+        CountingStateStore stateStore = new(fixture.StateStore.Path);
+
+        SyncExecutor executor = new(
+            new LocalLibraryMaterializer(),
+            recognizer,
+            lyricsProvider,
+            writer);
+
+        SyncExecutionSummary summary = await executor.ExecuteAsync(
+            fixture.Settings,
+            fixture.Plan,
+            fixture.State,
+            stateStore);
+
+        Equal(1, summary.Errors.Count);
+        // One immediate error checkpoint plus the final snapshot.
+        Equal(2, stateStore.SaveCount);
+    }
+
     private static async Task CancellationPersistsPartialStateAsync()
     {
         await using Fixture fixture = await Fixture.CreateAsync(
@@ -382,6 +443,24 @@ internal static class SyncExecutorRegression
                 "Album Artist",
                 "Album",
                 HasEmbeddedArt: false));
+        }
+    }
+
+    private sealed class CountingStateStore : StateStore
+    {
+        public CountingStateStore(string path)
+            : base(path)
+        {
+        }
+
+        public int SaveCount { get; private set; }
+
+        public override async Task SaveAsync(
+            StateDocument state,
+            CancellationToken cancellationToken = default)
+        {
+            SaveCount++;
+            await base.SaveAsync(state, cancellationToken);
         }
     }
 
