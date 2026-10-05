@@ -27,7 +27,7 @@ List<(string Name, Action Test)> tests =
     ("Netease file recognition uses decoder and WEAPI envelope", NeteaseClientRegression.Run),
     ("Recipe and destination changes reuse cached metadata correctly", RecipeStateRegression.Run),
     ("Transactional sync persists nonfatal outcomes and retries failures", SyncExecutorRegression.Run),
-    ("Live sync rejects recursive source/destination layouts", LibraryPathSafetyRegression.Run),
+    ("Live sync rejects recursive source/destination layouts", LibraryPathSafetyRegression.Run),\n    ("Cover and playlist-only changes remain actionable", AncillaryPlanningRegression.Run),
 ];
 
 int failed = 0;

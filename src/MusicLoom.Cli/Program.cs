@@ -94,7 +94,8 @@ internal static class ProgramEntry
 
         Console.WriteLine(
             $"tracks={plan.TotalCount} unchanged={plan.UnchangedCount} new={plan.NewCount} " +
-            $"modified={plan.ModifiedCount} errors={plan.ErrorCount}");
+            $"modified={plan.ModifiedCount} errors={plan.ErrorCount} " +
+            $"covers={plan.CoverWriteCount} playlists={plan.PlaylistWriteCount}");
 
         foreach (PlanEntry entry in plan.Entries.Where(static entry => entry.Status != PlanEntryStatus.Unchanged))
         {
@@ -104,6 +105,16 @@ internal static class ProgramEntry
             {
                 Console.WriteLine($"         {entry.Detail}");
             }
+        }
+
+        foreach (CoverPlanEntry cover in plan.Covers.Where(static entry => entry.NeedsWrite))
+        {
+            Console.WriteLine($"COVER    {cover.SourcePath} -> {cover.DestinationPath}");
+        }
+
+        foreach (PlaylistPlanEntry playlist in plan.Playlists.Where(static entry => entry.NeedsWrite))
+        {
+            Console.WriteLine($"PLAYLIST {playlist.SourcePath} -> {playlist.DestinationPath}");
         }
 
         return plan.ErrorCount == 0 ? 0 : 1;

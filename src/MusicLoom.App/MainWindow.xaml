@@ -151,7 +151,7 @@
             <StackPanel Spacing="12">
               <TextBlock Text="Pending plan" Style="{ThemeResource SubtitleTextBlockStyle}" />
               <TextBlock
-                  Text="Copy means the audio file itself must be materialized. Enrich means the destination already exists and only the configured processing recipe remains."
+                  Text="Copy means an audio file must be materialized; enrich means only the processing recipe remains. Cover and playlist rows are planned independently, so they can be applied even when every audio track is unchanged."
                   TextWrapping="Wrap"
                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
               <ListView x:Name="PlanList" MaxHeight="480" />

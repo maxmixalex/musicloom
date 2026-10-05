@@ -30,6 +30,17 @@ The current planner separates **source metadata cache validity** from **output r
 
 This distinction is important. Enabling lyrics or changing `overrideExisting` makes an otherwise unchanged track `Modified` with `NeedsAudioCopy=false`: MusicLoom can run only the missing enrichment step. Changing the destination root also reuses cached metadata, but sets `NeedsAudioCopy=true` because the output path itself changed.
 
+### Ancillary resources are first-class plan entries
+
+Album artwork and MusicBee playlists participate in dry-run planning independently from audio tracks. A cover or `.m3u` change can therefore produce actionable work even when every audio file is otherwise `Unchanged`.
+
+The scanner computes:
+
+- `CoverPlanEntry` values using the same legacy album grouping and cover-name precedence as the materializer;
+- `PlaylistPlanEntry` values containing the mapped destination text and whether the target `.txt` actually differs.
+
+`LibraryPlan.PendingCount` includes pending tracks plus changed covers and playlists, while `PendingTrackCount` remains track-only. The WinUI Apply button uses the combined count, so playlist-only or cover-only changes can be synchronized without forcing an unrelated audio change.
+
 ### Read-only planning before mutation
 
 The first usable vertical slice is deliberately a dry-run:
