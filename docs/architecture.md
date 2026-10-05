@@ -195,5 +195,9 @@ Cancellation is cooperative. The executor stages per-track partial state before 
 
 Live sync requires source and destination library roots to be disjoint. The roots may not be identical, the destination may not be nested inside the source, and the source may not be nested inside the destination. This ensures generated output cannot be rescanned as source input or accidentally land back inside the source library.
 
+Metadata-derived directory names are sanitized component-by-component, not only after a full path is assembled. Dot traversal components, leading/trailing-dot names, and Windows device names such as `CON` / `LPT1` are rewritten to safe directory names. `LibraryLayout` then performs a second containment check on the fully resolved destination path and refuses any result outside the configured destination root.
+
+The live WinUI path also validates the incremental state path. A state file may not be placed inside the source library, so the UI promise that sync never mutates the source tree includes MusicLoom's own state file as well as audio, cover, and playlist outputs.
+
 
 Negative enrichment timestamps are accepted as fresh only when their age is between zero and the 24-hour TTL. A clock rollback or future timestamp therefore causes a safe retry instead of extending a negative cache indefinitely.
