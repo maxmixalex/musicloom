@@ -69,6 +69,21 @@ public class StateStore
             && state.SourceLastWriteUtcTicks == source.LastWriteTimeUtc.Ticks;
     }
 
+    public static bool HasDestinationVersion(TrackState state)
+    {
+        return state.DestinationSize.HasValue
+            && state.DestinationLastWriteUtcTicks.HasValue;
+    }
+
+    public static bool IsDestinationVersionUnchanged(
+        TrackState state,
+        FileInfo destination)
+    {
+        return state.DestinationSize == destination.Length
+            && state.DestinationLastWriteUtcTicks
+                == destination.LastWriteTimeUtc.Ticks;
+    }
+
     public static bool IsEnrichmentFresh(
         TrackState state,
         MusicLoomSettings settings,
@@ -104,6 +119,7 @@ public class StateStore
         }
 
         TimeSpan age = now - timestamp;
-        return age <= NegativeEnrichmentTtl;
+        return age >= TimeSpan.Zero
+            && age <= NegativeEnrichmentTtl;
     }
 }

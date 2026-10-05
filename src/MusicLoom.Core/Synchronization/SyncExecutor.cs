@@ -351,11 +351,18 @@ public sealed class SyncExecutor
             string recipe,
             int processed)
         {
-            updatedState.Tracks[entry.SourcePath] = trackState with
+            TrackState completed = trackState with
             {
                 RecipeVersion = recipe,
                 ProcessedAt = DateTimeOffset.UtcNow,
             };
+
+            updatedState.Tracks[entry.SourcePath] =
+                CaptureDestinationVersion(
+                    completed,
+                    entry.DestinationPath
+                    ?? throw new InvalidOperationException(
+                        "Completed plan entry has no destination path."));
             completedTracks++;
 
             progress?.Report(new SyncExecutionProgress(
@@ -421,6 +428,12 @@ public sealed class SyncExecutor
                 ? previous?.RecipeVersion ?? string.Empty
                 : string.Empty,
             DestinationPath = entry.DestinationPath,
+            DestinationSize = canReuseEnrichment
+                ? previous?.DestinationSize
+                : null,
+            DestinationLastWriteUtcTicks = canReuseEnrichment
+                ? previous?.DestinationLastWriteUtcTicks
+                : null,
             Recognition = recognition,
             RecognitionCheckedAt = sourceUnchanged
                 ? previous?.RecognitionCheckedAt
@@ -496,6 +509,26 @@ public sealed class SyncExecutor
 
         trackState = null;
         return false;
+    }
+
+    private static TrackState CaptureDestinationVersion(
+        TrackState state,
+        string destinationPath)
+    {
+        FileInfo destination = new(destinationPath);
+        if (!destination.Exists)
+        {
+            throw new FileNotFoundException(
+                "Cannot complete sync state because the destination file is missing.",
+                destinationPath);
+        }
+
+        return state with
+        {
+            DestinationSize = destination.Length,
+            DestinationLastWriteUtcTicks =
+                destination.LastWriteTimeUtc.Ticks,
+        };
     }
 
     private static bool PathsEqual(string left, string right) =>
