@@ -46,6 +46,15 @@ jobs:
       - name: Publish CLI with NativeAOT
         run: dotnet publish src/MusicLoom.Cli/MusicLoom.Cli.csproj -c Release -r linux-x64 --self-contained true -o artifacts/cli-linux-x64
 
+      - name: Run TagLibSharp streaming probe
+        run: dotnet run --project experiments/MusicLoom.TagLibSharpAotProbe/MusicLoom.TagLibSharpAotProbe.csproj -c Release
+
+      - name: Publish TagLibSharp probe with NativeAOT
+        run: dotnet publish experiments/MusicLoom.TagLibSharpAotProbe/MusicLoom.TagLibSharpAotProbe.csproj -c Release -r linux-x64 --self-contained true -o artifacts/taglibsharp-probe
+
+      - name: Run NativeAOT TagLibSharp probe
+        run: ./artifacts/taglibsharp-probe/MusicLoom.TagLibSharpAotProbe
+
       - name: Upload Linux CLI
         uses: actions/upload-artifact@v6
         with:

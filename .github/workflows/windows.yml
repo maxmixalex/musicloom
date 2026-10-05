@@ -46,6 +46,15 @@ jobs:
       - name: Publish CLI with NativeAOT
         run: dotnet publish src/MusicLoom.Cli/MusicLoom.Cli.csproj -c Release -r win-x64 --self-contained true -o artifacts/cli-win-x64
 
+      - name: Run TagLibSharp streaming probe
+        run: dotnet run --project experiments/MusicLoom.TagLibSharpAotProbe/MusicLoom.TagLibSharpAotProbe.csproj -c Release
+
+      - name: Publish TagLibSharp probe with NativeAOT
+        run: dotnet publish experiments/MusicLoom.TagLibSharpAotProbe/MusicLoom.TagLibSharpAotProbe.csproj -c Release -r win-x64 --self-contained true -o artifacts/taglibsharp-probe
+
+      - name: Run NativeAOT TagLibSharp probe
+        run: .\\artifacts\\taglibsharp-probe\\MusicLoom.TagLibSharpAotProbe.exe
+
       - name: Run Windows audio decoder smoke test
         run: dotnet run --project tests/MusicLoom.Windows.Tests/MusicLoom.Windows.Tests.csproj -c Release
 
