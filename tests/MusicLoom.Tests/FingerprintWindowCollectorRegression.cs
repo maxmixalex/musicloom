@@ -21,12 +21,13 @@ internal static class FingerprintWindowCollectorRegression
             throw new InvalidOperationException("below-threshold block unexpectedly started collection");
         }
 
-        float[] thresholdBlock = Enumerable
-            .Repeat(FingerprintWindowCollector.SilenceThreshold, FingerprintWindowCollector.ProbeSampleCount)
+        const float audibleLevel = 0.02f;
+        float[] audibleBlock = Enumerable
+            .Repeat(audibleLevel, FingerprintWindowCollector.ProbeSampleCount)
             .ToArray();
-        collector.Push(thresholdBlock);
+        collector.Push(audibleBlock);
 
-        if (!collector.HasStarted || collector.Count != thresholdBlock.Length)
+        if (!collector.HasStarted || collector.Count != audibleBlock.Length)
         {
             throw new InvalidOperationException("the complete first non-silent block was not retained");
         }
@@ -37,15 +38,15 @@ internal static class FingerprintWindowCollectorRegression
             throw new InvalidOperationException("started collection must return a zero-padded 24,000-sample window");
         }
 
-        for (int index = 0; index < thresholdBlock.Length; index++)
+        for (int index = 0; index < audibleBlock.Length; index++)
         {
-            if (result[index] != FingerprintWindowCollector.SilenceThreshold)
+            if (result[index] != audibleLevel)
             {
                 throw new InvalidOperationException("first non-silent block was not copied intact");
             }
         }
 
-        if (result[thresholdBlock.Length] != 0f)
+        if (result[audibleBlock.Length] != 0f)
         {
             throw new InvalidOperationException("short input was not zero-padded");
         }
