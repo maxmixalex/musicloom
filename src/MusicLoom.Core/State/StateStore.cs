@@ -3,7 +3,7 @@ using MusicLoom.Core.Configuration;
 
 namespace MusicLoom.Core.State;
 
-public sealed class StateStore
+public class StateStore
 {
     public StateStore(string path)
     {
@@ -33,7 +33,7 @@ public sealed class StateStore
         return state;
     }
 
-    public async Task SaveAsync(StateDocument state, CancellationToken cancellationToken = default)
+    public virtual async Task SaveAsync(StateDocument state, CancellationToken cancellationToken = default)
     {
         string? directory = System.IO.Path.GetDirectoryName(Path);
         if (!string.IsNullOrEmpty(directory))

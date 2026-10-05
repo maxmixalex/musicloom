@@ -35,17 +35,27 @@ public sealed class SyncExecutor
     private readonly ITrackRecognizer _recognizer;
     private readonly ITrackLyricsProvider _lyricsProvider;
     private readonly ITrackLyricsWriter _lyricsWriter;
+    private readonly int _checkpointInterval;
 
     public SyncExecutor(
         LocalLibraryMaterializer materializer,
         ITrackRecognizer recognizer,
         ITrackLyricsProvider lyricsProvider,
-        ITrackLyricsWriter lyricsWriter)
+        ITrackLyricsWriter lyricsWriter,
+        int checkpointInterval = 25)
     {
+        if (checkpointInterval <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(checkpointInterval),
+                "Checkpoint interval must be positive.");
+        }
+
         _materializer = materializer;
         _recognizer = recognizer;
         _lyricsProvider = lyricsProvider;
         _lyricsWriter = lyricsWriter;
+        _checkpointInterval = checkpointInterval;
     }
 
     public async Task<SyncExecutionSummary> ExecuteAsync(
@@ -119,17 +129,11 @@ public sealed class SyncExecutor
 
                 if (!settings.Organizer.Lyrics.Enabled)
                 {
-                    updatedState.Tracks[entry.SourcePath] = partial with
-                    {
-                        RecipeVersion = expectedRecipe,
-                        ProcessedAt = DateTimeOffset.UtcNow,
-                    };
-                    completedTracks++;
-                    progress?.Report(new SyncExecutionProgress(
-                        index + 1,
-                        work.Length,
-                        entry.SourcePath,
-                        "complete"));
+                    await CompleteAsync(
+                        entry,
+                        partial,
+                        expectedRecipe,
+                        index + 1);
                     continue;
                 }
 
@@ -152,7 +156,7 @@ public sealed class SyncExecutor
                         LyricsCheckedAt = DateTimeOffset.UtcNow,
                     };
                     unsupportedLyrics++;
-                    Complete(entry, partial, expectedRecipe, index + 1);
+                    await CompleteAsync(entry, partial, expectedRecipe, index + 1);
                     continue;
                 }
 
@@ -165,7 +169,7 @@ public sealed class SyncExecutor
                         LyricsCheckedAt = DateTimeOffset.UtcNow,
                     };
                     existingLyrics++;
-                    Complete(entry, partial, expectedRecipe, index + 1);
+                    await CompleteAsync(entry, partial, expectedRecipe, index + 1);
                     continue;
                 }
 
@@ -198,7 +202,7 @@ public sealed class SyncExecutor
                         || recognition.TrackId is null)
                     {
                         noMatch++;
-                        Complete(entry, partial, expectedRecipe, index + 1);
+                        await CompleteAsync(entry, partial, expectedRecipe, index + 1);
                         continue;
                     }
 
@@ -234,7 +238,7 @@ public sealed class SyncExecutor
                         LyricsCheckedAt = DateTimeOffset.UtcNow,
                     };
                     noLyrics++;
-                    Complete(entry, partial, expectedRecipe, index + 1);
+                    await CompleteAsync(entry, partial, expectedRecipe, index + 1);
                     continue;
                 }
 
@@ -282,7 +286,7 @@ public sealed class SyncExecutor
                         : partial.LyricsFingerprint,
                 };
 
-                Complete(entry, partial, expectedRecipe, index + 1);
+                await CompleteAsync(entry, partial, expectedRecipe, index + 1);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -308,6 +312,13 @@ public sealed class SyncExecutor
                     work.Length,
                     entry.SourcePath,
                     "failed"));
+
+                // Retryable errors are uncommon and may contain useful partial
+                // work (for example a successful recognition before lyric fetch
+                // failed). Persist immediately so a process crash does not lose it.
+                await stateStore.SaveAsync(
+                    updatedState,
+                    cancellationToken);
             }
         }
 
@@ -334,7 +345,7 @@ public sealed class SyncExecutor
             unsupportedLyrics,
             errors);
 
-        void Complete(
+        async Task CompleteAsync(
             PlanEntry entry,
             TrackState trackState,
             string recipe,
@@ -352,6 +363,13 @@ public sealed class SyncExecutor
                 work.Length,
                 entry.SourcePath,
                 "complete"));
+
+            if (completedTracks % _checkpointInterval == 0)
+            {
+                await stateStore.SaveAsync(
+                    updatedState,
+                    cancellationToken);
+            }
         }
     }
 
