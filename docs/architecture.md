@@ -115,8 +115,17 @@ Every Apply sync performs a fresh scan before confirmation. User-facing messages
 
 The legacy recognizer decodes audio with PyAV, resamples to 8 kHz mono float32, discards leading resampled frames whose RMS is below 0.01, then collects exactly 24,000 samples. Short non-silent input is padded with zeroes; entirely silent input produces no recognition window.
 
-`MusicLoom.Audio.Windows` reproduces that pipeline with Windows Media Foundation through NAudio 3.1.0. The silence decision is isolated in `FingerprintWindowCollector` and regression-tested. Media Foundation does not expose the same decoder/resampler frame boundaries as PyAV, so the rewrite preserves the threshold-and-whole-block semantics but cannot promise identical start-sample selection for pathological fade-ins. The generated AFP pipeline itself remains independently golden-tested.
+A Windows Media Foundation-only implementation was tested against the seven legacy formats and failed for Ogg Vorbis and Opus on a stock GitHub Windows runner. MusicLoom therefore uses `CompositeFingerprintPcmDecoder` rather than assuming optional system codecs are installed:
 
+- MP3 → fully managed NLayer, downmixed during decode;
+- WAV → NAudio `WaveFileReader`;
+- Ogg Vorbis → NAudio.Vorbis / NVorbis;
+- Opus → Concentus.Oggfile / Concentus, decoded directly to 8 kHz;
+- FLAC, M4A and WMA → Windows Media Foundation.
+
+PCM/WAV/Vorbis paths use NAudio's managed WDL resampler where the source rate is not 8 kHz. Every backend feeds the same `FingerprintWindowCollector`, so silence thresholding and the exact 24,000-sample AFP input contract remain centralized.
+
+The Windows format corpus validates MP3, FLAC, M4A, Ogg Vorbis, Opus, WAV and WMA with meaningful decoded audio and a generated AFP. All 7/7 formats pass both managed execution and the published NativeAOT binary. Media Foundation still has decoder/resampler block boundaries that differ from PyAV, so pathological fade-in start-sample selection is not promised to be bit-identical; the AFP algorithm itself remains independently golden-tested.
 
 ## Local materialization
 
