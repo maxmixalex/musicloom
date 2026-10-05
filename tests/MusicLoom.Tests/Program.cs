@@ -23,6 +23,8 @@ List<(string Name, Action Test)> tests =
     ("WEAPI crypto matches PyNCM reference vector", WeApiCryptoReference),
     ("Recipe refresh does not recopy unchanged audio", RecipeRefreshDoesNotCopy),
     ("Local materializer preserves cover and playlist behavior", LocalMaterializerRegression),
+    ("ID3 lyrics writer preserves legacy frame semantics", LyricsWriterRegression.Run),
+    ("Netease file recognition uses decoder and WEAPI envelope", NeteaseClientRegression.Run),
 ];
 
 int failed = 0;
