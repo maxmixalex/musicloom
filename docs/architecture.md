@@ -20,14 +20,15 @@ MusicLoom.Cli ───────────────┼── MusicLoom.C
 
 The Python prototype caches metadata for at most 1,000 entries with a one-day TTL and compares source files directly with targets that may later be mutated by lyric embedding. MusicLoom instead owns a persistent state document describing the source version, target path, recognition result, and processing recipe.
 
-The current planner already enforces the most important warm-path invariant:
+The current planner separates **source metadata cache validity** from **output recipe completion**:
 
 1. stat the source file;
-2. if size + mtime + recipe match the stored source state;
-3. verify the stored destination still exists;
-4. mark the track `Unchanged` **without calling the metadata reader**.
+2. if size + mtime match, reuse the stored artist / album / artwork snapshot without reopening the audio file;
+3. recompute the expected destination path from that cached metadata and the current destination root;
+4. independently compare the completed per-track recipe with `SyncRecipe.For(settings)`;
+5. mark the track `Unchanged` only when the source version, destination, and configured recipe are all satisfied.
 
-Only new or changed source files need metadata parsing. A missing destination is marked `Modified` from state without reopening the source metadata.
+This distinction is important. Enabling lyrics or changing `overrideExisting` makes an otherwise unchanged track `Modified` with `NeedsAudioCopy=false`: MusicLoom can run only the missing enrichment step. Changing the destination root also reuses cached metadata, but sets `NeedsAudioCopy=true` because the output path itself changed.
 
 ### Read-only planning before mutation
 

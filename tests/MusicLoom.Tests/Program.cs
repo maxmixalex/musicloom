@@ -25,6 +25,7 @@ List<(string Name, Action Test)> tests =
     ("Local materializer preserves cover and playlist behavior", LocalMaterializerRegression),
     ("ID3 lyrics writer preserves legacy frame semantics", LyricsWriterRegression.Run),
     ("Netease file recognition uses decoder and WEAPI envelope", NeteaseClientRegression.Run),
+    ("Recipe and destination changes reuse cached metadata correctly", RecipeStateRegression.Run),
 ];
 
 int failed = 0;
@@ -184,6 +185,7 @@ static async Task WarmScanSkipsMetadataAsync()
             SourceSize = source.Length,
             SourceLastWriteUtcTicks = source.LastWriteTimeUtc.Ticks,
             DestinationPath = destinationPath,
+            RecipeVersion = SyncRecipe.For(settings),
             MetadataCaptured = true,
             Artist = "Artist",
             AlbumArtist = "Album Artist",

@@ -32,6 +32,7 @@ public sealed class LibraryScanner
     {
         string sourceRoot = Path.GetFullPath(settings.Path.SourceDirectory);
         string destinationRoot = Path.GetFullPath(settings.Path.DestinationDirectory);
+        string expectedRecipe = SyncRecipe.For(settings);
 
         if (!Directory.Exists(sourceRoot))
         {
@@ -62,7 +63,8 @@ public sealed class LibraryScanner
             FileInfo source = new(sourcePath);
             TryGetState(state, sourcePath, out TrackState? trackState);
             bool sourceVersionUnchanged =
-                trackState is not null && StateStore.IsSourceVersionUnchanged(trackState, source);
+                trackState is not null
+                && StateStore.IsSourceVersionUnchanged(trackState, source);
 
             TrackMetadata? cachedMetadata = trackState is { MetadataCaptured: true }
                 ? new TrackMetadata(
@@ -72,41 +74,83 @@ public sealed class LibraryScanner
                     trackState.HasEmbeddedArt)
                 : null;
 
+            // Source metadata remains valid even when the output recipe changes.
+            // This is the critical warm path: config changes should not force us
+            // to reopen every audio file merely to rediscover artist/album data.
             if (trackState is not null
-                && cachedMetadata is not null
-                && StateStore.IsSourceUnchanged(trackState, source))
+                && sourceVersionUnchanged
+                && cachedMetadata is not null)
             {
-                bool destinationExists =
+                string destinationPath = GetDestinationPath(
+                    sourcePath,
+                    sourceRoot,
+                    destinationRoot,
+                    cachedMetadata,
+                    trackState.NeteaseSongId);
+
+                bool destinationMatchesState =
                     !string.IsNullOrWhiteSpace(trackState.DestinationPath)
-                    && File.Exists(trackState.DestinationPath);
+                    && PathsEqual(trackState.DestinationPath, destinationPath);
+                bool destinationExists = File.Exists(destinationPath);
+                bool recipeMatches =
+                    string.Equals(
+                        trackState.RecipeVersion,
+                        expectedRecipe,
+                        StringComparison.Ordinal);
+
+                if (destinationMatchesState
+                    && destinationExists
+                    && recipeMatches)
+                {
+                    entries.Add(new PlanEntry(
+                        sourcePath,
+                        destinationPath,
+                        PlanEntryStatus.Unchanged,
+                        cachedMetadata));
+                    continue;
+                }
+
+                string detail = !destinationMatchesState
+                    ? "Destination path changed."
+                    : !destinationExists
+                        ? "Destination file is missing."
+                        : "Processing recipe changed.";
 
                 entries.Add(new PlanEntry(
                     sourcePath,
-                    trackState.DestinationPath,
-                    destinationExists ? PlanEntryStatus.Unchanged : PlanEntryStatus.Modified,
+                    destinationPath,
+                    PlanEntryStatus.Modified,
                     cachedMetadata,
-                    destinationExists ? null : "Destination file is missing.",
-                    NeedsAudioCopy: !destinationExists));
+                    detail,
+                    NeedsAudioCopy:
+                        !destinationMatchesState || !destinationExists));
                 continue;
             }
 
             try
             {
-                TrackMetadata metadata = await _metadataReader.ReadAsync(sourcePath, cancellationToken);
-                MusicFile musicFile = new(
+                TrackMetadata metadata = await _metadataReader.ReadAsync(
                     sourcePath,
-                    Path.GetDirectoryName(sourcePath) ?? sourceRoot,
-                    metadata.Artist,
-                    metadata.AlbumArtist,
-                    metadata.Album,
-                    metadata.HasEmbeddedArt,
+                    cancellationToken);
+
+                string destinationPath = GetDestinationPath(
+                    sourcePath,
+                    sourceRoot,
+                    destinationRoot,
+                    metadata,
                     trackState?.NeteaseSongId);
 
-                string destinationPath = LibraryLayout.GetDestinationPath(musicFile, destinationRoot);
                 bool destinationMatchesState =
                     trackState?.DestinationPath is not null
                     && PathsEqual(trackState.DestinationPath, destinationPath);
                 bool destinationExists = File.Exists(destinationPath);
+                bool recipeMatches =
+                    trackState is not null
+                    && string.Equals(
+                        trackState.RecipeVersion,
+                        expectedRecipe,
+                        StringComparison.Ordinal);
+
                 bool needsAudioCopy =
                     trackState is null
                     || !sourceVersionUnchanged
@@ -125,7 +169,11 @@ public sealed class LibraryScanner
                             ? "Destination path changed."
                             : !destinationExists
                                 ? "Destination file is missing."
-                                : "Refreshing metadata state.";
+                                : cachedMetadata is null
+                                    ? "Refreshing metadata state."
+                                    : !recipeMatches
+                                        ? "Processing recipe changed."
+                                        : "Refreshing metadata state.";
 
                 entries.Add(new PlanEntry(
                     sourcePath,
@@ -147,6 +195,27 @@ public sealed class LibraryScanner
 
         progress?.Report(new ScanProgress(sourcePaths.Length, sourcePaths.Length, string.Empty));
         return new LibraryPlan(entries);
+    }
+
+    private static string GetDestinationPath(
+        string sourcePath,
+        string sourceRoot,
+        string destinationRoot,
+        TrackMetadata metadata,
+        long? neteaseSongId)
+    {
+        MusicFile musicFile = new(
+            sourcePath,
+            Path.GetDirectoryName(sourcePath) ?? sourceRoot,
+            metadata.Artist,
+            metadata.AlbumArtist,
+            metadata.Album,
+            metadata.HasEmbeddedArt,
+            neteaseSongId);
+
+        return LibraryLayout.GetDestinationPath(
+            musicFile,
+            destinationRoot);
     }
 
     private static bool TryGetState(
