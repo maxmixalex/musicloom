@@ -22,6 +22,37 @@ public partial class App : Application
         LaunchActivatedEventArgs args)
     {
         _window = new MainWindow();
+
+        string? smokeMarker =
+            Environment.GetEnvironmentVariable(
+                "MUSICLOOM_SMOKE_MARKER");
+        if (!string.IsNullOrWhiteSpace(smokeMarker))
+        {
+            _window.Activated += (_, _) =>
+            {
+                try
+                {
+                    string? directory =
+                        Path.GetDirectoryName(
+                            smokeMarker);
+                    if (!string.IsNullOrWhiteSpace(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+
+                    File.WriteAllText(
+                        smokeMarker,
+                        "MusicLoom main window activated.");
+                }
+                catch (Exception exception)
+                {
+                    AppDiagnostics.LogException(
+                        "Could not write launch smoke marker.",
+                        exception);
+                }
+            };
+        }
+
         _window.Activate();
     }
 
