@@ -27,7 +27,7 @@ internal static class LyricsWriterRegression
 
     private static async Task RunAsync()
     {
-        await VerifyFormatAsync(".wav", TestWaveFactory.WritePcm16);
+        await VerifyFormatAsync(".wav", static path => TestWaveFactory.WritePcm16(path));
         await VerifyFormatAsync(".mp3", WriteMinimalMp3);
     }
 
