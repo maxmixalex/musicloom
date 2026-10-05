@@ -2,8 +2,11 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using MusicLoom.AudioFingerprint;
+using MusicLoom.Core.Configuration;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.Planning;
+using MusicLoom.Core.Scanning;
+using MusicLoom.Core.State;
 
 List<(string Name, Action Test)> tests =
 [
@@ -13,6 +16,7 @@ List<(string Name, Action Test)> tests =
     ("LRC merge aligns translations within 200 ms", LrcMerge),
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
+    ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),
 ];
 
 int failed = 0;
@@ -124,6 +128,76 @@ static void PlaylistParsing()
     Equal("D:\\MUSIC\\Example.flac", paths[0]);
 }
 
+static void WarmScanSkipsMetadata()
+{
+    WarmScanSkipsMetadataAsync().GetAwaiter().GetResult();
+}
+
+static async Task WarmScanSkipsMetadataAsync()
+{
+    string root = Path.Combine(Path.GetTempPath(), "musicloom-test-" + Guid.NewGuid().ToString("N"));
+    string sourceRoot = Path.Combine(root, "source");
+    string destinationRoot = Path.Combine(root, "destination");
+    Directory.CreateDirectory(sourceRoot);
+    Directory.CreateDirectory(destinationRoot);
+
+    try
+    {
+        string sourcePath = Path.Combine(sourceRoot, "track.mp3");
+        await File.WriteAllBytesAsync(sourcePath, [1, 2, 3, 4]);
+
+        MusicLoomSettings settings = new()
+        {
+            Path = new PathSettings
+            {
+                SourceDirectory = sourceRoot,
+                DestinationDirectory = destinationRoot,
+            },
+        };
+
+        CountingMetadataReader coldReader = new();
+        LibraryPlan coldPlan = await new LibraryScanner(coldReader)
+            .BuildPlanAsync(settings, new StateDocument());
+
+        Equal(1, coldPlan.NewCount);
+        Equal(1, coldReader.ReadCount);
+        string destinationPath = coldPlan.Entries[0].DestinationPath
+            ?? throw new InvalidOperationException("cold plan did not produce a destination path");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        File.Copy(sourcePath, destinationPath);
+
+        FileInfo source = new(sourcePath);
+        StateDocument state = new();
+        state.Tracks[sourcePath] = new TrackState
+        {
+            SourcePath = sourcePath,
+            SourceSize = source.Length,
+            SourceLastWriteUtcTicks = source.LastWriteTimeUtc.Ticks,
+            DestinationPath = destinationPath,
+            ProcessedAt = DateTimeOffset.UtcNow,
+        };
+
+        CountingMetadataReader warmReader = new();
+        LibraryPlan warmPlan = await new LibraryScanner(warmReader)
+            .BuildPlanAsync(settings, state);
+
+        Equal(1, warmPlan.UnchangedCount);
+        Equal(0, warmReader.ReadCount);
+
+        File.Delete(destinationPath);
+        LibraryPlan missingDestinationPlan = await new LibraryScanner(warmReader)
+            .BuildPlanAsync(settings, state);
+
+        Equal(1, missingDestinationPlan.ModifiedCount);
+        Equal(0, warmReader.ReadCount);
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
 static byte[] DecodeFingerprint(string encoded)
 {
     byte[] encrypted = Convert.FromBase64String(encoded);
@@ -163,5 +237,23 @@ static void True(bool value)
     if (!value)
     {
         throw new InvalidOperationException("condition was false");
+    }
+}
+
+file sealed class CountingMetadataReader : ITrackMetadataReader
+{
+    public int ReadCount { get; private set; }
+
+    public ValueTask<TrackMetadata> ReadAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ReadCount++;
+        return ValueTask.FromResult(new TrackMetadata(
+            Artist: "Artist",
+            AlbumArtist: "Album Artist",
+            Album: "Album",
+            HasEmbeddedArt: true));
     }
 }
