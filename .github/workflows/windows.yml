@@ -75,6 +75,7 @@ jobs:
         run: |
           $required = @(
             "MusicLoom.App.exe",
+            "MusicLoom.App.pri",
             "config.example.json",
             "SAT-0.1.md",
             "LICENSE",
@@ -86,6 +87,12 @@ jobs:
               throw "Missing SAT bundle file: $path"
             }
           }
+
+          $xbf = Get-ChildItem "artifacts/app-win-x64" -Filter *.xbf -Recurse
+          if ($xbf.Count -lt 2) {
+            throw "Published WinUI bundle is missing compiled XAML resources (.xbf)."
+          }
+          $xbf | ForEach-Object { $_.FullName }
 
       - name: Launch published WinUI app
         shell: pwsh
