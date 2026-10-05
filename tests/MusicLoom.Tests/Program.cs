@@ -29,6 +29,7 @@ List<(string Name, Action Test)> tests =
     ("Transactional sync persists nonfatal outcomes and retries failures", SyncExecutorRegression.Run),
     ("Live sync rejects recursive source/destination layouts", LibraryPathSafetyRegression.Run),
     ("Cover and playlist-only changes remain actionable", AncillaryPlanningRegression.Run),
+    ("Destination drift is rematerialized without touching source metadata", DestinationDriftRegression.Run),
 ];
 
 int failed = 0;

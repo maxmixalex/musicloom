@@ -39,6 +39,12 @@ public sealed record TrackState
 
     public string? DestinationPath { get; init; }
 
+    // Captured only after a track finishes its current recipe. Null values are
+    // intentionally treated as a legacy state without drift protection so an
+    // upgrade never forces an otherwise unchanged library to rematerialize.
+    public long? DestinationSize { get; init; }
+    public long? DestinationLastWriteUtcTicks { get; init; }
+
     public RecognitionState Recognition { get; init; }
     public DateTimeOffset? RecognitionCheckedAt { get; init; }
     public long? NeteaseSongId { get; init; }

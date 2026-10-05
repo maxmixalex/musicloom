@@ -96,6 +96,14 @@ public sealed class LibraryScanner
                     !string.IsNullOrWhiteSpace(trackState.DestinationPath)
                     && PathsEqual(trackState.DestinationPath, destinationPath);
                 bool destinationExists = File.Exists(destinationPath);
+                bool destinationVersionKnown =
+                    StateStore.HasDestinationVersion(trackState);
+                bool destinationVersionMatches =
+                    !destinationVersionKnown
+                    || (destinationExists
+                        && StateStore.IsDestinationVersionUnchanged(
+                            trackState,
+                            new FileInfo(destinationPath)));
                 bool recipeMatches =
                     string.Equals(
                         trackState.RecipeVersion,
@@ -109,6 +117,7 @@ public sealed class LibraryScanner
 
                 if (destinationMatchesState
                     && destinationExists
+                    && destinationVersionMatches
                     && recipeMatches
                     && enrichmentFresh)
                 {
@@ -124,9 +133,11 @@ public sealed class LibraryScanner
                     ? "Destination path changed."
                     : !destinationExists
                         ? "Destination file is missing."
-                        : !recipeMatches
-                            ? "Processing recipe changed."
-                            : "Enrichment retry is due.";
+                        : !destinationVersionMatches
+                            ? "Destination file changed."
+                            : !recipeMatches
+                                ? "Processing recipe changed."
+                                : "Enrichment retry is due.";
 
                 entries.Add(new PlanEntry(
                     sourcePath,
@@ -135,7 +146,9 @@ public sealed class LibraryScanner
                     cachedMetadata,
                     detail,
                     NeedsAudioCopy:
-                        !destinationMatchesState || !destinationExists));
+                        !destinationMatchesState
+                        || !destinationExists
+                        || !destinationVersionMatches));
                 continue;
             }
 
@@ -156,6 +169,14 @@ public sealed class LibraryScanner
                     trackState?.DestinationPath is not null
                     && PathsEqual(trackState.DestinationPath, destinationPath);
                 bool destinationExists = File.Exists(destinationPath);
+                bool destinationVersionMatches =
+                    trackState is null
+                    || !sourceVersionUnchanged
+                    || !StateStore.HasDestinationVersion(trackState)
+                    || (destinationExists
+                        && StateStore.IsDestinationVersionUnchanged(
+                            trackState,
+                            new FileInfo(destinationPath)));
                 bool recipeMatches =
                     trackState is not null
                     && string.Equals(
@@ -173,7 +194,8 @@ public sealed class LibraryScanner
                     trackState is null
                     || !sourceVersionUnchanged
                     || !destinationMatchesState
-                    || !destinationExists;
+                    || !destinationExists
+                    || !destinationVersionMatches;
 
                 PlanEntryStatus status = trackState is null
                     ? PlanEntryStatus.New
@@ -187,8 +209,10 @@ public sealed class LibraryScanner
                             ? "Destination path changed."
                             : !destinationExists
                                 ? "Destination file is missing."
-                                : cachedMetadata is null
-                                    ? "Refreshing metadata state."
+                                : !destinationVersionMatches
+                                    ? "Destination file changed."
+                                    : cachedMetadata is null
+                                        ? "Refreshing metadata state."
                                     : !recipeMatches
                                         ? "Processing recipe changed."
                                         : !enrichmentFresh

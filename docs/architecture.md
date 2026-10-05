@@ -41,6 +41,14 @@ The scanner computes:
 
 `LibraryPlan.PendingCount` includes pending tracks plus changed covers and playlists, while `PendingTrackCount` remains track-only. The WinUI Apply button uses the combined count, so playlist-only or cover-only changes can be synchronized without forcing an unrelated audio change.
 
+### Destination drift detection
+
+Tracks completed by the transactional executor record the final destination file size and last-write timestamp after all configured enrichment has finished. Warm scans compare that inexpensive output signature in addition to source/state/recipe checks.
+
+If an external tool, sync service, or manual edit changes a known destination file, MusicLoom emits a `Modified` track with `NeedsAudioCopy=true`, rematerializes it from the untouched source, and reapplies the configured enrichment recipe. The source metadata snapshot remains reusable, so detecting destination drift still performs zero metadata reads.
+
+Destination signatures are backward-compatible and lazily adopted. Older state entries without a destination signature keep their previous warm-scan behavior; they gain drift protection the next time the track actually completes a sync recipe. This avoids a one-time full-library rewrite after upgrading.
+
 ### Read-only planning before mutation
 
 The first usable vertical slice is deliberately a dry-run:
@@ -186,3 +194,6 @@ Cancellation is cooperative. The executor stages per-track partial state before 
 ## Path safety
 
 Live sync requires source and destination library roots to be disjoint. The roots may not be identical, the destination may not be nested inside the source, and the source may not be nested inside the destination. This ensures generated output cannot be rescanned as source input or accidentally land back inside the source library.
+
+
+Negative enrichment timestamps are accepted as fresh only when their age is between zero and the 24-hour TTL. A clock rollback or future timestamp therefore causes a safe retry instead of extending a negative cache indefinitely.
