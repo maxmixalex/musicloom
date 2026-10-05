@@ -104,3 +104,18 @@ Planning distinguishes a changed plan entry from an actual audio copy through `N
 - write top-level MusicBee `.m3u` playlists as UTF-8 `.txt` files rooted at `destinationPlaylistBase`.
 
 The materializer intentionally does not persist final sync state yet. State must only be committed after future lyric/enrichment steps succeed, otherwise a partial run could be incorrectly treated as fully synchronized on the next warm scan.
+
+
+## Lyrics writing compatibility
+
+Lyrics mutation is behind `ITrackLyricsWriter`. The first enabled implementation is the legacy ID3 path for MP3 and WAV.
+
+For one merged LRC document, `AtlLyricsWriter` deliberately writes the same three logical representations as the Python/Mutagen implementation:
+
+- synchronized ID3v2 `SYLT`, language `eng`, timestamp format 2 (absolute milliseconds), content type 1, empty description;
+- unsynchronized ID3v2 `USLT`, language `eng`, description `Lyrics`, containing the full LRC text;
+- a user-defined text frame `TXXX:LYRICS`, also containing the full LRC text.
+
+The regression corpus uses a generated WAV file, writes embedded ID3v2 through ATL, reopens it semantically, and also parses the raw RIFF/ID3 frame table to prove all three frame types exist. `overrideExisting=false` is verified to leave the file byte-for-byte unchanged.
+
+Vorbis/FLAC/Opus and MP4 writing remain disabled until equivalent format-specific round-trip tests exist. WMA lyric mutation remains unsupported to match the old MusicOrg boundary.
