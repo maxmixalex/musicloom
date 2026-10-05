@@ -364,7 +364,7 @@ public sealed class SyncExecutor
                 entry.SourcePath,
                 "complete"));
 
-            if (processed % _checkpointInterval == 0)
+            if (completedTracks % _checkpointInterval == 0)
             {
                 await stateStore.SaveAsync(
                     updatedState,
