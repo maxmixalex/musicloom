@@ -1,7 +1,9 @@
 using System.Buffers.Binary;
 using MusicLoom.AudioFingerprint;
 using MusicLoom.Core.Configuration;
+using MusicLoom.Core.Scanning;
 using MusicLoom.Core.State;
+using MusicLoom.Metadata;
 
 return await ProgramEntry.RunAsync(args);
 
@@ -22,6 +24,7 @@ internal static class ProgramEntry
                 "fingerprint-pcm" => FingerprintPcm(args),
                 "config-check" => await CheckConfigAsync(args),
                 "state-info" => await ShowStateAsync(args),
+                "scan" => await ScanAsync(args),
                 _ => UnknownCommand(args[0]),
             };
         }
@@ -79,6 +82,33 @@ internal static class ProgramEntry
         return 0;
     }
 
+    private static async Task<int> ScanAsync(string[] args)
+    {
+        string configPath = args.Length >= 2 ? args[1] : "config.json";
+        string statePath = args.Length >= 3 ? args[2] : Path.Combine(".musicloom", "state.json");
+
+        MusicLoomSettings settings = await SettingsLoader.LoadAsync(configPath);
+        StateDocument state = await new StateStore(statePath).LoadAsync();
+        LibraryScanner scanner = new(new AtlMetadataReader());
+        LibraryPlan plan = await scanner.BuildPlanAsync(settings, state);
+
+        Console.WriteLine(
+            $"tracks={plan.TotalCount} unchanged={plan.UnchangedCount} new={plan.NewCount} " +
+            $"modified={plan.ModifiedCount} errors={plan.ErrorCount}");
+
+        foreach (PlanEntry entry in plan.Entries.Where(static entry => entry.Status != PlanEntryStatus.Unchanged))
+        {
+            string destination = entry.DestinationPath ?? "-";
+            Console.WriteLine($"{entry.Status,-8} {entry.SourcePath} -> {destination}");
+            if (!string.IsNullOrWhiteSpace(entry.Detail))
+            {
+                Console.WriteLine($"         {entry.Detail}");
+            }
+        }
+
+        return plan.ErrorCount == 0 ? 0 : 1;
+    }
+
     private static int UnknownCommand(string command)
     {
         Console.Error.WriteLine($"Unknown command '{command}'.");
@@ -91,8 +121,9 @@ internal static class ProgramEntry
         Console.WriteLine("MusicLoom development CLI");
         Console.WriteLine();
         Console.WriteLine("Commands:");
-        Console.WriteLine("  fingerprint-pcm <file>  Generate the native Netease AFP from 3 s / 8 kHz / mono f32le PCM");
-        Console.WriteLine("  config-check [file]     Validate and display a MusicLoom JSON configuration");
-        Console.WriteLine("  state-info [file]       Inspect the incremental state store");
+        Console.WriteLine("  fingerprint-pcm <file>      Generate native Netease AFP from 3 s / 8 kHz / mono f32le PCM");
+        Console.WriteLine("  config-check [file]         Validate and display a MusicLoom JSON configuration");
+        Console.WriteLine("  state-info [file]           Inspect the incremental state store");
+        Console.WriteLine("  scan [config] [state]       Dry-run the library and print pending changes");
     }
 }
