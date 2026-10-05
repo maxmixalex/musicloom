@@ -123,7 +123,7 @@ static void WriteTestWave(string path)
         (short)blockAlign);
     BinaryPrimitives.WriteInt16LittleEndian(
         data.AsSpan(34, 2),
-        bitsPerSample);
+        (short)bitsPerSample);
     "data"u8.CopyTo(data.AsSpan(36));
     BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(40, 4), dataSize);
 
