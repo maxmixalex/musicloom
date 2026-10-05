@@ -87,8 +87,10 @@ public sealed class SyncExecutor
                 entry.Status is PlanEntryStatus.New or PlanEntryStatus.Modified)
             .ToArray();
 
-        for (int index = 0; index < work.Length; index++)
+        try
         {
+            for (int index = 0; index < work.Length; index++)
+            {
             cancellationToken.ThrowIfCancellationRequested();
             PlanEntry entry = work[index];
 
@@ -105,6 +107,11 @@ public sealed class SyncExecutor
             TrackState partial = BuildPartialState(
                 entry,
                 updatedState);
+
+            // Stage the partial state before any external/network operation.
+            // If cancellation occurs, this is enough for the next scan to
+            // reuse metadata and an already materialized destination.
+            updatedState.Tracks[entry.SourcePath] = partial;
 
             try
             {
@@ -304,7 +311,18 @@ public sealed class SyncExecutor
             }
         }
 
-        await stateStore.SaveAsync(updatedState, cancellationToken);
+            await stateStore.SaveAsync(updatedState, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Persist tracks that completed before cancellation so the next
+            // scan can resume without rediscovering metadata or recopying
+            // destinations that are already safe.
+            await stateStore.SaveAsync(
+                updatedState,
+                CancellationToken.None);
+            throw;
+        }
 
         return new SyncExecutionSummary(
             local,

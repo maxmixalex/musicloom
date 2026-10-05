@@ -34,7 +34,7 @@
             <TextBlock x:Name="PageTitle" Text="Overview" Style="{ThemeResource TitleTextBlockStyle}" />
             <TextBlock
                 x:Name="PageSubtitle"
-                Text="Preview what MusicLoom would change without writing to the music library."
+                Text="Scan first, review the plan, then explicitly apply it to the destination library."
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 TextWrapping="Wrap" />
           </StackPanel>
@@ -49,6 +49,7 @@
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
               <Grid.RowDefinitions>
@@ -73,17 +74,39 @@
                   Content="Scan library"
                   Click="ScanButton_Click"
                   VerticalAlignment="Bottom" />
+              <Button
+                  x:Name="ApplySyncButton"
+                  Grid.Column="3"
+                  Content="Apply sync"
+                  Click="ApplySyncButton_Click"
+                  IsEnabled="False"
+                  VerticalAlignment="Bottom" />
 
               <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="10">
                 <ProgressRing x:Name="ScanProgressRing" Width="20" Height="20" IsActive="False" />
                 <TextBlock
                     x:Name="ScanStatusText"
-                    Text="Dry-run only: MusicLoom will not modify audio files."
+                    Text="Scan is read-only. Apply sync only writes under the destination library."
                     VerticalAlignment="Center"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
               </StackPanel>
+
+              <Button
+                  x:Name="CancelSyncButton"
+                  Grid.Row="1"
+                  Grid.Column="3"
+                  Content="Cancel"
+                  Click="CancelSyncButton_Click"
+                  Visibility="Collapsed"
+                  HorizontalAlignment="Right" />
             </Grid>
           </Border>
+
+          <InfoBar
+              x:Name="SyncInfoBar"
+              IsOpen="False"
+              IsClosable="True"
+              Severity="Informational" />
 
           <Grid ColumnSpacing="16">
             <Grid.ColumnDefinitions>
@@ -102,6 +125,7 @@
               <StackPanel Spacing="4">
                 <TextBlock Text="Pending changes" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <TextBlock x:Name="PendingValue" Text="—" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock x:Name="AudioCopiesText" Text="— audio copies" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
               </StackPanel>
             </Border>
             <Border Grid.Column="2" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
@@ -127,7 +151,7 @@
             <StackPanel Spacing="12">
               <TextBlock Text="Pending plan" Style="{ThemeResource SubtitleTextBlockStyle}" />
               <TextBlock
-                  Text="Only new, modified, missing-output, and error entries are listed here. Unchanged tracks are skipped before metadata parsing."
+                  Text="Copy means the audio file itself must be materialized. Enrich means the destination already exists and only the configured processing recipe remains."
                   TextWrapping="Wrap"
                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
               <ListView x:Name="PlanList" MaxHeight="480" />

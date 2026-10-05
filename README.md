@@ -4,7 +4,7 @@ MusicLoom is a local music-library organizer and synchronization tool for keepin
 
 It is a compiled rewrite of a personal Python `musicorg` workflow originally built around **MusicBee → Salt Player (Android)**. The rewrite focuses first on preserving the existing organization, lyrics, cover, and playlist behavior while removing the Python/NumPy/PythonMonkey/WASM/PyNCM runtime stack and making unchanged libraries genuinely incremental.
 
-> **Status:** early but runnable rewrite. Native AFP, Netease WEAPI, recipe-aware incremental state, local materialization, Windows Media Foundation decoding, legacy-compatible lyric writing for ID3/Vorbis/MP4, and the provider-neutral transactional sync executor are in place. The WinUI 3 app still exposes dry-run only; wiring the executor into the Windows UI is the next major milestone.
+> **Status:** early but runnable rewrite. Native AFP, Netease WEAPI, recipe-aware incremental state, local materialization, Windows Media Foundation decoding, legacy-compatible lyric writing for ID3/Vorbis/MP4, the transactional sync executor, and a guarded WinUI 3 live-sync flow are in place.
 
 ## Why a rewrite?
 
@@ -67,7 +67,7 @@ musicloom scan [config.json] [.musicloom/state.json]
 
 ## Windows UI
 
-The WinUI 3 app exposes the same dry-run planner as the CLI. Enter the config/state paths and choose **Scan library** to see totals and pending paths. The UI does not have separate sync semantics: all planning logic lives in Core.
+The WinUI 3 app exposes the same planner as the CLI. **Scan library** is read-only. **Apply sync** is enabled only for an error-free pending plan, forces a fresh scan, shows a confirmation summary (pending tracks, actual audio copies, destination, state path, and network behavior), and then executes the shared transactional sync engine. Sync can be cancelled; completed/partial state is persisted so the next scan resumes safely.
 
 ## Configuration
 

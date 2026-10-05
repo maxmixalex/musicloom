@@ -21,6 +21,7 @@ internal static class SyncExecutorRegression
         await NoMatchIsNonFatalAsync();
         await LyricsWritePersistsEnrichmentStateAsync();
         await RetryableFailureKeepsWarmMetadataAndAvoidsRecopyAsync();
+        await CancellationPersistsPartialStateAsync();
     }
 
     private static async Task LyricsDisabledUsesZeroNetworkAsync()
@@ -211,6 +212,46 @@ internal static class SyncExecutorRegression
         Equal(1, retryPlan.ModifiedCount);
         Equal(false, retryPlan.Entries[0].NeedsAudioCopy);
         Equal("Processing recipe changed.", retryPlan.Entries[0].Detail ?? string.Empty);
+    }
+
+    private static async Task CancellationPersistsPartialStateAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: true);
+
+        FakeRecognizer recognizer = new(
+            new OperationCanceledException("simulated user cancellation"));
+        FakeLyricsProvider lyricsProvider = new(
+            LyricsLookupResult.NoLyrics());
+        FakeLyricsWriter writer = new(LyricsProbeStatus.Missing);
+
+        try
+        {
+            await fixture.ExecuteAsync(
+                recognizer,
+                lyricsProvider,
+                writer);
+            throw new InvalidOperationException(
+                "Expected sync cancellation was not propagated.");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        StateDocument persisted = await fixture.StateStore.LoadAsync();
+        TrackState partial = persisted.Tracks[fixture.SourcePath];
+        Equal(string.Empty, partial.RecipeVersion);
+        True(partial.MetadataCaptured);
+        True(File.Exists(fixture.DestinationPath));
+
+        CountingMetadataReader metadataReader = new();
+        LibraryPlan retryPlan = await new LibraryScanner(metadataReader)
+            .BuildPlanAsync(fixture.Settings, persisted);
+
+        Equal(0, metadataReader.ReadCount);
+        Equal(1, retryPlan.ModifiedCount);
+        Equal(false, retryPlan.Entries[0].NeedsAudioCopy);
     }
 
     private static void Equal<T>(T expected, T actual)
