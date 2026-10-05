@@ -5,6 +5,8 @@ namespace MusicLoom.Core.State;
 
 public class StateStore
 {
+    private bool _loadedPrimarySuccessfully;
+
     public StateStore(string path)
     {
         Path = path;
@@ -12,64 +14,140 @@ public class StateStore
 
     public string Path { get; }
 
-    public async Task<StateDocument> LoadAsync(CancellationToken cancellationToken = default)
+    public string BackupPath => Path + ".bak";
+
+    public string? RecoveryWarning { get; private set; }
+
+    public async Task<StateDocument> LoadAsync(
+        CancellationToken cancellationToken = default)
     {
+        RecoveryWarning = null;
+        _loadedPrimarySuccessfully = false;
+
         if (!File.Exists(Path))
         {
             return new StateDocument();
         }
 
-        await using FileStream stream = File.OpenRead(Path);
-        StateDocument? state = await JsonSerializer.DeserializeAsync(
-            stream,
-            MusicLoomJsonContext.Default.StateDocument,
-            cancellationToken);
-
-        if (state is null || state.SchemaVersion != 1)
+        try
         {
-            throw new InvalidDataException($"Unsupported MusicLoom state file '{Path}'.");
+            StateDocument state = await LoadDocumentAsync(
+                Path,
+                cancellationToken);
+            _loadedPrimarySuccessfully = true;
+            return state;
         }
+        catch (Exception primaryException)
+            when (IsRecoverableStateException(primaryException))
+        {
+            if (!File.Exists(BackupPath))
+            {
+                throw new InvalidDataException(
+                    $"Could not read MusicLoom state '{Path}'. " +
+                    "No usable backup is available.",
+                    primaryException);
+            }
 
-        return state;
+            try
+            {
+                StateDocument backup = await LoadDocumentAsync(
+                    BackupPath,
+                    cancellationToken);
+                RecoveryWarning =
+                    $"State '{Path}' could not be read and was recovered " +
+                    $"from '{BackupPath}'. The damaged primary will not " +
+                    "replace the backup on the next save.";
+                return backup;
+            }
+            catch (Exception backupException)
+                when (IsRecoverableStateException(backupException))
+            {
+                throw new InvalidDataException(
+                    $"Could not read MusicLoom state '{Path}' or backup " +
+                    $"'{BackupPath}'.",
+                    new AggregateException(
+                        primaryException,
+                        backupException));
+            }
+        }
     }
 
-    public virtual async Task SaveAsync(StateDocument state, CancellationToken cancellationToken = default)
+    public virtual async Task SaveAsync(
+        StateDocument state,
+        CancellationToken cancellationToken = default)
     {
-        string? directory = System.IO.Path.GetDirectoryName(Path);
+        ArgumentNullException.ThrowIfNull(state);
+
+        string? directory =
+            System.IO.Path.GetDirectoryName(Path);
         if (!string.IsNullOrEmpty(directory))
         {
             Directory.CreateDirectory(directory);
         }
 
-        string temporaryPath = Path + ".tmp";
-        await using (FileStream stream = new(
-            temporaryPath,
-            FileMode.Create,
-            FileAccess.Write,
-            FileShare.None,
-            64 * 1024,
-            FileOptions.Asynchronous | FileOptions.SequentialScan))
-        {
-            await JsonSerializer.SerializeAsync(
-                stream,
-                state,
-                MusicLoomJsonContext.Default.StateDocument,
-                cancellationToken);
-            await stream.FlushAsync(cancellationToken);
-        }
+        string temporaryPath =
+            Path + ".tmp." + Guid.NewGuid().ToString("N");
 
-        File.Move(temporaryPath, Path, overwrite: true);
+        try
+        {
+            await using (FileStream stream = new(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                64 * 1024,
+                FileOptions.Asynchronous
+                | FileOptions.SequentialScan
+                | FileOptions.WriteThrough))
+            {
+                await JsonSerializer.SerializeAsync(
+                    stream,
+                    state,
+                    MusicLoomJsonContext.Default.StateDocument,
+                    cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            }
+
+            // Preserve the last primary state that this store instance
+            // successfully loaded/saved. If LoadAsync recovered from .bak,
+            // never overwrite that good backup with the corrupt primary.
+            if (File.Exists(Path)
+                && _loadedPrimarySuccessfully)
+            {
+                File.Copy(
+                    Path,
+                    BackupPath,
+                    overwrite: true);
+            }
+
+            File.Move(
+                temporaryPath,
+                Path,
+                overwrite: true);
+
+            _loadedPrimarySuccessfully = true;
+            RecoveryWarning = null;
+        }
+        finally
+        {
+            TryDelete(temporaryPath);
+        }
     }
 
-    public static readonly TimeSpan NegativeEnrichmentTtl = TimeSpan.FromHours(24);
+    public static readonly TimeSpan NegativeEnrichmentTtl =
+        TimeSpan.FromHours(24);
 
-    public static bool IsSourceVersionUnchanged(TrackState state, FileInfo source)
+    public static bool IsSourceVersionUnchanged(
+        TrackState state,
+        FileInfo source)
     {
         return state.SourceSize == source.Length
-            && state.SourceLastWriteUtcTicks == source.LastWriteTimeUtc.Ticks;
+            && state.SourceLastWriteUtcTicks
+                == source.LastWriteTimeUtc.Ticks;
     }
 
-    public static bool HasDestinationVersion(TrackState state)
+    public static bool HasDestinationVersion(
+        TrackState state)
     {
         return state.DestinationSize.HasValue
             && state.DestinationLastWriteUtcTicks.HasValue;
@@ -102,12 +180,50 @@ public class StateStore
             LyricsState.Written => true,
             LyricsState.Existing => true,
             LyricsState.Unsupported => true,
-            LyricsState.NoLyrics => IsFresh(state.LyricsCheckedAt, now),
-            LyricsState.Unknown when state.Recognition == RecognitionState.NoMatch =>
+            LyricsState.NoLyrics =>
+                IsFresh(state.LyricsCheckedAt, now),
+            LyricsState.Unknown
+                when state.Recognition
+                    == RecognitionState.NoMatch =>
                 IsFresh(state.RecognitionCheckedAt, now),
             _ => false,
         };
     }
+
+    private async Task<StateDocument> LoadDocumentAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        await using FileStream stream = new(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            64 * 1024,
+            FileOptions.Asynchronous
+            | FileOptions.SequentialScan);
+
+        StateDocument? state =
+            await JsonSerializer.DeserializeAsync(
+                stream,
+                MusicLoomJsonContext.Default.StateDocument,
+                cancellationToken);
+
+        if (state is null || state.SchemaVersion != 1)
+        {
+            throw new InvalidDataException(
+                $"Unsupported MusicLoom state file '{path}'.");
+        }
+
+        return state;
+    }
+
+    private static bool IsRecoverableStateException(
+        Exception exception) =>
+        exception is JsonException
+        or InvalidDataException
+        or IOException
+        or UnauthorizedAccessException;
 
     private static bool IsFresh(
         DateTimeOffset? checkedAt,
@@ -121,5 +237,21 @@ public class StateStore
         TimeSpan age = now - timestamp;
         return age >= TimeSpan.Zero
             && age <= NegativeEnrichmentTtl;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // A stale uniquely named temp is harmless and must never hide
+            // the original save failure.
+        }
     }
 }

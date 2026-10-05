@@ -30,6 +30,7 @@ List<(string Name, Action Test)> tests =
     ("Live sync rejects recursive source/destination layouts", LibraryPathSafetyRegression.Run),
     ("Cover and playlist-only changes remain actionable", AncillaryPlanningRegression.Run),
     ("Destination drift is rematerialized without touching source metadata", DestinationDriftRegression.Run),
+    ("State recovery and materialization failures are isolated", ResilienceRegression.Run),
 ];
 
 int failed = 0;
