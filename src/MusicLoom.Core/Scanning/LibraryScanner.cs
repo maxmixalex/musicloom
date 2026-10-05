@@ -213,8 +213,19 @@ public sealed class LibraryScanner
             }
         }
 
-        progress?.Report(new ScanProgress(sourcePaths.Length, sourcePaths.Length, string.Empty));
-        return new LibraryPlan(entries);
+        AncillaryPlan ancillary = await AncillaryPlanner.BuildAsync(
+            settings,
+            entries,
+            cancellationToken);
+
+        progress?.Report(new ScanProgress(
+            sourcePaths.Length,
+            sourcePaths.Length,
+            string.Empty));
+        return new LibraryPlan(
+            entries,
+            ancillary.Covers,
+            ancillary.Playlists);
     }
 
     private static string GetDestinationPath(

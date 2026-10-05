@@ -76,9 +76,11 @@ public sealed partial class MainWindow : Window
             Content = new TextBlock
             {
                 Text =
-                    $"{plan.PendingCount:N0} tracks have pending work.\n" +
+                    $"{plan.PendingTrackCount:N0} tracks have pending work.\n" +
                     $"{plan.AudioCopyCount:N0} audio files will be copied or rematerialized.\n" +
-                    $"{plan.PendingCount - plan.AudioCopyCount:N0} tracks need enrichment/state work only.\n\n" +
+                    $"{plan.EnrichmentOnlyCount:N0} tracks need enrichment/state work only.\n" +
+                    $"{plan.CoverWriteCount:N0} cover files need updating.\n" +
+                    $"{plan.PlaylistWriteCount:N0} playlists need updating.\n\n" +
                     $"Destination: {settings.Path.DestinationDirectory}\n" +
                     $"State: {stateStore.Path}\n\n" +
                     networkText +
@@ -128,6 +130,8 @@ public sealed partial class MainWindow : Window
 
             string message =
                 $"{summary.Local.CopiedTracks:N0} audio copies · " +
+                $"{summary.Local.CopiedCovers:N0} covers · " +
+                $"{summary.Local.WrittenPlaylists:N0} playlists · " +
                 $"{summary.WrittenLyrics:N0} lyrics written · " +
                 $"{summary.ExistingLyrics:N0} existing lyrics · " +
                 $"{summary.NoMatch:N0} no match · " +
@@ -283,18 +287,24 @@ public sealed partial class MainWindow : Window
         TracksValue.Text = plan.TotalCount.ToString("N0");
         PendingValue.Text = plan.PendingCount.ToString("N0");
         AudioCopiesText.Text =
-            $"{plan.AudioCopyCount:N0} audio copies";
+            $"{plan.AudioCopyCount:N0} audio · " +
+            $"{plan.CoverWriteCount:N0} covers · " +
+            $"{plan.PlaylistWriteCount:N0} playlists";
         ErrorsValue.Text = plan.ErrorCount.ToString("N0");
         LastScanValue.Text = DateTime.Now.ToString("t");
 
         ScanStatusText.Text =
             $"{plan.UnchangedCount:N0} unchanged · " +
-            $"{plan.NewCount:N0} new · " +
-            $"{plan.ModifiedCount:N0} modified · " +
+            $"{plan.PendingTrackCount:N0} track changes · " +
+            $"{plan.CoverWriteCount:N0} covers · " +
+            $"{plan.PlaylistWriteCount:N0} playlists · " +
             $"{plan.ErrorCount:N0} errors";
 
-        int totalVisible = plan.Entries.Count(
-            static entry => entry.Status != PlanEntryStatus.Unchanged);
+        int totalVisible =
+            plan.Entries.Count(
+                static entry => entry.Status != PlanEntryStatus.Unchanged)
+            + plan.CoverWriteCount
+            + plan.PlaylistWriteCount;
         int shown = 0;
 
         foreach (PlanEntry entry in plan.Entries)
@@ -306,8 +316,6 @@ public sealed partial class MainWindow : Window
 
             if (shown >= 500)
             {
-                PlanList.Items.Add(
-                    $"… {totalVisible - shown:N0} more entries");
                 break;
             }
 
@@ -331,6 +339,50 @@ public sealed partial class MainWindow : Window
             PlanList.Items.Add(
                 $"{entry.Status,-8} [{action}]  {source}  →  {destination}{detail}");
             shown++;
+        }
+
+        foreach (CoverPlanEntry cover in plan.Covers)
+        {
+            if (!cover.NeedsWrite || shown >= 500)
+            {
+                continue;
+            }
+
+            string source = MakeRelative(
+                settings.Path.SourceDirectory,
+                cover.SourcePath);
+            string destination = MakeRelative(
+                settings.Path.DestinationDirectory,
+                cover.DestinationPath);
+
+            PlanList.Items.Add(
+                $"Modified [cover]  {source}  →  {destination}");
+            shown++;
+        }
+
+        foreach (PlaylistPlanEntry playlist in plan.Playlists)
+        {
+            if (!playlist.NeedsWrite || shown >= 500)
+            {
+                continue;
+            }
+
+            string source = MakeRelative(
+                settings.Path.SourcePlaylistDirectory,
+                playlist.SourcePath);
+            string destination = MakeRelative(
+                settings.Path.DestinationDirectory,
+                playlist.DestinationPath);
+
+            PlanList.Items.Add(
+                $"Modified [playlist]  {source}  →  {destination}");
+            shown++;
+        }
+
+        if (shown < totalVisible)
+        {
+            PlanList.Items.Add(
+                $"… {totalVisible - shown:N0} more entries");
         }
 
         if (PlanList.Items.Count == 0)

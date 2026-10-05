@@ -20,8 +20,24 @@ public sealed class LocalLibraryMaterializer
         LibraryPlan plan,
         CancellationToken cancellationToken = default)
     {
-        string destinationRoot = Path.GetFullPath(settings.Path.DestinationDirectory);
+        string destinationRoot =
+            Path.GetFullPath(settings.Path.DestinationDirectory);
         Directory.CreateDirectory(destinationRoot);
+
+        IReadOnlyList<CoverPlanEntry> covers = plan.Covers;
+        IReadOnlyList<PlaylistPlanEntry> playlists = plan.Playlists;
+
+        // Preserve compatibility for tests/callers that manually construct a
+        // track-only plan. Real scans already contain ancillary work.
+        if (covers.Count == 0 && playlists.Count == 0)
+        {
+            AncillaryPlan ancillary = await AncillaryPlanner.BuildAsync(
+                settings,
+                plan.Entries,
+                cancellationToken);
+            covers = ancillary.Covers;
+            playlists = ancillary.Playlists;
+        }
 
         int copiedTracks = 0;
         int skippedTracks = 0;
@@ -30,127 +46,91 @@ public sealed class LocalLibraryMaterializer
         int writtenPlaylists = 0;
         int skippedPlaylists = 0;
 
-        Dictionary<string, string> pathMapping = new(StringComparer.OrdinalIgnoreCase);
-
         foreach (PlanEntry entry in plan.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (entry.Status == PlanEntryStatus.Error || entry.DestinationPath is null)
+
+            if (entry.Status == PlanEntryStatus.Error
+                || entry.DestinationPath is null
+                || !entry.NeedsAudioCopy)
             {
                 continue;
             }
 
-            pathMapping[entry.SourcePath] = entry.DestinationPath;
-
-            if (!entry.NeedsAudioCopy)
-            {
-                continue;
-            }
-
-            string? destinationDirectory = Path.GetDirectoryName(entry.DestinationPath);
+            string? destinationDirectory =
+                Path.GetDirectoryName(entry.DestinationPath);
             if (!string.IsNullOrEmpty(destinationDirectory))
             {
                 Directory.CreateDirectory(destinationDirectory);
             }
 
-            if (FilesAreIdentical(entry.SourcePath, entry.DestinationPath))
+            if (FilesAreIdentical(
+                    entry.SourcePath,
+                    entry.DestinationPath))
             {
                 skippedTracks++;
                 continue;
             }
 
-            CopyWithTimes(entry.SourcePath, entry.DestinationPath);
+            CopyWithTimes(
+                entry.SourcePath,
+                entry.DestinationPath);
             copiedTracks++;
         }
 
-        foreach (IGrouping<string, PlanEntry> group in plan.Entries
-            .Where(static entry =>
-                entry.Status != PlanEntryStatus.Error
-                && entry.DestinationPath is not null
-                && entry.Metadata is not null)
-            .GroupBy(
-                static entry => Path.GetDirectoryName(entry.DestinationPath!) ?? string.Empty,
-                StringComparer.OrdinalIgnoreCase))
+        foreach (CoverPlanEntry cover in covers)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            string albumDirectory = group.Key;
-            if (PathsEqual(albumDirectory, destinationRoot))
-            {
-                continue;
-            }
-
-            PlanEntry first = group.First();
-            TrackMetadata metadata = first.Metadata!;
-            string sourceDirectory = Path.GetDirectoryName(first.SourcePath) ?? string.Empty;
-            bool onlyExplicit = group.Any(static entry => entry.Metadata?.HasEmbeddedArt == true);
-
-            string? cover = AlbumArtLocator.Find(sourceDirectory, metadata, onlyExplicit);
-            if (cover is null)
-            {
-                continue;
-            }
-
-            Directory.CreateDirectory(albumDirectory);
-            string destinationCover = Path.Combine(
-                albumDirectory,
-                "Cover" + Path.GetExtension(cover));
-
-            if (FilesAreIdentical(cover, destinationCover))
+            if (!cover.NeedsWrite
+                || FilesAreIdentical(
+                    cover.SourcePath,
+                    cover.DestinationPath))
             {
                 skippedCovers++;
+                continue;
             }
-            else
+
+            string? directory =
+                Path.GetDirectoryName(cover.DestinationPath);
+            if (!string.IsNullOrEmpty(directory))
             {
-                CopyWithTimes(cover, destinationCover);
-                copiedCovers++;
+                Directory.CreateDirectory(directory);
             }
+
+            CopyWithTimes(
+                cover.SourcePath,
+                cover.DestinationPath);
+            copiedCovers++;
         }
 
-        string sourcePlaylistDirectory = settings.Path.SourcePlaylistDirectory;
-        if (!string.IsNullOrWhiteSpace(sourcePlaylistDirectory)
-            && Directory.Exists(sourcePlaylistDirectory))
+        foreach (PlaylistPlanEntry playlist in playlists)
         {
-            foreach (string playlistPath in Directory.EnumerateFiles(
-                sourcePlaylistDirectory,
-                "*.m3u",
-                SearchOption.TopDirectoryOnly))
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!playlist.NeedsWrite
+                || await PlaylistMatchesAsync(
+                    playlist,
+                    cancellationToken))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                string[] sourcePaths = await File.ReadAllLinesAsync(
-                    playlistPath,
-                    Encoding.UTF8,
-                    cancellationToken);
-                IReadOnlyList<string> parsed = PlaylistMapper.ParseM3u(sourcePaths);
-                IReadOnlyList<string> mapped = PlaylistMapper.Map(
-                    parsed,
-                    pathMapping,
-                    destinationRoot,
-                    settings.Path.DestinationPlaylistBase);
-
-                string outputPath = Path.Combine(
-                    destinationRoot,
-                    Path.GetFileNameWithoutExtension(playlistPath) + ".txt");
-                string output = string.Join("\n", mapped);
-
-                if (File.Exists(outputPath)
-                    && string.Equals(
-                        await File.ReadAllTextAsync(outputPath, Encoding.UTF8, cancellationToken),
-                        output,
-                        StringComparison.Ordinal))
-                {
-                    skippedPlaylists++;
-                    continue;
-                }
-
-                await File.WriteAllTextAsync(
-                    outputPath,
-                    output,
-                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-                    cancellationToken);
-                writtenPlaylists++;
+                skippedPlaylists++;
+                continue;
             }
+
+            string? directory =
+                Path.GetDirectoryName(playlist.DestinationPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            await File.WriteAllTextAsync(
+                playlist.DestinationPath,
+                playlist.Content,
+                new UTF8Encoding(
+                    encoderShouldEmitUTF8Identifier: false),
+                cancellationToken);
+            writtenPlaylists++;
         }
 
         return new LocalMaterializeSummary(
@@ -162,7 +142,29 @@ public sealed class LocalLibraryMaterializer
             skippedPlaylists);
     }
 
-    private static bool FilesAreIdentical(string sourcePath, string destinationPath)
+    private static async Task<bool> PlaylistMatchesAsync(
+        PlaylistPlanEntry playlist,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(playlist.DestinationPath))
+        {
+            return false;
+        }
+
+        string existing = await File.ReadAllTextAsync(
+            playlist.DestinationPath,
+            Encoding.UTF8,
+            cancellationToken);
+
+        return string.Equals(
+            existing,
+            playlist.Content,
+            StringComparison.Ordinal);
+    }
+
+    private static bool FilesAreIdentical(
+        string sourcePath,
+        string destinationPath)
     {
         if (!File.Exists(destinationPath))
         {
@@ -172,24 +174,21 @@ public sealed class LocalLibraryMaterializer
         FileInfo source = new(sourcePath);
         FileInfo destination = new(destinationPath);
         return source.Length == destination.Length
-            && source.LastWriteTimeUtc.Ticks == destination.LastWriteTimeUtc.Ticks;
+            && source.LastWriteTimeUtc.Ticks
+                == destination.LastWriteTimeUtc.Ticks;
     }
 
-    private static void CopyWithTimes(string sourcePath, string destinationPath)
+    private static void CopyWithTimes(
+        string sourcePath,
+        string destinationPath)
     {
         FileInfo source = new(sourcePath);
         File.Copy(sourcePath, destinationPath, overwrite: true);
-        File.SetLastWriteTimeUtc(destinationPath, source.LastWriteTimeUtc);
-        File.SetLastAccessTimeUtc(destinationPath, source.LastAccessTimeUtc);
-    }
-
-    private static bool PathsEqual(string left, string right)
-    {
-        return string.Equals(
-            Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-            Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-            OperatingSystem.IsWindows()
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal);
+        File.SetLastWriteTimeUtc(
+            destinationPath,
+            source.LastWriteTimeUtc);
+        File.SetLastAccessTimeUtc(
+            destinationPath,
+            source.LastAccessTimeUtc);
     }
 }
