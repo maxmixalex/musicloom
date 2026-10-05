@@ -61,6 +61,7 @@ public sealed class LibraryScanner
 
             FileInfo source = new(sourcePath);
             if (TryGetState(state, sourcePath, out TrackState? trackState)
+                && trackState is not null
                 && StateStore.IsSourceUnchanged(trackState, source))
             {
                 if (!string.IsNullOrWhiteSpace(trackState.DestinationPath)
