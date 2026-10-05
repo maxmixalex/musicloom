@@ -168,3 +168,8 @@ The WinUI shell keeps planning and mutation as separate user actions:
 `LibraryPathSafety` rejects an empty source/destination, an identical source and destination, and any destination nested inside the source tree. This prevents the organizer from recursively scanning and re-copying its own output.
 
 Cancellation is cooperative. The executor stages per-track partial state before external enrichment work and writes the accumulated state with a non-cancelled token when cancellation is observed. A subsequent scan can therefore reuse source metadata and already materialized destinations instead of starting the track from scratch.
+
+
+## Path safety
+
+Live sync requires source and destination library roots to be disjoint. The roots may not be identical, the destination may not be nested inside the source, and the source may not be nested inside the destination. This ensures generated output cannot be rescanned as source input or accidentally land back inside the source library.
