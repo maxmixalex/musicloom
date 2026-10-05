@@ -4,6 +4,9 @@
     <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="MusicLoom.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../MusicLoom.Core/MusicLoom.Core.csproj" />
     <ProjectReference Include="../MusicLoom.AudioFingerprint/MusicLoom.AudioFingerprint.csproj" />
   </ItemGroup>

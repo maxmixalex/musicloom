@@ -60,8 +60,18 @@ public sealed class LibraryScanner
             progress?.Report(new ScanProgress(index, sourcePaths.Length, sourcePath));
 
             FileInfo source = new(sourcePath);
-            if (TryGetState(state, sourcePath, out TrackState? trackState)
-                && trackState is not null
+            TryGetState(state, sourcePath, out TrackState? trackState);
+
+            TrackMetadata? cachedMetadata = trackState is { MetadataCaptured: true }
+                ? new TrackMetadata(
+                    trackState.Artist,
+                    trackState.AlbumArtist,
+                    trackState.Album,
+                    trackState.HasEmbeddedArt)
+                : null;
+
+            if (trackState is not null
+                && cachedMetadata is not null
                 && StateStore.IsSourceUnchanged(trackState, source))
             {
                 if (!string.IsNullOrWhiteSpace(trackState.DestinationPath)
@@ -70,7 +80,8 @@ public sealed class LibraryScanner
                     entries.Add(new PlanEntry(
                         sourcePath,
                         trackState.DestinationPath,
-                        PlanEntryStatus.Unchanged));
+                        PlanEntryStatus.Unchanged,
+                        cachedMetadata));
                 }
                 else
                 {
@@ -78,7 +89,8 @@ public sealed class LibraryScanner
                         sourcePath,
                         trackState.DestinationPath,
                         PlanEntryStatus.Modified,
-                        Detail: "Destination file is missing."));
+                        cachedMetadata,
+                        "Destination file is missing."));
                 }
 
                 continue;
@@ -106,7 +118,11 @@ public sealed class LibraryScanner
                     destinationPath,
                     status,
                     metadata,
-                    status == PlanEntryStatus.New ? "Not present in MusicLoom state." : "Source file changed."));
+                    status == PlanEntryStatus.New
+                        ? "Not present in MusicLoom state."
+                        : cachedMetadata is null && StateStore.IsSourceUnchanged(trackState!, source)
+                            ? "Refreshing metadata state."
+                            : "Source file changed."));
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {

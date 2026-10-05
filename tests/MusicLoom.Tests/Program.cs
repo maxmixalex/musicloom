@@ -7,6 +7,7 @@ using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.Planning;
 using MusicLoom.Core.Scanning;
 using MusicLoom.Core.State;
+using MusicLoom.Netease;
 
 List<(string Name, Action Test)> tests =
 [
@@ -18,6 +19,7 @@ List<(string Name, Action Test)> tests =
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
     ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),
     ("Fingerprint window preserves legacy silence semantics", FingerprintWindowCollectorRegression.Run),
+    ("WEAPI crypto matches PyNCM reference vector", WeApiCryptoReference),
 ];
 
 int failed = 0;
@@ -176,6 +178,11 @@ static async Task WarmScanSkipsMetadataAsync()
             SourceSize = source.Length,
             SourceLastWriteUtcTicks = source.LastWriteTimeUtc.Ticks,
             DestinationPath = destinationPath,
+            MetadataCaptured = true,
+            Artist = "Artist",
+            AlbumArtist = "Album Artist",
+            Album = "Album",
+            HasEmbeddedArt = true,
             ProcessedAt = DateTimeOffset.UtcNow,
         };
 
@@ -185,6 +192,7 @@ static async Task WarmScanSkipsMetadataAsync()
 
         Equal(1, warmPlan.UnchangedCount);
         Equal(0, warmReader.ReadCount);
+        Equal("Album Artist", warmPlan.Entries[0].Metadata?.AlbumArtist ?? string.Empty);
 
         File.Delete(destinationPath);
         LibraryPlan missingDestinationPlan = await new LibraryScanner(warmReader)
@@ -197,6 +205,20 @@ static async Task WarmScanSkipsMetadataAsync()
     {
         Directory.Delete(root, recursive: true);
     }
+}
+
+static void WeApiCryptoReference()
+{
+    const string json = "{\"id\":\"123\",\"lv\":\"-1\",\"tv\":\"-1\",\"rv\":\"-1\",\"csrf_token\":\"\"}";
+    WeApiEnvelope envelope = WeApiCrypto.Encrypt(json, "abcdefghijklmnop");
+
+    const string expectedParams =
+        "Irpq13DyPK85A35dZbsbW5MJlEWfdUQc11ob51z42Co6r2p0YOun7KilO4xbhkvVAjxCaN91jjeK7Cwxj0C4tCPw7SAoRr/+cODh07Zxo5F9CP8yzoKG6yhPl9hm4Dl/";
+    const string expectedEncSecKey =
+        "d15a1683c992095d0c234c19966605c5c5964911268bbeda8cb8d08d834913e59d53b32358903a121b5fca784c1f5ae44951fd02524df58ecc98e52cc7cf8689b42c2e93ddf05b0592512d87f5960467e2f086c018849d76014d323500e30f13ef4cafbb0cf5a66731a3f1776c75ca35d0062dac70a3e33245afabcf47938487";
+
+    Equal(expectedParams, envelope.Params);
+    Equal(expectedEncSecKey, envelope.EncSecKey);
 }
 
 static byte[] DecodeFingerprint(string encoded)
