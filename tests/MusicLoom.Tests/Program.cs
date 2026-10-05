@@ -26,7 +26,7 @@ List<(string Name, Action Test)> tests =
     ("ID3 lyrics writer preserves legacy frame semantics", LyricsWriterRegression.Run),
     ("Netease file recognition uses decoder and WEAPI envelope", NeteaseClientRegression.Run),
     ("Recipe and destination changes reuse cached metadata correctly", RecipeStateRegression.Run),
-    ("Transactional sync persists nonfatal outcomes and retries failures", SyncExecutorRegression.Run),
+    ("Transactional sync persists nonfatal outcomes and retries failures", SyncExecutorRegression.Run),\n    ("Live sync rejects recursive source/destination layouts", LibraryPathSafetyRegression.Run),
 ];
 
 int failed = 0;

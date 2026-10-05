@@ -30,6 +30,8 @@ public sealed class LibraryScanner
         IProgress<ScanProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        LibraryPathSafety.Validate(settings);
+
         string sourceRoot = Path.GetFullPath(settings.Path.SourceDirectory);
         string destinationRoot = Path.GetFullPath(settings.Path.DestinationDirectory);
         string expectedRecipe = SyncRecipe.For(settings);

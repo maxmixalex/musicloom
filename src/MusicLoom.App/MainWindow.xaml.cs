@@ -1,14 +1,25 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using MusicLoom.Audio.Windows;
 using MusicLoom.Core.Configuration;
 using MusicLoom.Core.Scanning;
 using MusicLoom.Core.State;
+using MusicLoom.Core.Synchronization;
 using MusicLoom.Metadata;
+using MusicLoom.Netease;
+using MusicLoom.Tagging;
 
 namespace MusicLoom.App;
 
 public sealed partial class MainWindow : Window
 {
+    private MusicLoomSettings? _settings;
+    private StateDocument? _state;
+    private StateStore? _stateStore;
+    private LibraryPlan? _plan;
+    private CancellationTokenSource? _syncCancellation;
+    private bool _busy;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -17,18 +28,198 @@ public sealed partial class MainWindow : Window
 
     private async void ScanButton_Click(object sender, RoutedEventArgs e)
     {
+        await ScanLibraryAsync(clearInfoBar: true);
+    }
+
+    private async void ApplySyncButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Re-scan immediately before confirmation so a stale plan can never
+        // be applied after the source library or configuration changed.
+        if (!await ScanLibraryAsync(clearInfoBar: true)
+            || _settings is null
+            || _state is null
+            || _stateStore is null
+            || _plan is null)
+        {
+            return;
+        }
+
+        if (_plan.ErrorCount > 0)
+        {
+            ShowInfo(
+                InfoBarSeverity.Error,
+                "Sync blocked",
+                "Resolve scan errors before applying changes.");
+            return;
+        }
+
+        if (_plan.PendingCount == 0)
+        {
+            ShowInfo(
+                InfoBarSeverity.Success,
+                "Already up to date",
+                "There are no pending changes to apply.");
+            return;
+        }
+
+        string networkText = _settings.Organizer.Lyrics.Enabled
+            ? "Lyrics enrichment is enabled. Netease is contacted only for tracks that still need writable lyrics."
+            : "Lyrics enrichment is disabled. This sync makes no Netease requests.";
+
+        ContentDialog confirmation = new()
+        {
+            XamlRoot = ((FrameworkElement)Content).XamlRoot,
+            Title = "Apply this sync plan?",
+            PrimaryButtonText = "Apply sync",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            Content = new TextBlock
+            {
+                Text =
+                    $"{_plan.PendingCount:N0} tracks have pending work.\n" +
+                    $"{_plan.AudioCopyCount:N0} audio files will be copied or rematerialized.\n" +
+                    $"{_plan.PendingCount - _plan.AudioCopyCount:N0} tracks need enrichment/state work only.\n\n" +
+                    $"Destination: {_settings.Path.DestinationDirectory}\n" +
+                    $"State: {_stateStore.Path}\n\n" +
+                    networkText +
+                    "\n\nThe source library is never modified.",
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 620,
+            },
+        };
+
+        if (await confirmation.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        _syncCancellation = new CancellationTokenSource();
+        SetBusy(busy: true, syncing: true);
+        SyncInfoBar.IsOpen = false;
+        ScanStatusText.Text = "Materializing local files, covers, and playlists…";
+
+        try
+        {
+            using NeteaseClient client = new();
+            MediaFoundationFingerprintPcmDecoder decoder = new();
+            NeteaseTrackProvider provider = new(client, decoder);
+            TagLibSharpLyricsWriter lyricsWriter = new();
+            SyncExecutor executor = new(
+                new LocalLibraryMaterializer(),
+                provider,
+                provider,
+                lyricsWriter);
+
+            Progress<SyncExecutionProgress> progress = new(value =>
+            {
+                string current = Path.GetFileName(value.SourcePath);
+                ScanStatusText.Text =
+                    $"{value.Stage} · {value.Processed:N0}/{value.Total:N0} · {current}";
+            });
+
+            SyncExecutionSummary summary = await executor.ExecuteAsync(
+                _settings,
+                _plan,
+                _state,
+                _stateStore,
+                progress,
+                _syncCancellation.Token);
+
+            string message =
+                $"{summary.Local.CopiedTracks:N0} audio copies · " +
+                $"{summary.WrittenLyrics:N0} lyrics written · " +
+                $"{summary.ExistingLyrics:N0} existing lyrics · " +
+                $"{summary.NoMatch:N0} no match · " +
+                $"{summary.NoLyrics:N0} no lyrics · " +
+                $"{summary.UnsupportedLyrics:N0} unsupported · " +
+                $"{summary.Errors.Count:N0} errors";
+
+            ShowInfo(
+                summary.Errors.Count == 0
+                    ? InfoBarSeverity.Success
+                    : InfoBarSeverity.Warning,
+                summary.Errors.Count == 0
+                    ? "Sync complete"
+                    : "Sync completed with retryable errors",
+                message);
+
+            if (summary.Errors.Count > 0)
+            {
+                foreach (TrackSyncError error in summary.Errors.Take(100))
+                {
+                    PlanList.Items.Add(
+                        $"ERROR [{error.Stage}] {Path.GetFileName(error.SourcePath)} · {error.Message}");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            ShowInfo(
+                InfoBarSeverity.Warning,
+                "Sync cancelled",
+                "Completed operations remain safe. A new scan will determine what still needs work.");
+        }
+        catch (Exception exception)
+        {
+            ShowInfo(
+                InfoBarSeverity.Error,
+                "Sync failed",
+                exception.Message);
+            PlanList.Items.Add(exception.ToString());
+        }
+        finally
+        {
+            _syncCancellation.Dispose();
+            _syncCancellation = null;
+            SetBusy(busy: false, syncing: false);
+        }
+
+        // Reload state and rebuild the plan from disk after any live run.
+        await ScanLibraryAsync(clearInfoBar: false);
+    }
+
+    private void CancelSyncButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_syncCancellation is null)
+        {
+            return;
+        }
+
+        CancelSyncButton.IsEnabled = false;
+        ScanStatusText.Text = "Cancelling after the current operation…";
+        _syncCancellation.Cancel();
+    }
+
+    private async Task<bool> ScanLibraryAsync(bool clearInfoBar)
+    {
         string configPath = ConfigPathBox.Text.Trim();
         string statePath = StatePathBox.Text.Trim();
 
-        ScanButton.IsEnabled = false;
-        ScanProgressRing.IsActive = true;
+        SetBusy(busy: true, syncing: false);
         PlanList.Items.Clear();
+        ApplySyncButton.IsEnabled = false;
+
+        if (clearInfoBar)
+        {
+            SyncInfoBar.IsOpen = false;
+        }
+
         ScanStatusText.Text = "Loading configuration…";
 
         try
         {
-            MusicLoomSettings settings = await SettingsLoader.LoadAsync(configPath);
-            StateDocument state = await new StateStore(statePath).LoadAsync();
+            if (string.IsNullOrWhiteSpace(statePath))
+            {
+                throw new InvalidDataException(
+                    "Incremental state path must not be empty.");
+            }
+
+            MusicLoomSettings settings =
+                await SettingsLoader.LoadAsync(configPath);
+            LibraryPathSafety.Validate(settings);
+
+            StateStore stateStore = new(statePath);
+            StateDocument state = await stateStore.LoadAsync();
 
             Progress<ScanProgress> progress = new(value =>
             {
@@ -41,59 +232,147 @@ public sealed partial class MainWindow : Window
                 string current = string.IsNullOrEmpty(value.CurrentPath)
                     ? string.Empty
                     : $" · {Path.GetFileName(value.CurrentPath)}";
-                ScanStatusText.Text = $"Scanning {value.Processed:N0}/{value.Total:N0}{current}";
+                ScanStatusText.Text =
+                    $"Scanning {value.Processed:N0}/{value.Total:N0}{current}";
             });
 
             LibraryScanner scanner = new(new AtlMetadataReader());
-            LibraryPlan plan = await scanner.BuildPlanAsync(settings, state, progress);
+            LibraryPlan plan = await scanner.BuildPlanAsync(
+                settings,
+                state,
+                progress);
 
-            TracksValue.Text = plan.TotalCount.ToString("N0");
-            PendingValue.Text = plan.PendingCount.ToString("N0");
-            ErrorsValue.Text = plan.ErrorCount.ToString("N0");
-            LastScanValue.Text = DateTime.Now.ToString("t");
-            ScanStatusText.Text =
-                $"{plan.UnchangedCount:N0} unchanged · {plan.NewCount:N0} new · " +
-                $"{plan.ModifiedCount:N0} modified · {plan.ErrorCount:N0} errors";
+            _settings = settings;
+            _state = state;
+            _stateStore = stateStore;
+            _plan = plan;
 
-            int shown = 0;
-            foreach (PlanEntry entry in plan.Entries)
-            {
-                if (entry.Status == PlanEntryStatus.Unchanged)
-                {
-                    continue;
-                }
-
-                if (shown >= 500)
-                {
-                    PlanList.Items.Add($"… {plan.PendingCount + plan.ErrorCount - shown:N0} more entries");
-                    break;
-                }
-
-                string source = MakeRelative(settings.Path.SourceDirectory, entry.SourcePath);
-                string destination = entry.DestinationPath is null
-                    ? "—"
-                    : MakeRelative(settings.Path.DestinationDirectory, entry.DestinationPath);
-                string detail = string.IsNullOrWhiteSpace(entry.Detail) ? string.Empty : $" · {entry.Detail}";
-                PlanList.Items.Add($"{entry.Status,-8}  {source}  →  {destination}{detail}");
-                shown++;
-            }
-
-            if (PlanList.Items.Count == 0)
-            {
-                PlanList.Items.Add("No changes. The library is already up to date.");
-            }
+            RenderPlan(settings, plan);
+            return true;
         }
         catch (Exception exception)
         {
+            _settings = null;
+            _state = null;
+            _stateStore = null;
+            _plan = null;
+
+            TracksValue.Text = "—";
+            PendingValue.Text = "—";
+            AudioCopiesText.Text = "— audio copies";
             ErrorsValue.Text = "1";
             ScanStatusText.Text = $"Scan failed: {exception.Message}";
             PlanList.Items.Add(exception.ToString());
+            ShowInfo(
+                InfoBarSeverity.Error,
+                "Scan failed",
+                exception.Message);
+            return false;
         }
         finally
         {
-            ScanProgressRing.IsActive = false;
-            ScanButton.IsEnabled = true;
+            SetBusy(busy: false, syncing: false);
         }
+    }
+
+    private void RenderPlan(
+        MusicLoomSettings settings,
+        LibraryPlan plan)
+    {
+        TracksValue.Text = plan.TotalCount.ToString("N0");
+        PendingValue.Text = plan.PendingCount.ToString("N0");
+        AudioCopiesText.Text =
+            $"{plan.AudioCopyCount:N0} audio copies";
+        ErrorsValue.Text = plan.ErrorCount.ToString("N0");
+        LastScanValue.Text = DateTime.Now.ToString("t");
+
+        ScanStatusText.Text =
+            $"{plan.UnchangedCount:N0} unchanged · " +
+            $"{plan.NewCount:N0} new · " +
+            $"{plan.ModifiedCount:N0} modified · " +
+            $"{plan.ErrorCount:N0} errors";
+
+        int totalVisible = plan.Entries.Count(
+            static entry => entry.Status != PlanEntryStatus.Unchanged);
+        int shown = 0;
+
+        foreach (PlanEntry entry in plan.Entries)
+        {
+            if (entry.Status == PlanEntryStatus.Unchanged)
+            {
+                continue;
+            }
+
+            if (shown >= 500)
+            {
+                PlanList.Items.Add(
+                    $"… {totalVisible - shown:N0} more entries");
+                break;
+            }
+
+            string source = MakeRelative(
+                settings.Path.SourceDirectory,
+                entry.SourcePath);
+            string destination = entry.DestinationPath is null
+                ? "—"
+                : MakeRelative(
+                    settings.Path.DestinationDirectory,
+                    entry.DestinationPath);
+            string detail = string.IsNullOrWhiteSpace(entry.Detail)
+                ? string.Empty
+                : $" · {entry.Detail}";
+            string action = entry.Status == PlanEntryStatus.Error
+                ? "error"
+                : entry.NeedsAudioCopy
+                    ? "copy"
+                    : "enrich";
+
+            PlanList.Items.Add(
+                $"{entry.Status,-8} [{action}]  {source}  →  {destination}{detail}");
+            shown++;
+        }
+
+        if (PlanList.Items.Count == 0)
+        {
+            PlanList.Items.Add(
+                "No changes. The library is already up to date.");
+        }
+
+        UpdateApplyButton();
+    }
+
+    private void SetBusy(bool busy, bool syncing)
+    {
+        _busy = busy;
+        ScanButton.IsEnabled = !busy;
+        ConfigPathBox.IsEnabled = !busy;
+        StatePathBox.IsEnabled = !busy;
+        ScanProgressRing.IsActive = busy;
+
+        CancelSyncButton.Visibility = syncing
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        CancelSyncButton.IsEnabled = syncing;
+
+        UpdateApplyButton();
+    }
+
+    private void UpdateApplyButton()
+    {
+        ApplySyncButton.IsEnabled =
+            !_busy
+            && _plan is { PendingCount: > 0, ErrorCount: 0 };
+    }
+
+    private void ShowInfo(
+        InfoBarSeverity severity,
+        string title,
+        string message)
+    {
+        SyncInfoBar.Severity = severity;
+        SyncInfoBar.Title = title;
+        SyncInfoBar.Message = message;
+        SyncInfoBar.IsOpen = true;
     }
 
     private void Navigation_SelectionChanged(
@@ -102,7 +381,9 @@ public sealed partial class MainWindow : Window
     {
         if (args.IsSettingsSelected)
         {
-            SetPage("Settings", "Configuration editing will be wired to the same typed settings model used by the CLI.");
+            SetPage(
+                "Settings",
+                "Configuration editing will use the same typed settings model as scan and sync.");
             return;
         }
 
@@ -114,16 +395,24 @@ public sealed partial class MainWindow : Window
         switch (tag)
         {
             case "overview":
-                SetPage("Overview", "Preview what MusicLoom would change without writing to the music library.");
+                SetPage(
+                    "Overview",
+                    "Scan first, review the plan, then explicitly apply it to the destination library.");
                 break;
             case "library":
-                SetPage("Library", "The current milestone exposes the dry-run plan here on Overview; track filtering comes next.");
+                SetPage(
+                    "Library",
+                    "The current milestone exposes the actionable plan on Overview; filtering comes next.");
                 break;
             case "playlists":
-                SetPage("Playlists", "MusicBee playlist conversion remains behavior-compatible and will be wired after library planning.");
+                SetPage(
+                    "Playlists",
+                    "MusicBee playlist conversion is applied by the same local materializer as audio copies.");
                 break;
             case "activity":
-                SetPage("Activity", "Live scan progress is already reported by the shared planner; persistent activity history comes next.");
+                SetPage(
+                    "Activity",
+                    "Live sync progress is reported by the transactional executor; persistent history comes next.");
                 break;
         }
     }
@@ -143,7 +432,9 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            return Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
+            return Path.GetRelativePath(
+                Path.GetFullPath(root),
+                Path.GetFullPath(path));
         }
         catch
         {
