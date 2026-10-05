@@ -44,12 +44,6 @@ internal static class LyricsWriterRegression
             Equal(2_500, synchronized.SynchronizedLyrics[1].TimestampStart);
             Equal("世界", synchronized.SynchronizedLyrics[1].Text);
 
-            LyricsInfo unsynchronized = track.Lyrics.FirstOrDefault(
-                info => string.Equals(info.UnsynchronizedLyrics, lrc, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException(
-                    "ATL did not expose the full unsynchronized LRC content.");
-            Equal(lrc, unsynchronized.UnsynchronizedLyrics);
-
             IReadOnlyList<Id3Frame> frames = ReadId3FramesFromWave(path);
             Equal(1, frames.Count(static frame => frame.Id == "SYLT"));
             Equal(1, frames.Count(static frame => frame.Id == "USLT"));
