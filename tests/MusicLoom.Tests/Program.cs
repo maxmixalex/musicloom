@@ -7,6 +7,7 @@ using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.Planning;
 using MusicLoom.Core.Scanning;
 using MusicLoom.Core.State;
+using MusicLoom.Core.Synchronization;
 using MusicLoom.Netease;
 
 List<(string Name, Action Test)> tests =
@@ -20,6 +21,8 @@ List<(string Name, Action Test)> tests =
     ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),
     ("Fingerprint window preserves legacy silence semantics", FingerprintWindowCollectorRegression.Run),
     ("WEAPI crypto matches PyNCM reference vector", WeApiCryptoReference),
+    ("Recipe refresh does not recopy unchanged audio", RecipeRefreshDoesNotCopy),
+    ("Local materializer preserves cover and playlist behavior", LocalMaterializerRegression),
 ];
 
 int failed = 0;
@@ -164,6 +167,7 @@ static async Task WarmScanSkipsMetadataAsync()
 
         Equal(1, coldPlan.NewCount);
         Equal(1, coldReader.ReadCount);
+        True(coldPlan.Entries[0].NeedsAudioCopy);
         string destinationPath = coldPlan.Entries[0].DestinationPath
             ?? throw new InvalidOperationException("cold plan did not produce a destination path");
 
@@ -192,6 +196,7 @@ static async Task WarmScanSkipsMetadataAsync()
 
         Equal(1, warmPlan.UnchangedCount);
         Equal(0, warmReader.ReadCount);
+        True(!warmPlan.Entries[0].NeedsAudioCopy);
         Equal("Album Artist", warmPlan.Entries[0].Metadata?.AlbumArtist ?? string.Empty);
 
         File.Delete(destinationPath);
@@ -200,6 +205,161 @@ static async Task WarmScanSkipsMetadataAsync()
 
         Equal(1, missingDestinationPlan.ModifiedCount);
         Equal(0, warmReader.ReadCount);
+        True(missingDestinationPlan.Entries[0].NeedsAudioCopy);
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static void RecipeRefreshDoesNotCopy()
+{
+    RecipeRefreshDoesNotCopyAsync().GetAwaiter().GetResult();
+}
+
+static async Task RecipeRefreshDoesNotCopyAsync()
+{
+    string root = Path.Combine(Path.GetTempPath(), "musicloom-recipe-" + Guid.NewGuid().ToString("N"));
+    string sourceRoot = Path.Combine(root, "source");
+    string destinationRoot = Path.Combine(root, "destination");
+    Directory.CreateDirectory(sourceRoot);
+    Directory.CreateDirectory(destinationRoot);
+
+    try
+    {
+        string sourcePath = Path.Combine(sourceRoot, "track.mp3");
+        await File.WriteAllBytesAsync(sourcePath, [1, 2, 3, 4]);
+        MusicLoomSettings settings = new()
+        {
+            Path = new PathSettings
+            {
+                SourceDirectory = sourceRoot,
+                DestinationDirectory = destinationRoot,
+            },
+        };
+
+        CountingMetadataReader metadataReader = new();
+        LibraryPlan cold = await new LibraryScanner(metadataReader)
+            .BuildPlanAsync(settings, new StateDocument());
+        string destinationPath = cold.Entries[0].DestinationPath!;
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        File.Copy(sourcePath, destinationPath);
+        File.SetLastWriteTimeUtc(destinationPath, File.GetLastWriteTimeUtc(sourcePath));
+
+        FileInfo source = new(sourcePath);
+        StateDocument oldState = new();
+        oldState.Tracks[sourcePath] = new TrackState
+        {
+            SourcePath = sourcePath,
+            SourceSize = source.Length,
+            SourceLastWriteUtcTicks = source.LastWriteTimeUtc.Ticks,
+            RecipeVersion = "1",
+            DestinationPath = destinationPath,
+            ProcessedAt = DateTimeOffset.UtcNow,
+        };
+
+        CountingMetadataReader refreshReader = new();
+        LibraryPlan refresh = await new LibraryScanner(refreshReader)
+            .BuildPlanAsync(settings, oldState);
+
+        Equal(1, refresh.ModifiedCount);
+        Equal(1, refreshReader.ReadCount);
+        True(!refresh.Entries[0].NeedsAudioCopy);
+        Equal("Refreshing metadata state.", refresh.Entries[0].Detail ?? string.Empty);
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static void LocalMaterializerRegression()
+{
+    LocalMaterializerRegressionAsync().GetAwaiter().GetResult();
+}
+
+static async Task LocalMaterializerRegressionAsync()
+{
+    string root = Path.Combine(Path.GetTempPath(), "musicloom-materialize-" + Guid.NewGuid().ToString("N"));
+    string sourceRoot = Path.Combine(root, "source");
+    string albumSource = Path.Combine(sourceRoot, "incoming");
+    string destinationRoot = Path.Combine(root, "destination");
+    string playlistRoot = Path.Combine(root, "playlists");
+    Directory.CreateDirectory(albumSource);
+    Directory.CreateDirectory(playlistRoot);
+
+    try
+    {
+        string firstSource = Path.Combine(albumSource, "01.mp3");
+        string secondSource = Path.Combine(albumSource, "02.flac");
+        await File.WriteAllBytesAsync(firstSource, [1, 2, 3, 4, 5]);
+        await File.WriteAllBytesAsync(secondSource, [6, 7, 8, 9]);
+
+        string genericCover = Path.Combine(albumSource, "Cover.jpg");
+        string explicitCover = Path.Combine(albumSource, "Cover.Album Artist.Album.png");
+        await File.WriteAllBytesAsync(genericCover, [10, 11]);
+        await File.WriteAllBytesAsync(explicitCover, [12, 13, 14]);
+
+        TrackMetadata firstMetadata = new("Artist", "Album Artist", "Album", HasEmbeddedArt: true);
+        TrackMetadata secondMetadata = new("Artist", "Album Artist", "Album", HasEmbeddedArt: false);
+
+        MusicFile firstFile = new(firstSource, albumSource, "Artist", "Album Artist", "Album", true);
+        MusicFile secondFile = new(secondSource, albumSource, "Artist", "Album Artist", "Album", false);
+        string firstDestination = LibraryLayout.GetDestinationPath(firstFile, destinationRoot);
+        string secondDestination = LibraryLayout.GetDestinationPath(secondFile, destinationRoot);
+
+        LibraryPlan plan = new(
+        [
+            new PlanEntry(firstSource, firstDestination, PlanEntryStatus.New, firstMetadata, NeedsAudioCopy: true),
+            new PlanEntry(secondSource, secondDestination, PlanEntryStatus.New, secondMetadata, NeedsAudioCopy: true),
+        ]);
+
+        string playlistPath = Path.Combine(playlistRoot, "main.m3u");
+        await File.WriteAllTextAsync(
+            playlistPath,
+            $"#EXTM3U\n#EXTINF:1,One\n{firstSource}\n{secondSource}\n",
+            new UTF8Encoding(false));
+
+        MusicLoomSettings settings = new()
+        {
+            Path = new PathSettings
+            {
+                SourceDirectory = sourceRoot,
+                DestinationDirectory = destinationRoot,
+                SourcePlaylistDirectory = playlistRoot,
+                DestinationPlaylistBase = "/storage/emulated/0/Music/",
+            },
+        };
+
+        LocalLibraryMaterializer materializer = new();
+        LocalMaterializeSummary first = await materializer.ApplyAsync(settings, plan);
+
+        Equal(2, first.CopiedTracks);
+        Equal(1, first.CopiedCovers);
+        Equal(1, first.WrittenPlaylists);
+        True(File.Exists(firstDestination));
+        True(File.Exists(secondDestination));
+
+        string albumDestination = Path.GetDirectoryName(firstDestination)!;
+        True(File.Exists(Path.Combine(albumDestination, "Cover.png")));
+        True(!File.Exists(Path.Combine(albumDestination, "Cover.jpg")));
+
+        string expectedPlaylist = string.Join(
+            "\n",
+            "/storage/emulated/0/Music/Album Artist/Album/01.mp3",
+            "/storage/emulated/0/Music/Album Artist/Album/02.flac");
+        Equal(
+            expectedPlaylist,
+            await File.ReadAllTextAsync(Path.Combine(destinationRoot, "main.txt"), Encoding.UTF8));
+
+        LocalMaterializeSummary second = await materializer.ApplyAsync(settings, plan);
+        Equal(0, second.CopiedTracks);
+        Equal(2, second.SkippedTracks);
+        Equal(0, second.CopiedCovers);
+        Equal(1, second.SkippedCovers);
+        Equal(0, second.WrittenPlaylists);
+        Equal(1, second.SkippedPlaylists);
     }
     finally
     {
