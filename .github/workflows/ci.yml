@@ -16,14 +16,18 @@ jobs:
     runs-on: home-docker
     timeout-minutes: 20
     env:
-      DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
-      DOTNET_CLI_HOME: ${{ runner.temp }}/dotnet-home
-      NUGET_PACKAGES: ${{ runner.temp }}/nuget-packages
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Use runner-local .NET directories
+        shell: bash
+        run: |
+          echo "DOTNET_INSTALL_DIR=$RUNNER_TEMP/dotnet" >> "$GITHUB_ENV"
+          echo "DOTNET_CLI_HOME=$RUNNER_TEMP/dotnet-home" >> "$GITHUB_ENV"
+          echo "NUGET_PACKAGES=$RUNNER_TEMP/nuget-packages" >> "$GITHUB_ENV"
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v6
