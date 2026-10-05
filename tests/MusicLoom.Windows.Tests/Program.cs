@@ -65,11 +65,11 @@ static void WriteTestWave(string path)
     "fmt "u8.CopyTo(data.AsSpan(12));
     BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(16, 4), 16);
     BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(20, 2), 1);
-    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(22, 2), channels);
+    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(22, 2), (short)channels);
     BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(24, 4), sampleRate);
     BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(28, 4), sampleRate * blockAlign);
-    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(32, 2), blockAlign);
-    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(34, 2), bitsPerSample);
+    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(32, 2), (short)blockAlign);
+    BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(34, 2), (short)bitsPerSample);
     "data"u8.CopyTo(data.AsSpan(36));
     BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(40, 4), dataSize);
 
