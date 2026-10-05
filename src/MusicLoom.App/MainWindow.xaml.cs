@@ -28,7 +28,10 @@ public sealed partial class MainWindow : Window
 
     public MainWindow()
     {
+        StartupTrace.Mark("MainWindow.ctor.enter");
+        StartupTrace.Mark("MainWindow.InitializeComponent.before");
         InitializeComponent();
+        StartupTrace.Mark("MainWindow.InitializeComponent.after");
 
         ConfigPathBox.Text =
             Path.Combine(
@@ -51,6 +54,7 @@ public sealed partial class MainWindow : Window
 
         _initializing = false;
         InvalidatePlan();
+        StartupTrace.Mark("MainWindow.ctor.ready");
     }
 
     private async void ScanButton_Click(
