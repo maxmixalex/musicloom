@@ -37,6 +37,15 @@ public static class LibraryPathSafety
                 "Destination library must not be inside the source library. " +
                 "That would cause MusicLoom to rescan its own output.");
         }
+
+        string destinationPrefix =
+            destination + Path.DirectorySeparatorChar;
+        if (source.StartsWith(destinationPrefix, comparison))
+        {
+            throw new InvalidDataException(
+                "Source library must not be inside the destination library. " +
+                "That layout could place generated output back inside the source tree.");
+        }
     }
 
     private static string Normalize(string path) =>
