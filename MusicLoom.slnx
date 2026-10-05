@@ -2,12 +2,14 @@
   <Folder Name="/src/">
     <Project Path="src/MusicLoom.Core/MusicLoom.Core.csproj" />
     <Project Path="src/MusicLoom.Metadata/MusicLoom.Metadata.csproj" />
-    <Project Path="src/MusicLoom.AudioFingerprint/MusicLoom.AudioFingerprint.csproj" />\n    <Project Path="src/MusicLoom.Audio.Windows/MusicLoom.Audio.Windows.csproj" />
+    <Project Path="src/MusicLoom.AudioFingerprint/MusicLoom.AudioFingerprint.csproj" />
+    <Project Path="src/MusicLoom.Audio.Windows/MusicLoom.Audio.Windows.csproj" />
     <Project Path="src/MusicLoom.Netease/MusicLoom.Netease.csproj" />
     <Project Path="src/MusicLoom.Cli/MusicLoom.Cli.csproj" />
     <Project Path="src/MusicLoom.App/MusicLoom.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/MusicLoom.Tests/MusicLoom.Tests.csproj" />\n    <Project Path="tests/MusicLoom.Windows.Tests/MusicLoom.Windows.Tests.csproj" />
+    <Project Path="tests/MusicLoom.Tests/MusicLoom.Tests.csproj" />
+    <Project Path="tests/MusicLoom.Windows.Tests/MusicLoom.Windows.Tests.csproj" />
   </Folder>
 </Solution>

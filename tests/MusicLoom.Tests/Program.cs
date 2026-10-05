@@ -16,7 +16,8 @@ List<(string Name, Action Test)> tests =
     ("LRC merge aligns translations within 200 ms", LrcMerge),
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
-    ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),\n    ("Fingerprint window preserves legacy silence semantics", FingerprintWindowCollectorRegression.Run),
+    ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),
+    ("Fingerprint window preserves legacy silence semantics", FingerprintWindowCollectorRegression.Run),
 ];
 
 int failed = 0;
