@@ -88,3 +88,19 @@ Golden vectors are taken directly from the original WASM used by MusicOrg.
 The legacy recognizer decodes audio with PyAV, resamples to 8 kHz mono float32, discards leading resampled frames whose RMS is below 0.01, then collects exactly 24,000 samples. Short non-silent input is padded with zeroes; entirely silent input produces no recognition window.
 
 `MusicLoom.Audio.Windows` reproduces that pipeline with Windows Media Foundation through NAudio 3.1.0. The silence decision is isolated in `FingerprintWindowCollector` and regression-tested. Media Foundation does not expose the same decoder/resampler frame boundaries as PyAV, so the rewrite preserves the threshold-and-whole-block semantics but cannot promise identical start-sample selection for pathological fade-ins. The generated AFP pipeline itself remains independently golden-tested.
+
+
+## Local materialization
+
+Planning distinguishes a changed plan entry from an actual audio copy through `NeedsAudioCopy`. A recipe/state migration can therefore refresh cached metadata without rewriting a large unchanged audio file.
+
+`LocalLibraryMaterializer` implements the non-lyrics filesystem portion of the legacy organizer:
+
+- copy only plan entries that actually need an audio copy;
+- preserve source modification/access times so legacy size+mtime identity checks remain meaningful;
+- group tracks by target directory before choosing album art;
+- if any track in a target album has embedded artwork, only explicit `Cover.<artist>.<album>` style source files are eligible;
+- otherwise retain the legacy generic `Cover / Artwork / Front / Back / Folder` fallback;
+- write top-level MusicBee `.m3u` playlists as UTF-8 `.txt` files rooted at `destinationPlaylistBase`.
+
+The materializer intentionally does not persist final sync state yet. State must only be committed after future lyric/enrichment steps succeed, otherwise a partial run could be incorrectly treated as fully synchronized on the next warm scan.

@@ -61,6 +61,8 @@ public sealed class LibraryScanner
 
             FileInfo source = new(sourcePath);
             TryGetState(state, sourcePath, out TrackState? trackState);
+            bool sourceVersionUnchanged =
+                trackState is not null && StateStore.IsSourceVersionUnchanged(trackState, source);
 
             TrackMetadata? cachedMetadata = trackState is { MetadataCaptured: true }
                 ? new TrackMetadata(
@@ -74,25 +76,17 @@ public sealed class LibraryScanner
                 && cachedMetadata is not null
                 && StateStore.IsSourceUnchanged(trackState, source))
             {
-                if (!string.IsNullOrWhiteSpace(trackState.DestinationPath)
-                    && File.Exists(trackState.DestinationPath))
-                {
-                    entries.Add(new PlanEntry(
-                        sourcePath,
-                        trackState.DestinationPath,
-                        PlanEntryStatus.Unchanged,
-                        cachedMetadata));
-                }
-                else
-                {
-                    entries.Add(new PlanEntry(
-                        sourcePath,
-                        trackState.DestinationPath,
-                        PlanEntryStatus.Modified,
-                        cachedMetadata,
-                        "Destination file is missing."));
-                }
+                bool destinationExists =
+                    !string.IsNullOrWhiteSpace(trackState.DestinationPath)
+                    && File.Exists(trackState.DestinationPath);
 
+                entries.Add(new PlanEntry(
+                    sourcePath,
+                    trackState.DestinationPath,
+                    destinationExists ? PlanEntryStatus.Unchanged : PlanEntryStatus.Modified,
+                    cachedMetadata,
+                    destinationExists ? null : "Destination file is missing.",
+                    NeedsAudioCopy: !destinationExists));
                 continue;
             }
 
@@ -109,20 +103,37 @@ public sealed class LibraryScanner
                     trackState?.NeteaseSongId);
 
                 string destinationPath = LibraryLayout.GetDestinationPath(musicFile, destinationRoot);
+                bool destinationMatchesState =
+                    trackState?.DestinationPath is not null
+                    && PathsEqual(trackState.DestinationPath, destinationPath);
+                bool destinationExists = File.Exists(destinationPath);
+                bool needsAudioCopy =
+                    trackState is null
+                    || !sourceVersionUnchanged
+                    || !destinationMatchesState
+                    || !destinationExists;
+
                 PlanEntryStatus status = trackState is null
                     ? PlanEntryStatus.New
                     : PlanEntryStatus.Modified;
+
+                string detail = status == PlanEntryStatus.New
+                    ? "Not present in MusicLoom state."
+                    : !sourceVersionUnchanged
+                        ? "Source file changed."
+                        : !destinationMatchesState
+                            ? "Destination path changed."
+                            : !destinationExists
+                                ? "Destination file is missing."
+                                : "Refreshing metadata state.";
 
                 entries.Add(new PlanEntry(
                     sourcePath,
                     destinationPath,
                     status,
                     metadata,
-                    status == PlanEntryStatus.New
-                        ? "Not present in MusicLoom state."
-                        : cachedMetadata is null && StateStore.IsSourceUnchanged(trackState!, source)
-                            ? "Refreshing metadata state."
-                            : "Source file changed."));
+                    detail,
+                    needsAudioCopy));
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -159,5 +170,15 @@ public sealed class LibraryScanner
 
         trackState = null;
         return false;
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        return string.Equals(
+            Path.GetFullPath(left),
+            Path.GetFullPath(right),
+            OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
     }
 }

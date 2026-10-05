@@ -13,7 +13,8 @@ public sealed record PlanEntry(
     string? DestinationPath,
     PlanEntryStatus Status,
     TrackMetadata? Metadata = null,
-    string? Detail = null);
+    string? Detail = null,
+    bool NeedsAudioCopy = false);
 
 public sealed record ScanProgress(
     int Processed,
@@ -28,4 +29,5 @@ public sealed record LibraryPlan(IReadOnlyList<PlanEntry> Entries)
     public int ModifiedCount => Entries.Count(static entry => entry.Status == PlanEntryStatus.Modified);
     public int ErrorCount => Entries.Count(static entry => entry.Status == PlanEntryStatus.Error);
     public int PendingCount => NewCount + ModifiedCount;
+    public int AudioCopyCount => Entries.Count(static entry => entry.NeedsAudioCopy);
 }

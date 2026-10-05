@@ -61,10 +61,15 @@ public sealed class StateStore
         File.Move(temporaryPath, Path, overwrite: true);
     }
 
+    public static bool IsSourceVersionUnchanged(TrackState state, FileInfo source)
+    {
+        return state.SourceSize == source.Length
+            && state.SourceLastWriteUtcTicks == source.LastWriteTimeUtc.Ticks;
+    }
+
     public static bool IsSourceUnchanged(TrackState state, FileInfo source)
     {
         return state.RecipeVersion == SyncRecipe.CurrentVersion
-            && state.SourceSize == source.Length
-            && state.SourceLastWriteUtcTicks == source.LastWriteTimeUtc.Ticks;
+            && IsSourceVersionUnchanged(state, source);
     }
 }
