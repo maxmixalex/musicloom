@@ -87,7 +87,7 @@ The WinUI 3 app exposes the same planner as the CLI. **Scan library** is read-on
 
 ## Build
 
-Core projects target .NET 10. CI runs regression tests and NativeAOT CLI publishing on the `home-docker` runner. WinUI 3 and Windows NativeAOT are validated separately on GitHub's Windows runner.
+Core projects target .NET 10. CI runs regression tests and NativeAOT CLI publishing on the `home-docker` runner. The SAT WinUI 3 app is currently published self-contained with JIT on GitHub's Windows runner, while Windows NativeAOT remains covered by the core/audio regression executables.
 
 See [`docs/architecture.md`](docs/architecture.md), [`docs/legacy-behavior.md`](docs/legacy-behavior.md), and the first [`SAT checklist`](docs/sat-01.md).
 
