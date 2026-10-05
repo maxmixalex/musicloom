@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   winui:
-    name: Regression / WinUI 3 / NativeAOT
+    name: Regression / WinUI 3 / NativeAOT core
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
@@ -67,7 +67,7 @@ jobs:
       - name: Build WinUI shell
         run: dotnet build src/MusicLoom.App/MusicLoom.App.csproj -c Release -r win-x64 -p:Platform=x64 --no-restore
 
-      - name: Publish NativeAOT app
+      - name: Publish self-contained WinUI app
         run: dotnet publish src/MusicLoom.App/MusicLoom.App.csproj -c Release -r win-x64 -p:Platform=x64 --self-contained true --no-restore -o artifacts/app-win-x64
 
       - name: Verify SAT app bundle
