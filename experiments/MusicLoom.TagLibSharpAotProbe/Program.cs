@@ -60,7 +60,7 @@ static void WriteLyrics(
         new TagLib.File.LocalFileAbstraction(path),
         ReadStyle.None);
 
-    Tag tag = file.GetTag(TagTypes.Id3v2, create: true)
+    TagLib.Tag tag = file.GetTag(TagTypes.Id3v2, create: true)
         ?? throw new InvalidOperationException("Could not create ID3v2 tag.");
     if (tag is not TagLib.Id3v2.Tag id3)
     {
@@ -71,11 +71,15 @@ static void WriteLyrics(
     // Mutagen 1.47.0 writes ID3v2.4 by default.
     id3.Version = 4;
 
-    id3.RemoveFrames(FrameType.SYLT);
-    id3.RemoveFrames(FrameType.USLT);
+    ReadOnlyByteVector syltId = "SYLT";
+    ReadOnlyByteVector usltId = "USLT";
+    ReadOnlyByteVector txxxId = "TXXX";
+
+    id3.RemoveFrames(syltId);
+    id3.RemoveFrames(usltId);
 
     foreach (UserTextInformationFrame frame in id3
-        .GetFrames<UserTextInformationFrame>(FrameType.TXXX)
+        .GetFrames<UserTextInformationFrame>(txxxId)
         .Where(static frame =>
             string.Equals(frame.Description, "LYRICS", StringComparison.Ordinal))
         .ToArray())
