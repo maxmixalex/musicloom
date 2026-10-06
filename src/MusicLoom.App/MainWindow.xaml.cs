@@ -402,241 +402,648 @@ public sealed partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        if (!await ScanLibraryAsync(
-                clearInfoBar: true,
-                recordActivity: false)
-            || _settings is not
-                MusicLoomSettings settings
-            || _state is not
-                StateDocument state
-            || _stateStore is not
-                StateStore stateStore
-            || _plan is not
-                LibraryPlan plan)
-        {
-            return;
-        }
+        await ShowSyncWizardAsync();
+    }
 
-        if (plan.ErrorCount > 0)
+    private async Task ShowSyncWizardAsync()
+    {
+        TextBlock stepText = new()
         {
-            ShowInfo(
-                InfoBarSeverity.Error,
-                L(
-                    "Sync blocked",
-                    "同步已阻止"),
-                L(
-                    "Resolve error items before syncing.",
-                    "请先处理错误项目，再进行同步。"));
-            LibraryFilterBox.SelectedIndex = 3;
-            return;
-        }
+            FontSize = 12,
+            Foreground =
+                Application.Current.Resources[
+                    "TextFillColorSecondaryBrush"]
+                as Microsoft.UI.Xaml.Media.Brush,
+        };
 
-        if (plan.PendingCount == 0)
+        TextBlock headingText = new()
         {
-            ShowInfo(
-                InfoBarSeverity.Success,
-                L(
-                    "Already synced",
-                    "已经同步"),
-                L(
-                    "There are no pending changes.",
-                    "没有待同步的更改。"));
-            return;
-        }
+            FontSize = 20,
+            FontWeight =
+                Windows.UI.Text.FontWeights.SemiBold,
+            TextWrapping =
+                TextWrapping.Wrap,
+        };
 
-        ContentDialog confirmation = new()
+        TextBlock detailText = new()
+        {
+            Foreground =
+                Application.Current.Resources[
+                    "TextFillColorSecondaryBrush"]
+                as Microsoft.UI.Xaml.Media.Brush,
+            TextWrapping =
+                TextWrapping.Wrap,
+        };
+
+        ProgressBar progressBar = new()
+        {
+            Height = 4,
+            IsIndeterminate = true,
+        };
+
+        ListView errorsList = new()
+        {
+            MinHeight = 0,
+            MaxHeight = 250,
+            Visibility = Visibility.Collapsed,
+        };
+
+        Button startButton = new()
+        {
+            Content =
+                L(
+                    "Start sync",
+                    "开始同步"),
+            Style =
+                (Style)Application.Current.Resources[
+                    "AccentButtonStyle"],
+            HorizontalAlignment =
+                HorizontalAlignment.Right,
+            IsEnabled = false,
+        };
+
+        StackPanel panel = new()
+        {
+            Width = 650,
+            Spacing = 12,
+        };
+        panel.Children.Add(stepText);
+        panel.Children.Add(headingText);
+        panel.Children.Add(detailText);
+        panel.Children.Add(progressBar);
+        panel.Children.Add(errorsList);
+        panel.Children.Add(startButton);
+
+        ContentDialog dialog = new()
         {
             XamlRoot =
                 ((FrameworkElement)Content)
                     .XamlRoot,
             Title =
                 L(
-                    "Sync pending changes?",
-                    "同步待处理更改？"),
-            PrimaryButtonText =
-                L("Sync", "同步"),
+                    "Sync library",
+                    "同步音乐库"),
             CloseButtonText =
-                L("Cancel", "取消"),
-            DefaultButton =
-                ContentDialogButton.Primary,
-            Content = new TextBlock
-            {
-                Text =
-                    L(
-                        $"{plan.PendingTrackCount:N0} pending tracks\n" +
-                        $"{plan.CoverWriteCount + plan.PlaylistWriteCount:N0} extra updates\n\n" +
-                        "The source library remains read-only.",
-                        $"{plan.PendingTrackCount:N0} 首歌曲待同步\n" +
-                        $"{plan.CoverWriteCount + plan.PlaylistWriteCount:N0} 项附加更新\n\n" +
-                        "源音乐库保持只读。"),
-                TextWrapping =
-                    TextWrapping.Wrap,
-            },
+                L(
+                    "Close",
+                    "关闭"),
+            Content = panel,
         };
 
-        if (await confirmation.ShowAsync()
-            != ContentDialogResult.Primary)
-        {
-            return;
-        }
+        MusicLoomSettings? settings = null;
+        StateStore? stateStore = null;
+        StateDocument? state = null;
+        LibraryPlan? plan = null;
+        bool operationRunning = false;
+        bool completedSync = false;
 
         using CancellationTokenSource
             cancellation = new();
+
         _operationCancellation =
             cancellation;
+        _busy = true;
+        ScanButton.IsEnabled = false;
+        SyncButton.IsEnabled = false;
 
-        SetBusy(
-            true,
-            L(
-                "Preparing sync…",
-                "正在准备同步……"));
+        void SetStep(
+            string step,
+            string heading,
+            string detail,
+            bool indeterminate = true)
+        {
+            stepText.Text = step;
+            headingText.Text = heading;
+            detailText.Text = detail;
+            progressBar.Visibility =
+                Visibility.Visible;
+            progressBar.IsIndeterminate =
+                indeterminate;
+        }
 
-        await Task.Yield();
+        void ShowErrors(
+            IEnumerable<string> errors)
+        {
+            string[] rows =
+                errors.ToArray();
+
+            errorsList.ItemsSource = rows;
+            errorsList.Visibility =
+                rows.Length == 0
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+        }
+
+        async Task RunPreflightAsync()
+        {
+            operationRunning = true;
+            startButton.IsEnabled = false;
+            ShowErrors([]);
+
+            SetStep(
+                L(
+                    "Step 1 of 3",
+                    "第 1 步，共 3 步"),
+                L(
+                    "Checking the library",
+                    "正在检查音乐库"),
+                L(
+                    "MusicLoom is validating source files, destination state, covers and playlists without changing the current view.",
+                    "MusicLoom 正在校验源文件、目标状态、封面和播放列表，不会刷新当前列表。"));
+
+            try
+            {
+                settings =
+                    await SettingsLoader.LoadAsync(
+                        ConfigPath,
+                        cancellation.Token);
+
+                LibraryPathSafety.ValidateStatePath(
+                    settings,
+                    StatePath);
+
+                stateStore =
+                    new StateStore(
+                        StatePath);
+                state =
+                    await stateStore.LoadAsync(
+                        cancellation.Token);
+
+                Progress<ScanProgress>
+                    scanProgress = new(value =>
+                    {
+                        if (value.Stage
+                            == "ancillary")
+                        {
+                            detailText.Text =
+                                L(
+                                    "Checking covers and playlists…",
+                                    "正在检查封面和播放列表……");
+                            progressBar.IsIndeterminate =
+                                true;
+                            return;
+                        }
+
+                        if (value.Stage
+                            == "complete")
+                        {
+                            detailText.Text =
+                                L(
+                                    "Preparing sync summary…",
+                                    "正在生成同步摘要……");
+                            progressBar.IsIndeterminate =
+                                true;
+                            return;
+                        }
+
+                        progressBar.IsIndeterminate =
+                            false;
+                        progressBar.Value =
+                            value.Total <= 0
+                                ? 0
+                                : Math.Clamp(
+                                    value.Processed
+                                    * 100.0
+                                    / value.Total,
+                                    0,
+                                    100);
+
+                        detailText.Text =
+                            L(
+                                $"Checking tracks {value.Processed:N0}/{value.Total:N0}",
+                                $"正在检查歌曲 {value.Processed:N0}/{value.Total:N0}");
+                    });
+
+                LibraryScanner scanner =
+                    new(
+                        new AtlMetadataReader());
+
+                plan =
+                    await Task.Run(
+                        async () =>
+                            await scanner.BuildPlanAsync(
+                                settings,
+                                state,
+                                scanProgress,
+                                cancellation.Token),
+                        cancellation.Token);
+
+                await stateStore.SaveAsync(
+                    state,
+                    cancellation.Token);
+
+                if (plan.ErrorCount > 0)
+                {
+                    SetStep(
+                        L(
+                            "Step 1 of 3",
+                            "第 1 步，共 3 步"),
+                        L(
+                            "The library has scan errors",
+                            "音乐库存在扫描错误"),
+                        L(
+                            "Fix these items before syncing.",
+                            "请先处理以下项目，再进行同步。"),
+                        indeterminate: false);
+
+                    progressBar.Visibility =
+                        Visibility.Collapsed;
+
+                    ShowErrors(
+                        plan.Entries
+                            .Where(static entry =>
+                                entry.Status
+                                    == PlanEntryStatus.Error)
+                            .Select(entry =>
+                                $"{Path.GetFileName(entry.SourcePath)} · {entry.Detail}"));
+
+                    return;
+                }
+
+                if (plan.PendingCount == 0)
+                {
+                    SetStep(
+                        L(
+                            "Step 1 of 3",
+                            "第 1 步，共 3 步"),
+                        L(
+                            "Everything is already synced",
+                            "已经全部同步"),
+                        L(
+                            "No files, lyrics, covers or playlists need changes.",
+                            "没有需要更新的文件、歌词、封面或播放列表。"),
+                        indeterminate: false);
+
+                    progressBar.Visibility =
+                        Visibility.Collapsed;
+                    return;
+                }
+
+                SetStep(
+                    L(
+                        "Step 1 of 3",
+                        "第 1 步，共 3 步"),
+                    L(
+                        "Ready to sync",
+                        "可以开始同步"),
+                    L(
+                        $"{plan.PendingTrackCount:N0} pending tracks · {plan.AudioCopyCount:N0} audio copies · {plan.CoverWriteCount:N0} covers · {plan.PlaylistWriteCount:N0} playlists",
+                        $"{plan.PendingTrackCount:N0} 首歌曲待处理 · {plan.AudioCopyCount:N0} 个音频复制 · {plan.CoverWriteCount:N0} 个封面 · {plan.PlaylistWriteCount:N0} 个播放列表"),
+                    indeterminate: false);
+
+                progressBar.Visibility =
+                    Visibility.Collapsed;
+                startButton.IsEnabled = true;
+            }
+            catch (OperationCanceledException)
+            {
+                detailText.Text =
+                    L(
+                        "Check cancelled.",
+                        "检查已取消。");
+            }
+            catch (Exception exception)
+            {
+                AppDiagnostics.LogException(
+                    "Sync wizard preflight failed.",
+                    exception);
+
+                SetStep(
+                    L(
+                        "Step 1 of 3",
+                        "第 1 步，共 3 步"),
+                    L(
+                        "Could not check the library",
+                        "无法检查音乐库"),
+                    UserFacingErrors.Describe(
+                        exception),
+                    indeterminate: false);
+                progressBar.Visibility =
+                    Visibility.Collapsed;
+            }
+            finally
+            {
+                operationRunning = false;
+            }
+        }
+
+        async Task RunSyncAsync()
+        {
+            if (settings is null
+                || stateStore is null
+                || state is null
+                || plan is null)
+            {
+                return;
+            }
+
+            operationRunning = true;
+            startButton.IsEnabled = false;
+            ShowErrors([]);
+
+            SetStep(
+                L(
+                    "Step 2 of 3",
+                    "第 2 步，共 3 步"),
+                L(
+                    "Syncing",
+                    "正在同步"),
+                L(
+                    "Preparing local files…",
+                    "正在准备本地文件……"));
+
+            try
+            {
+                using NeteaseClient client =
+                    new();
+                CompositeFingerprintPcmDecoder
+                    decoder = new();
+                NeteaseTrackProvider provider =
+                    new(
+                        client,
+                        decoder);
+
+                ITrackLyricsWriter lyricsWriter =
+                    LyricsStorageModes.Normalize(
+                        settings.Organizer.Lyrics
+                            .StorageMode)
+                        == LyricsStorageModes.Sidecar
+                            ? new SidecarLrcLyricsWriter()
+                            : new TagLibSharpLyricsWriter();
+
+                SyncExecutor executor =
+                    new(
+                        new LocalLibraryMaterializer(),
+                        provider,
+                        provider,
+                        lyricsWriter);
+
+                Progress<SyncExecutionProgress>
+                    syncProgress = new(value =>
+                    {
+                        progressBar.IsIndeterminate =
+                            value.Total <= 0;
+                        if (value.Total > 0)
+                        {
+                            progressBar.Value =
+                                Math.Clamp(
+                                    value.Processed
+                                    * 100.0
+                                    / value.Total,
+                                    0,
+                                    100);
+                        }
+
+                        detailText.Text =
+                            $"{FriendlyStage(value.Stage)} · " +
+                            $"{value.Processed:N0}/{value.Total:N0} · " +
+                            $"{Path.GetFileName(value.SourcePath)}";
+                    });
+
+                SyncExecutionSummary summary =
+                    await Task.Run(
+                        async () =>
+                            await executor.ExecuteAsync(
+                                settings,
+                                plan,
+                                state,
+                                stateStore,
+                                syncProgress,
+                                cancellation.Token),
+                        cancellation.Token);
+
+                completedSync = true;
+
+                string summaryText =
+                    L(
+                        $"{summary.Local.CopiedTracks:N0} audio · {summary.Local.CopiedCovers:N0} covers · {summary.Local.WrittenPlaylists:N0} playlists · {summary.WrittenLyrics:N0} lyrics · {summary.Errors.Count:N0} errors",
+                        $"音频 {summary.Local.CopiedTracks:N0} · 封面 {summary.Local.CopiedCovers:N0} · 播放列表 {summary.Local.WrittenPlaylists:N0} · 歌词 {summary.WrittenLyrics:N0} · 错误 {summary.Errors.Count:N0}");
+
+                SetStep(
+                    L(
+                        "Step 3 of 3",
+                        "第 3 步，共 3 步"),
+                    summary.Errors.Count == 0
+                        ? L(
+                            "Sync complete",
+                            "同步完成")
+                        : L(
+                            "Sync complete with errors",
+                            "同步完成，但有错误"),
+                    summaryText,
+                    indeterminate: false);
+
+                progressBar.Value = 100;
+
+                string[] errorRows =
+                    summary.Errors
+                        .Select(error =>
+                            $"{Path.GetFileName(error.SourcePath)} · {FriendlyStage(error.Stage)} · {error.Message}")
+                        .ToArray();
+
+                ShowErrors(errorRows);
+
+                LastRunTitle.Text =
+                    summary.Errors.Count == 0
+                        ? L(
+                            "Last sync completed",
+                            "上次同步已完成")
+                        : L(
+                            "Last sync completed with errors",
+                            "上次同步完成，但有错误");
+                LastRunSummaryText.Text =
+                    summaryText;
+
+                AddActivity(
+                    summary.Errors.Count == 0
+                        ? L(
+                            "Sync complete",
+                            "同步完成")
+                        : L(
+                            "Sync warning",
+                            "同步警告"),
+                    summaryText);
+
+                foreach (TrackSyncError error
+                    in summary.Errors)
+                {
+                    AddActivity(
+                        L(
+                            "Track error",
+                            "歌曲错误"),
+                        $"{Path.GetFileName(error.SourcePath)} · {FriendlyStage(error.Stage)} · {error.Message}");
+                }
+
+                if (summary.Errors.Count > 0)
+                {
+                    errorsList.ScrollIntoView(
+                        errorRows.FirstOrDefault());
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                SetStep(
+                    L(
+                        "Step 3 of 3",
+                        "第 3 步，共 3 步"),
+                    L(
+                        "Sync cancelled",
+                        "同步已取消"),
+                    L(
+                        "Completed work was checkpointed.",
+                        "已完成的工作已经保存。"),
+                    indeterminate: false);
+                progressBar.Visibility =
+                    Visibility.Collapsed;
+            }
+            catch (Exception exception)
+            {
+                AppDiagnostics.LogException(
+                    "Sync wizard failed.",
+                    exception);
+
+                SetStep(
+                    L(
+                        "Step 3 of 3",
+                        "第 3 步，共 3 步"),
+                    L(
+                        "Sync failed",
+                        "同步失败"),
+                    UserFacingErrors.Describe(
+                        exception),
+                    indeterminate: false);
+                progressBar.Visibility =
+                    Visibility.Collapsed;
+            }
+            finally
+            {
+                operationRunning = false;
+            }
+        }
+
+        startButton.Click +=
+            async (_, _) =>
+                await RunSyncAsync();
+
+        dialog.Opened +=
+            async (_, _) =>
+                await RunPreflightAsync();
+
+        dialog.Closing +=
+            (_, args) =>
+            {
+                if (!operationRunning)
+                {
+                    return;
+                }
+
+                args.Cancel = true;
+                cancellation.Cancel();
+                detailText.Text =
+                    L(
+                        "Cancelling…",
+                        "正在取消……");
+            };
 
         try
         {
-            using NeteaseClient client = new();
-            CompositeFingerprintPcmDecoder
-                decoder = new();
-            NeteaseTrackProvider provider =
-                new(
-                    client,
-                    decoder);
-
-            ITrackLyricsWriter lyricsWriter =
-                LyricsStorageModes.Normalize(
-                    settings.Organizer.Lyrics
-                        .StorageMode)
-                    == LyricsStorageModes.Sidecar
-                        ? new SidecarLrcLyricsWriter()
-                        : new TagLibSharpLyricsWriter();
-
-            SyncExecutor executor = new(
-                new LocalLibraryMaterializer(),
-                provider,
-                provider,
-                lyricsWriter);
-
-            Progress<SyncExecutionProgress>
-                progress = new(value =>
-                {
-                    string current =
-                        Path.GetFileName(
-                            value.SourcePath);
-
-                    OperationStatusText.Text =
-                        $"{FriendlyStage(value.Stage)} · " +
-                        $"{value.Processed:N0}/{value.Total:N0} · " +
-                        current;
-
-                    SetProgress(
-                        value.Processed,
-                        value.Total);
-                });
-
-            SyncExecutionSummary summary =
-                await Task.Run(
-                    async () =>
-                        await executor.ExecuteAsync(
-                            settings,
-                            plan,
-                            state,
-                            stateStore,
-                            progress,
-                            cancellation.Token),
-                    cancellation.Token);
-
-            string message =
-                L(
-                    $"{summary.Local.CopiedTracks:N0} audio · " +
-                    $"{summary.Local.CopiedCovers:N0} covers · " +
-                    $"{summary.Local.WrittenPlaylists:N0} playlists · " +
-                    $"{summary.WrittenLyrics:N0} lyrics · " +
-                    $"{summary.Errors.Count:N0} errors",
-                    $"音频 {summary.Local.CopiedTracks:N0} · " +
-                    $"封面 {summary.Local.CopiedCovers:N0} · " +
-                    $"播放列表 {summary.Local.WrittenPlaylists:N0} · " +
-                    $"歌词 {summary.WrittenLyrics:N0} · " +
-                    $"错误 {summary.Errors.Count:N0}");
-
-            LastRunTitle.Text =
-                summary.Errors.Count == 0
-                    ? L(
-                        "Last sync completed",
-                        "上次同步已完成")
-                    : L(
-                        "Last sync completed with errors",
-                        "上次同步完成，但有错误");
-            LastRunSummaryText.Text =
-                message;
-
-            AddActivity(
-                summary.Errors.Count == 0
-                    ? L(
-                        "Sync complete",
-                        "同步完成")
-                    : L(
-                        "Sync warning",
-                        "同步警告"),
-                message);
-
-            foreach (TrackSyncError error
-                in summary.Errors.Take(200))
-            {
-                AddActivity(
-                    L(
-                        "Track error",
-                        "歌曲错误"),
-                    $"{Path.GetFileName(error.SourcePath)} · " +
-                    $"{FriendlyStage(error.Stage)} · " +
-                    error.Message);
-            }
-
-            ShowInfo(
-                summary.Errors.Count == 0
-                    ? InfoBarSeverity.Success
-                    : InfoBarSeverity.Warning,
-                summary.Errors.Count == 0
-                    ? L(
-                        "Sync complete",
-                        "同步完成")
-                    : L(
-                        "Sync completed with errors",
-                        "同步完成，但有错误"),
-                message);
-        }
-        catch (OperationCanceledException)
-        {
-            ShowInfo(
-                InfoBarSeverity.Warning,
-                L(
-                    "Sync cancelled",
-                    "同步已取消"),
-                L(
-                    "Completed work was checkpointed.",
-                    "已完成的工作已经保存。"));
-        }
-        catch (Exception exception)
-        {
-            HandleUiException(
-                L(
-                    "Sync failed.",
-                    "同步失败。"),
-                exception);
+            await dialog.ShowAsync();
         }
         finally
         {
-            _operationCancellation = null;
-            SetBusy(
-                false,
-                L(
-                    "Refreshing library…",
-                    "正在刷新音乐库……"));
-        }
+            if (!cancellation.IsCancellationRequested)
+            {
+                await cancellation
+                    .CancelAsync();
+            }
 
-        await ScanLibraryAsync(
-            clearInfoBar: false,
-            recordActivity: false);
+            _operationCancellation = null;
+            _busy = false;
+            ScanButton.IsEnabled = true;
+
+            if (completedSync
+                && settings is not null)
+            {
+                await RefreshLibraryAfterSyncAsync(
+                    settings);
+            }
+            else
+            {
+                SyncButton.IsEnabled =
+                    _plan is
+                    {
+                        PendingCount: > 0,
+                        ErrorCount: 0,
+                    };
+            }
+        }
+    }
+
+    private async Task RefreshLibraryAfterSyncAsync(
+        MusicLoomSettings settings)
+    {
+        try
+        {
+            StateStore stateStore =
+                new(StatePath);
+            StateDocument state =
+                await stateStore.LoadAsync();
+
+            LibraryScanner scanner =
+                new(
+                    new AtlMetadataReader());
+
+            LibraryPlan freshPlan =
+                await Task.Run(
+                    async () =>
+                        await scanner.BuildPlanAsync(
+                            settings,
+                            state));
+
+            await stateStore.SaveAsync(
+                state);
+
+            _settings = settings;
+            _stateStore = stateStore;
+            _state = state;
+            _plan = freshPlan;
+
+            PopulateLibrary(
+                settings,
+                freshPlan);
+            UpdateLibrarySummary(
+                freshPlan);
+
+            await LibraryDatabase.SavePlanAsync(
+                DatabasePath,
+                settings.Path.SourceDirectory,
+                settings.Path.DestinationDirectory,
+                freshPlan);
+
+            PopulatePlaylists(
+                await Task.Run(
+                    () => BuildPlaylists(
+                        settings)));
+
+            OperationStatusText.Text =
+                L(
+                    $"{freshPlan.TotalCount:N0} tracks · {freshPlan.PendingTrackCount:N0} pending · {freshPlan.ErrorCount:N0} errors",
+                    $"{freshPlan.TotalCount:N0} 首歌曲 · {freshPlan.PendingTrackCount:N0} 首待同步 · {freshPlan.ErrorCount:N0} 个错误");
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Could not refresh the library after sync.",
+                exception);
+
+            ShowInfo(
+                InfoBarSeverity.Warning,
+                L(
+                    "Sync finished, but the library view could not refresh",
+                    "同步已完成，但无法刷新音乐库视图"),
+                UserFacingErrors.Describe(
+                    exception));
+        }
     }
 
     private async void CancelButton_Click(
