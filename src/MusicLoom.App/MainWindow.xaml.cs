@@ -33,6 +33,11 @@ public sealed partial class MainWindow : Window
             AppDiagnostics.DataDirectory,
             "state.json");
 
+    private static readonly string SnapshotPath =
+        Path.Combine(
+            AppDiagnostics.DataDirectory,
+            "library-index.json");
+
     private readonly List<LibraryDisplayItem>
         _allLibraryItems = [];
     private readonly List<PlaylistDisplayItem>
@@ -46,6 +51,7 @@ public sealed partial class MainWindow : Window
     private LibraryPlan? _plan;
     private LibraryDisplayItem? _selectedLibraryItem;
     private LibraryDisplayItem? _contextLibraryItem;
+    private LibraryDisplayItem? _playlistContextItem;
     private CancellationTokenSource? _operationCancellation;
     private CancellationTokenSource? _settingsSaveCancellation;
     private bool _busy;
@@ -56,6 +62,8 @@ public sealed partial class MainWindow : Window
         DetectSystemLanguage();
     private string _accentColor = "system";
     private string? _currentLyricsRaw;
+    private byte[]? _currentArtworkBytes;
+    private bool _showTranslations = true;
 
     public MainWindow()
     {
@@ -69,6 +77,7 @@ public sealed partial class MainWindow : Window
 
         LibraryFilterBox.SelectedIndex = 0;
         LibrarySortBox.SelectedIndex = 0;
+        PlaylistSortBox.SelectedIndex = 0;
         LyricsStorageModeBox.SelectedIndex = 0;
         LanguageBox.SelectedIndex =
             IsChinese ? 1 : 0;
@@ -121,13 +130,10 @@ public sealed partial class MainWindow : Window
             ApplyAppearance(settings);
 
             SettingsStatusText.Text =
-                File.Exists(ConfigPath)
-                    ? L(
-                        "Settings loaded. Changes are saved automatically.",
-                        "设置已加载。后续修改会自动保存。")
-                    : L(
-                        "Choose your source and destination. Changes are saved automatically.",
-                        "请选择源音乐库和目标目录。修改会自动保存。");
+                string.Empty;
+
+            await RestoreCachedLibraryAsync(
+                settings);
 
             UpdateLibraryEmptyState();
 
@@ -172,9 +178,12 @@ public sealed partial class MainWindow : Window
                 settings.Ui.AccentColor,
                 out Color accent))
         {
-            AccentPreview.Background =
-                new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                    accent);
+            Microsoft.UI.Xaml.Media.SolidColorBrush brush =
+                new(accent);
+
+            AccentPreview.Background = brush;
+            SyncButton.Background = brush;
+            OperationProgressBar.Foreground = brush;
         }
         else
         {
@@ -182,6 +191,11 @@ public sealed partial class MainWindow : Window
                 Application.Current.Resources[
                     "AccentFillColorDefaultBrush"]
                 as Microsoft.UI.Xaml.Media.Brush;
+
+            SyncButton.ClearValue(
+                Control.BackgroundProperty);
+            OperationProgressBar.ClearValue(
+                Control.ForegroundProperty);
         }
     }
 
@@ -598,12 +612,18 @@ public sealed partial class MainWindow : Window
                 settings,
                 plan);
 
+            await LibrarySnapshotStore.SaveAsync(
+                SnapshotPath,
+                settings.Path.SourceDirectory,
+                settings.Path.DestinationDirectory,
+                plan,
+                cancellation.Token);
+
             PlaylistDisplayItem[] playlists =
                 await Task.Run(
                     () =>
                         BuildPlaylists(
-                            settings,
-                            plan),
+                            settings),
                     cancellation.Token);
             PopulatePlaylists(playlists);
 
@@ -690,8 +710,9 @@ public sealed partial class MainWindow : Window
                     entry.SourcePath);
 
             string artist =
-                entry.Metadata?.AlbumArtist
-                ?? entry.Metadata?.Artist
+                FormatArtistsForDisplay(
+                    entry.Metadata?.AlbumArtist
+                    ?? entry.Metadata?.Artist)
                 ?? L(
                     "Unknown artist",
                     "未知艺术家");
@@ -1000,6 +1021,7 @@ public sealed partial class MainWindow : Window
     private void ResetTrackDetails()
     {
         _currentLyricsRaw = null;
+        _currentArtworkBytes = null;
 
         TrackTitleText.Text = string.Empty;
         TrackArtistText.Text = string.Empty;
@@ -1093,13 +1115,16 @@ public sealed partial class MainWindow : Window
             {
                 BitmapImage bitmap =
                     await CreateBitmapImageAsync(
-                        payload.Artwork);
+                        payload.Artwork,
+                        decodePixelWidth: 0);
                 item.Artwork = bitmap;
                 CoverImage.Source = bitmap;
                 CoverPlaceholderText.Visibility =
                     Visibility.Collapsed;
             }
 
+            _currentArtworkBytes =
+                payload.Artwork;
             _currentLyricsRaw =
                 payload.Lyrics;
             LyricsSourceText.Text =
@@ -1223,23 +1248,40 @@ public sealed partial class MainWindow : Window
 
     private void RenderLyrics()
     {
-        bool showTranslation =
-            ShowTranslationToggle.IsChecked
-                != false;
-
-        ShowTranslationToggle.Content =
-            showTranslation
-                ? L(
-                    "Show translation",
-                    "显示翻译")
-                : L(
-                    "Original only",
-                    "仅原文");
-
-        LyricDisplayLine[] lines =
+        LyricDisplayLine[] translatedLines =
             BuildLyricLines(
                 _currentLyricsRaw,
-                showTranslation);
+                showTranslation: true);
+
+        bool hasLyrics =
+            translatedLines.Length > 0;
+        bool hasTranslation =
+            translatedLines.Any(
+                static line =>
+                    !string.IsNullOrWhiteSpace(
+                        line.Translation));
+
+        TranslationButton.Visibility =
+            hasLyrics && hasTranslation
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+        ToolTipService.SetToolTip(
+            TranslationButton,
+            _showTranslations
+                ? L(
+                    "Hide translation",
+                    "仅显示原文")
+                : L(
+                    "Show translation",
+                    "显示翻译"));
+
+        LyricDisplayLine[] lines =
+            hasLyrics
+                ? BuildLyricLines(
+                    _currentLyricsRaw,
+                    _showTranslations)
+                : [];
 
         LyricsList.ItemsSource =
             lines.Length == 0
@@ -1255,10 +1297,36 @@ public sealed partial class MainWindow : Window
                 : lines;
     }
 
-    private void ShowTranslationToggle_Click(
+    private void TranslationButton_Click(
         object sender,
-        RoutedEventArgs e) =>
+        RoutedEventArgs e)
+    {
+        _showTranslations =
+            !_showTranslations;
         RenderLyrics();
+    }
+
+    private void CopyLyricLineItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem
+            {
+                Tag: LyricDisplayLine line,
+            })
+        {
+            return;
+        }
+
+        string text =
+            line.ShowTranslation
+            && !string.IsNullOrWhiteSpace(
+                line.Translation)
+                ? $"{line.Original}/{line.Translation}"
+                : line.Original;
+
+        CopyText(text);
+    }
 
     private static LyricDisplayLine[]
         BuildLyricLines(
@@ -1408,15 +1476,30 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            LibraryDisplayItem first =
-                group.First();
+            LibraryDisplayItem[] groupItems =
+                group.ToArray();
 
             byte[]? bytes =
                 await Task.Run(
                     () =>
-                        TryReadArtworkBytes(
-                            settings,
-                            first.Entry));
+                    {
+                        foreach (LibraryDisplayItem candidate
+                            in groupItems)
+                        {
+                            byte[]? candidateBytes =
+                                TryReadArtworkBytes(
+                                    settings,
+                                    candidate.Entry);
+
+                            if (candidateBytes is
+                                { Length: > 0 })
+                            {
+                                return candidateBytes;
+                            }
+                        }
+
+                        return null;
+                    });
 
             if (bytes is null
                 || bytes.Length == 0
@@ -1433,7 +1516,7 @@ public sealed partial class MainWindow : Window
                         bytes);
 
                 foreach (LibraryDisplayItem item
-                    in group)
+                    in groupItems)
                 {
                     item.Artwork = bitmap;
                 }
@@ -1576,7 +1659,8 @@ public sealed partial class MainWindow : Window
 
     private static async Task<BitmapImage>
         CreateBitmapImageAsync(
-            byte[] artwork)
+            byte[] artwork,
+            int decodePixelWidth = 192)
     {
         using InMemoryRandomAccessStream
             stream = new();
@@ -1588,10 +1672,12 @@ public sealed partial class MainWindow : Window
         writer.DetachStream();
         stream.Seek(0);
 
-        BitmapImage bitmap = new()
+        BitmapImage bitmap = new();
+        if (decodePixelWidth > 0)
         {
-            DecodePixelWidth = 256,
-        };
+            bitmap.DecodePixelWidth =
+                decodePixelWidth;
+        }
 
         await bitmap.SetSourceAsync(stream);
         return bitmap;
@@ -2236,8 +2322,7 @@ public sealed partial class MainWindow : Window
 
     private PlaylistDisplayItem[]
         BuildPlaylists(
-            MusicLoomSettings settings,
-            LibraryPlan plan)
+            MusicLoomSettings settings)
     {
         string root =
             settings.Path
@@ -2249,28 +2334,16 @@ public sealed partial class MainWindow : Window
             return [];
         }
 
-        Dictionary<string, PlanEntry>
+        Dictionary<string, LibraryDisplayItem>
             trackLookup =
-                plan.Entries.ToDictionary(
-                    static entry =>
+                _allLibraryItems.ToDictionary(
+                    static item =>
                         Path.GetFullPath(
-                            entry.SourcePath),
+                            item.Entry.SourcePath),
                     StringComparer
                         .OrdinalIgnoreCase);
 
-        Dictionary<string, string>
-            destinations =
-                plan.Playlists.ToDictionary(
-                    static playlist =>
-                        Path.GetFullPath(
-                            playlist.SourcePath),
-                    static playlist =>
-                        playlist.DestinationPath,
-                    StringComparer
-                        .OrdinalIgnoreCase);
-
-        List<PlaylistDisplayItem> result =
-            [];
+        List<PlaylistDisplayItem> result = [];
 
         foreach (string playlistPath
             in Directory.EnumerateFiles(
@@ -2286,8 +2359,13 @@ public sealed partial class MainWindow : Window
                     File.ReadAllLines(
                         playlistPath));
 
-            List<PlaylistTrackDisplayItem>
+            List<LibraryDisplayItem>
                 tracks = [];
+
+            string playlistDirectory =
+                Path.GetDirectoryName(
+                    playlistPath)
+                ?? root;
 
             foreach (string rawPath in paths)
             {
@@ -2296,51 +2374,32 @@ public sealed partial class MainWindow : Window
                 {
                     normalized =
                         Path.GetFullPath(
-                            rawPath);
+                            Path.IsPathRooted(
+                                rawPath)
+                                ? rawPath
+                                : Path.Combine(
+                                    playlistDirectory,
+                                    rawPath));
                 }
                 catch
                 {
-                    normalized =
-                        rawPath;
+                    normalized = rawPath;
                 }
 
                 if (trackLookup.TryGetValue(
                         normalized,
-                        out PlanEntry? entry))
+                        out LibraryDisplayItem? item))
                 {
-                    tracks.Add(
-                        new PlaylistTrackDisplayItem(
-                            entry.Metadata?.Title
-                            ?? Path.GetFileNameWithoutExtension(
-                                entry.SourcePath),
-                            entry.Metadata?.AlbumArtist
-                            ?? entry.Metadata?.Artist
-                            ?? string.Empty,
-                            entry.SourcePath));
-                }
-                else
-                {
-                    tracks.Add(
-                        new PlaylistTrackDisplayItem(
-                            Path.GetFileNameWithoutExtension(
-                                rawPath),
-                            string.Empty,
-                            rawPath));
+                    tracks.Add(item);
                 }
             }
-
-            destinations.TryGetValue(
-                Path.GetFullPath(
-                    playlistPath),
-                out string? destination);
 
             result.Add(
                 new PlaylistDisplayItem(
                     Path.GetFileNameWithoutExtension(
                         playlistPath),
                     playlistPath,
-                    destination
-                    ?? Path.Combine(
+                    Path.Combine(
                         settings.Path
                             .DestinationDirectory,
                         Path.GetFileNameWithoutExtension(
@@ -2385,9 +2444,10 @@ public sealed partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         if (PlaylistsList.SelectedItem
-            is not PlaylistDisplayItem
-                playlist)
+            is not PlaylistDisplayItem playlist)
         {
+            PlaylistTracksList.ItemsSource =
+                null;
             return;
         }
 
@@ -2395,10 +2455,138 @@ public sealed partial class MainWindow : Window
             playlist.Name;
         PlaylistMetaText.Text =
             L(
-                $"{playlist.TrackCount:N0} tracks · {playlist.SourcePath}",
-                $"{playlist.TrackCount:N0} 首歌曲 · {playlist.SourcePath}");
+                $"{playlist.TrackCount:N0} tracks",
+                $"{playlist.TrackCount:N0} 首歌曲");
+
+        ApplyPlaylistTrackFilter();
+    }
+
+    private void PlaylistSearchBox_TextChanged(
+        object sender,
+        TextChangedEventArgs e) =>
+        ApplyPlaylistTrackFilter();
+
+    private void PlaylistSortBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e) =>
+        ApplyPlaylistTrackFilter();
+
+    private void ApplyPlaylistTrackFilter()
+    {
+        if (PlaylistsList.SelectedItem
+            is not PlaylistDisplayItem playlist)
+        {
+            PlaylistTracksList.ItemsSource =
+                null;
+            return;
+        }
+
+        string query =
+            PlaylistSearchBox.Text.Trim();
+
+        string sort =
+            (PlaylistSortBox.SelectedItem
+                as ComboBoxItem)
+                ?.Tag?.ToString()
+            ?? "title";
+
+        IEnumerable<LibraryDisplayItem>
+            items = playlist.Tracks;
+
+        if (!string.IsNullOrWhiteSpace(
+                query))
+        {
+            items = items.Where(
+                item =>
+                    item.SearchText.Contains(
+                        query,
+                        StringComparison
+                            .OrdinalIgnoreCase));
+        }
+
+        items = sort switch
+        {
+            "album" =>
+                items
+                    .OrderBy(
+                        static item =>
+                            item.Album,
+                        StringComparer
+                            .CurrentCultureIgnoreCase)
+                    .ThenBy(
+                        static item =>
+                            item.Title,
+                        StringComparer
+                            .CurrentCultureIgnoreCase),
+            "artist" =>
+                items
+                    .OrderBy(
+                        static item =>
+                            item.Artist,
+                        StringComparer
+                            .CurrentCultureIgnoreCase)
+                    .ThenBy(
+                        static item =>
+                            item.Title,
+                        StringComparer
+                            .CurrentCultureIgnoreCase),
+            _ =>
+                items.OrderBy(
+                    static item =>
+                        item.Title,
+                    StringComparer
+                        .CurrentCultureIgnoreCase),
+        };
+
         PlaylistTracksList.ItemsSource =
-            playlist.Tracks;
+            items.ToArray();
+    }
+
+    private void PlaylistTracksList_RightTapped(
+        object sender,
+        RightTappedRoutedEventArgs e)
+    {
+        if (e.OriginalSource
+                is FrameworkElement element
+            && element.DataContext
+                is LibraryDisplayItem item)
+        {
+            PlaylistTracksList.SelectedItem =
+                item;
+            _playlistContextItem = item;
+        }
+        else
+        {
+            _playlistContextItem =
+                PlaylistTracksList.SelectedItem
+                    as LibraryDisplayItem;
+        }
+    }
+
+    private void PlaylistShowInLibraryItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        LibraryDisplayItem? item =
+            _playlistContextItem
+            ?? PlaylistTracksList.SelectedItem
+                as LibraryDisplayItem;
+
+        if (item is null)
+        {
+            return;
+        }
+
+        LibrarySearchBox.Text =
+            string.Empty;
+        LibraryFilterBox.SelectedIndex = 0;
+        ApplyLibraryFilter();
+
+        NavigateTo("library");
+
+        LibraryList.SelectedItem =
+            item;
+        LibraryList.ScrollIntoView(item);
     }
 
     private async void BrowseSourceButton_Click(
@@ -2562,11 +2750,6 @@ public sealed partial class MainWindow : Window
         _settingsSaveCancellation =
             cts;
 
-        SettingsStatusText.Text =
-            L(
-                "Saving…",
-                "正在保存……");
-
         _ = SaveSettingsAfterDelayAsync(
             cts.Token);
     }
@@ -2614,11 +2797,6 @@ public sealed partial class MainWindow : Window
                         "Settings changed · refresh the library.",
                         "设置已更改 · 请刷新音乐库。");
             }
-
-            SettingsStatusText.Text =
-                L(
-                    "Saved automatically.",
-                    "已自动保存。");
 
             UpdateLibraryEmptyState();
         }
@@ -2993,6 +3171,11 @@ public sealed partial class MainWindow : Window
             !busy
             && _selectedLibraryItem
                 is not null;
+
+        LibraryProgressPanel.Visibility =
+            busy
+                ? Visibility.Visible
+                : Visibility.Collapsed;
 
         OperationProgressBar.Visibility =
             busy
@@ -3463,8 +3646,8 @@ public sealed partial class MainWindow : Window
                 "Changes are saved automatically.",
                 "更改会自动保存。");
 
-        ShowTranslationToggle.Content =
-            ShowTranslationToggle.IsChecked
+        TranslationButton.Content =
+            TranslationButton.IsChecked
                 != false
                 ? L(
                     "Show translation",
