@@ -96,9 +96,7 @@ public sealed class LocalLibraryMaterializer
 
         int completedWork = 0;
         int copiedTracks = 0;
-        int skippedTracks =
-            plan.Entries.Count
-            - trackWork.Length;
+        int skippedTracks = 0;
         int copiedCovers = 0;
         int skippedCovers =
             covers.Count
