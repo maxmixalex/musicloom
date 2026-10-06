@@ -364,36 +364,46 @@
                   </Button>
 
                   <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5">
-                    <Grid
+                    <ScrollViewer
                         x:Name="TrackTitleViewport"
-                        Clip="0,0,10000,10000">
+                        HorizontalScrollBarVisibility="Hidden"
+                        VerticalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Disabled"
+                        VerticalScrollMode="Disabled"
+                        ZoomMode="Disabled"
+                        IsTabStop="False">
                       <TextBlock
                           x:Name="TrackTitleText"
                           Text=""
                           FontSize="26"
                           FontWeight="SemiBold"
                           TextWrapping="NoWrap"
-                          HorizontalAlignment="Stretch">
+                          HorizontalAlignment="Left">
                         <TextBlock.RenderTransform>
                           <TranslateTransform x:Name="TrackTitleTranslateTransform" />
                         </TextBlock.RenderTransform>
                       </TextBlock>
-                    </Grid>
+                    </ScrollViewer>
                     <TextBlock x:Name="TrackArtistText" Text="" FontSize="16" TextWrapping="Wrap" />
-                    <Grid
+                    <ScrollViewer
                         x:Name="TrackAlbumViewport"
-                        Clip="0,0,10000,10000">
+                        HorizontalScrollBarVisibility="Hidden"
+                        VerticalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Disabled"
+                        VerticalScrollMode="Disabled"
+                        ZoomMode="Disabled"
+                        IsTabStop="False">
                       <TextBlock
                           x:Name="TrackAlbumText"
                           Text=""
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                           TextWrapping="NoWrap"
-                          HorizontalAlignment="Stretch">
+                          HorizontalAlignment="Left">
                         <TextBlock.RenderTransform>
                           <TranslateTransform x:Name="TrackAlbumTranslateTransform" />
                         </TextBlock.RenderTransform>
                       </TextBlock>
-                    </Grid>
+                    </ScrollViewer>
                     <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
                       <FontIcon x:Name="TrackStatusIcon" Glyph="&#xE823;" FontSize="13" />
                       <TextBlock x:Name="TrackStatusText" Text="" FontSize="12" VerticalAlignment="Center" />
