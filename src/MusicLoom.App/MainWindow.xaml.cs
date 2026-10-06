@@ -3104,18 +3104,61 @@ public sealed partial class MainWindow : Window
                 }
             }
 
+            string destinationPath =
+                Path.Combine(
+                    settings.Path
+                        .DestinationDirectory,
+                    Path.GetFileNameWithoutExtension(
+                        playlistPath)
+                    + ".txt");
+
+            string playlistBase =
+                settings.Path
+                    .DestinationPlaylistBase
+                    .Replace('\\', '/')
+                    .TrimEnd('/');
+
+            string[] expectedLines =
+                tracks
+                    .Where(static item =>
+                        item.Entry
+                            .DestinationPath
+                        is not null)
+                    .Select(item =>
+                    {
+                        string relative =
+                            Path.GetRelativePath(
+                                settings.Path
+                                    .DestinationDirectory,
+                                item.Entry
+                                    .DestinationPath!)
+                                .Replace('\\', '/');
+
+                        return $"{playlistBase}/{relative}";
+                    })
+                    .ToArray();
+
+            string expected =
+                string.Join(
+                    "\n",
+                    expectedLines);
+
+            bool isReady =
+                File.Exists(destinationPath)
+                && string.Equals(
+                    File.ReadAllText(
+                        destinationPath),
+                    expected,
+                    StringComparison.Ordinal);
+
             result.Add(
                 new PlaylistDisplayItem(
                     Path.GetFileNameWithoutExtension(
                         playlistPath),
                     playlistPath,
-                    Path.Combine(
-                        settings.Path
-                            .DestinationDirectory,
-                        Path.GetFileNameWithoutExtension(
-                            playlistPath)
-                        + ".txt"),
-                    tracks));
+                    destinationPath,
+                    tracks,
+                    isReady));
         }
 
         return [.. result];
@@ -3164,9 +3207,13 @@ public sealed partial class MainWindow : Window
         PlaylistTitleText.Text =
             playlist.Name;
         PlaylistMetaText.Text =
-            L(
-                $"{playlist.TrackCount:N0} tracks",
-                $"{playlist.TrackCount:N0} 首歌曲");
+            playlist.IsReady
+                ? L(
+                    $"{playlist.TrackCount:N0} tracks · Ready",
+                    $"{playlist.TrackCount:N0} 首歌曲 · 已就绪")
+                : L(
+                    $"{playlist.TrackCount:N0} tracks · Pending sync",
+                    $"{playlist.TrackCount:N0} 首歌曲 · 待同步");
 
         ApplyPlaylistTrackFilter();
     }
