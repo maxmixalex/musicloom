@@ -71,10 +71,24 @@ public sealed class SyncExecutor
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(stateStore);
 
-        LocalMaterializeSummary local = await _materializer.ApplyAsync(
-            settings,
-            plan,
-            cancellationToken);
+        Progress<LocalMaterializeProgress>
+            materializeProgress = new(value =>
+            {
+                progress?.Report(
+                    new SyncExecutionProgress(
+                        value.Processed,
+                        value.Total,
+                        value.SourcePath,
+                        value.Stage));
+            });
+
+        LocalMaterializeSummary local =
+            await _materializer.ApplyAsync(
+                settings,
+                plan,
+                materializeProgress,
+                cancellationToken:
+                    cancellationToken);
 
         List<TrackSyncError> errors = local.Errors
             .Select(static error => new TrackSyncError(
