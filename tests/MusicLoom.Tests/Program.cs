@@ -31,6 +31,7 @@ List<(string Name, Action Test)> tests =
     ("Cover and playlist-only changes remain actionable", AncillaryPlanningRegression.Run),
     ("Destination drift is rematerialized without touching source metadata", DestinationDriftRegression.Run),
     ("State recovery and materialization failures are isolated", ResilienceRegression.Run),
+    ("Source hashing, metadata fallback, and lyric TTL stay safe", ParityRegression.Run),
 ];
 
 int failed = 0;
