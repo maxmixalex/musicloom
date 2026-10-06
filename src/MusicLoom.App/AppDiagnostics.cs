@@ -65,6 +65,43 @@ internal static class AppDiagnostics
         });
     }
 
+    public static void OpenLogFile()
+    {
+        Directory.CreateDirectory(LogDirectory);
+
+        if (!File.Exists(LogPath))
+        {
+            File.WriteAllText(
+                LogPath,
+                string.Empty,
+                Encoding.UTF8);
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = LogPath,
+            UseShellExecute = true,
+        });
+    }
+
+    public static void ClearLog()
+    {
+        try
+        {
+            lock (Gate)
+            {
+                Directory.CreateDirectory(LogDirectory);
+                File.WriteAllText(
+                    LogPath,
+                    string.Empty,
+                    Encoding.UTF8);
+            }
+        }
+        catch
+        {
+        }
+    }
+
     private static void RotateIfNeeded()
     {
         try

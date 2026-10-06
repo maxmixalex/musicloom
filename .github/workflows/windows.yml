@@ -34,7 +34,7 @@ jobs:
         run: |
           $xaml = Get-Content "src/MusicLoom.App/MainWindow.xaml" -Raw
 
-          $fixedControls = @(
+          $stretchControls = @(
             "LyricsStorageModeBox",
             "LyricsRefreshHoursBox",
             "ThemeBox",
@@ -43,13 +43,22 @@ jobs:
             "AccentControlRail"
           )
 
-          foreach ($name in $fixedControls) {
+          foreach ($name in $stretchControls) {
             $pattern =
               'x:Name="' + [regex]::Escape($name) +
-              '"(?:(?!>).)*Width="280"(?:(?!>).)*HorizontalAlignment="Right"'
+              '"(?:(?!>).)*HorizontalAlignment="Stretch"'
             if (-not [regex]::IsMatch($xaml, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
-              throw "Settings control '$name' is not on the 280px right-aligned rail."
+              throw "Settings control '$name' must stretch inside the shared 280px rail."
             }
+          }
+
+          $railCount =
+            ([regex]::Matches(
+              $xaml,
+              '<ColumnDefinition Width="280" />'
+            )).Count
+          if ($railCount -lt 9) {
+            throw "Settings page no longer provides the expected 280px right-side control rails."
           }
 
           $toggleControls = @(

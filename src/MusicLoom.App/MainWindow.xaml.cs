@@ -49,8 +49,6 @@ public sealed partial class MainWindow : Window
         _allLibraryItems = [];
     private readonly List<PlaylistDisplayItem>
         _playlists = [];
-    private readonly List<string>
-        _activityItems = [];
 
     private MusicLoomSettings? _settings;
     private StateDocument? _state;
@@ -97,6 +95,9 @@ public sealed partial class MainWindow : Window
             IsChinese ? 1 : 0;
         Navigation.SelectedItem =
             Navigation.MenuItems[0];
+
+        DiagnosticsLogPathText.Text =
+            AppDiagnostics.LogPath;
 
         ApplyLanguage();
         HideDetailPane();
@@ -451,631 +452,424 @@ public sealed partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        await ShowSyncWizardAsync();
+        if (_busy)
+        {
+            return;
+        }
+
+        await RunBackgroundSyncAsync();
     }
 
-    private async Task ShowSyncWizardAsync()
+    private async Task RunBackgroundSyncAsync()
     {
-        TextBlock stepText = new()
-        {
-            FontSize = 12,
-            Foreground =
-                Application.Current.Resources[
-                    "TextFillColorSecondaryBrush"]
-                as Microsoft.UI.Xaml.Media.Brush,
-        };
-
-        TextBlock headingText = new()
-        {
-            FontSize = 20,
-            FontWeight =
-                new Windows.UI.Text.FontWeight
-                {
-                    Weight = 600,
-                },
-            TextWrapping =
-                TextWrapping.Wrap,
-        };
-
-        TextBlock detailText = new()
-        {
-            Foreground =
-                Application.Current.Resources[
-                    "TextFillColorSecondaryBrush"]
-                as Microsoft.UI.Xaml.Media.Brush,
-            TextWrapping =
-                TextWrapping.Wrap,
-        };
-
-        ProgressBar progressBar = new()
-        {
-            Height = 4,
-            IsIndeterminate = true,
-        };
-
-        ListView errorsList = new()
-        {
-            MinHeight = 0,
-            MaxHeight = 250,
-            Visibility = Visibility.Collapsed,
-        };
-
-        StackPanel panel = new()
-        {
-            Width = 650,
-            Spacing = 12,
-        };
-        panel.Children.Add(stepText);
-        panel.Children.Add(headingText);
-        panel.Children.Add(detailText);
-        panel.Children.Add(progressBar);
-        panel.Children.Add(errorsList);
-
-        ContentDialog dialog = new()
-        {
-            XamlRoot =
-                ((FrameworkElement)Content)
-                    .XamlRoot,
-            Title =
-                L(
-                    "Sync library",
-                    "同步音乐库"),
-            PrimaryButtonText =
-                L(
-                    "Start sync",
-                    "开始同步"),
-            CloseButtonText =
-                L(
-                    "Close",
-                    "关闭"),
-            DefaultButton =
-                ContentDialogButton.Primary,
-            IsPrimaryButtonEnabled = false,
-            Content = panel,
-        };
-
-        MusicLoomSettings? settings = null;
-        StateStore? stateStore = null;
-        StateDocument? state = null;
-        LibraryPlan? plan = null;
-        bool operationRunning = false;
-        bool completedSync = false;
-
         using CancellationTokenSource
             cancellation = new();
 
         _operationCancellation =
             cancellation;
-        _busy = true;
-        ScanButton.IsEnabled = false;
-        SyncButton.IsEnabled = false;
 
-        void SetStep(
-            string step,
-            string heading,
-            string detail,
-            bool indeterminate = true)
+        SetBusy(
+            true,
+            L(
+                "Checking sync plan…",
+                "正在检查同步计划……"));
+
+        await Task.Yield();
+
+        try
         {
-            stepText.Text = step;
-            headingText.Text = heading;
-            detailText.Text = detail;
-            progressBar.Visibility =
-                Visibility.Visible;
-            progressBar.IsIndeterminate =
-                indeterminate;
-        }
-
-        void ShowErrors(
-            IEnumerable<string> errors)
-        {
-            string[] rows =
-                errors.ToArray();
-
-            errorsList.ItemsSource = rows;
-            errorsList.Visibility =
-                rows.Length == 0
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
-        }
-
-        async Task RunPreflightAsync()
-        {
-            operationRunning = true;
-            dialog.IsPrimaryButtonEnabled =
-                false;
-            dialog.CloseButtonText =
-                L(
-                    "Cancel",
-                    "取消");
-            ShowErrors([]);
-
-            SetStep(
-                L(
-                    "Step 1 of 3",
-                    "第 1 步，共 3 步"),
-                L(
-                    "Checking the library",
-                    "正在检查音乐库"),
-                L(
-                    "MusicLoom is validating source files, destination state, covers and playlists without changing the current view.",
-                    "MusicLoom 正在校验源文件、目标状态、封面和播放列表，不会刷新当前列表。"));
-
-            try
-            {
-                settings =
-                    await SettingsLoader.LoadAsync(
-                        ConfigPath,
-                        cancellation.Token);
-
-                LibraryPathSafety.ValidateStatePath(
-                    settings,
-                    StatePath);
-
-                stateStore =
-                    new StateStore(
-                        StatePath);
-                state =
-                    await stateStore.LoadAsync(
-                        cancellation.Token);
-
-                Progress<ScanProgress>
-                    scanProgress = new(value =>
-                    {
-                        if (value.Stage
-                            == "ancillary")
-                        {
-                            detailText.Text =
-                                L(
-                                    "Checking covers and playlists…",
-                                    "正在检查封面和播放列表……");
-                            progressBar.IsIndeterminate =
-                                true;
-                            return;
-                        }
-
-                        if (value.Stage
-                            == "complete")
-                        {
-                            detailText.Text =
-                                L(
-                                    "Preparing sync summary…",
-                                    "正在生成同步摘要……");
-                            progressBar.IsIndeterminate =
-                                true;
-                            return;
-                        }
-
-                        progressBar.IsIndeterminate =
-                            false;
-                        progressBar.Value =
-                            value.Total <= 0
-                                ? 0
-                                : Math.Clamp(
-                                    value.Processed
-                                    * 100.0
-                                    / value.Total,
-                                    0,
-                                    100);
-
-                        detailText.Text =
-                            L(
-                                $"Checking tracks {value.Processed:N0}/{value.Total:N0}",
-                                $"正在检查歌曲 {value.Processed:N0}/{value.Total:N0}");
-                    });
-
-                LibraryScanner scanner =
-                    new(
-                        new AtlMetadataReader());
-
-                plan =
-                    await Task.Run(
-                        async () =>
-                            await scanner.BuildPlanAsync(
-                                settings,
-                                state,
-                                scanProgress,
-                                cancellation.Token),
-                        cancellation.Token);
-
-                await stateStore.SaveAsync(
-                    state,
+            MusicLoomSettings settings =
+                await SettingsLoader.LoadAsync(
+                    ConfigPath,
                     cancellation.Token);
 
-                if (plan.ErrorCount > 0)
-                {
-                    SetStep(
-                        L(
-                            "Step 1 of 3",
-                            "第 1 步，共 3 步"),
-                        L(
-                            "The library has scan errors",
-                            "音乐库存在扫描错误"),
-                        L(
-                            "Fix these items before syncing.",
-                            "请先处理以下项目，再进行同步。"),
-                        indeterminate: false);
+            LibraryPathSafety.ValidateStatePath(
+                settings,
+                StatePath);
 
-                    progressBar.Visibility =
-                        Visibility.Collapsed;
-
-                    ShowErrors(
-                        plan.Entries
-                            .Where(static entry =>
-                                entry.Status
-                                    == PlanEntryStatus.Error)
-                            .Select(entry =>
-                                $"{Path.GetFileName(entry.SourcePath)} · {entry.Detail}"));
-
-                    return;
-                }
-
-                if (plan.PendingCount == 0)
-                {
-                    SetStep(
-                        L(
-                            "Step 1 of 3",
-                            "第 1 步，共 3 步"),
-                        L(
-                            "Everything is already synced",
-                            "已经全部同步"),
-                        L(
-                            "No files, lyrics, covers or playlists need changes.",
-                            "没有需要更新的文件、歌词、封面或播放列表。"),
-                        indeterminate: false);
-
-                    progressBar.Visibility =
-                        Visibility.Collapsed;
-                    return;
-                }
-
-                SetStep(
-                    L(
-                        "Step 1 of 3",
-                        "第 1 步，共 3 步"),
-                    L(
-                        "Ready to sync",
-                        "可以开始同步"),
-                    L(
-                        $"{plan.PendingTrackCount:N0} pending tracks · {plan.AudioCopyCount:N0} audio copies · {plan.CoverWriteCount:N0} covers · {plan.PlaylistWriteCount:N0} playlists",
-                        $"{plan.PendingTrackCount:N0} 首歌曲待处理 · {plan.AudioCopyCount:N0} 个音频复制 · {plan.CoverWriteCount:N0} 个封面 · {plan.PlaylistWriteCount:N0} 个播放列表"),
-                    indeterminate: false);
-
-                progressBar.Visibility =
-                    Visibility.Collapsed;
-                dialog.IsPrimaryButtonEnabled =
-                    true;
-            }
-            catch (OperationCanceledException)
-            {
-                detailText.Text =
-                    L(
-                        "Check cancelled.",
-                        "检查已取消。");
-            }
-            catch (Exception exception)
-            {
-                AppDiagnostics.LogException(
-                    "Sync wizard preflight failed.",
-                    exception);
-
-                SetStep(
-                    L(
-                        "Step 1 of 3",
-                        "第 1 步，共 3 步"),
-                    L(
-                        "Could not check the library",
-                        "无法检查音乐库"),
-                    UserFacingErrors.Describe(
-                        exception),
-                    indeterminate: false);
-
-                progressBar.Visibility =
-                    Visibility.Collapsed;
-            }
-            finally
-            {
-                operationRunning = false;
-                dialog.CloseButtonText =
-                    L(
-                        "Close",
-                        "关闭");
-            }
-        }
-
-        async Task RunSyncAsync()
-        {
-            if (settings is null
-                || stateStore is null
-                || state is null
-                || plan is null)
-            {
-                return;
-            }
-
-            operationRunning = true;
-            dialog.IsPrimaryButtonEnabled =
-                false;
-            dialog.CloseButtonText =
-                L(
-                    "Cancel",
-                    "取消");
-            ShowErrors([]);
-
-            SetStep(
-                L(
-                    "Step 2 of 3",
-                    "第 2 步，共 3 步"),
-                L(
-                    "Syncing",
-                    "正在同步"),
-                L(
-                    "Preparing local files…",
-                    "正在准备本地文件……"));
-
-            try
-            {
-                using NeteaseClient client =
-                    new();
-                CompositeFingerprintPcmDecoder
-                    decoder = new();
-                NeteaseTrackProvider provider =
-                    new(
-                        client,
-                        decoder);
-
-                ITrackLyricsWriter lyricsWriter =
-                    LyricsStorageModes.Normalize(
-                        settings.Organizer.Lyrics
-                            .StorageMode)
-                        == LyricsStorageModes.Sidecar
-                            ? new SidecarLrcLyricsWriter()
-                            : new TagLibSharpLyricsWriter();
-
-                SyncExecutor executor =
-                    new(
-                        new LocalLibraryMaterializer(),
-                        provider,
-                        provider,
-                        lyricsWriter);
-
-                Progress<SyncExecutionProgress>
-                    syncProgress = new(value =>
-                    {
-                        progressBar.IsIndeterminate =
-                            value.Total <= 0;
-
-                        if (value.Total > 0)
-                        {
-                            progressBar.Value =
-                                Math.Clamp(
-                                    value.Processed
-                                    * 100.0
-                                    / value.Total,
-                                    0,
-                                    100);
-                        }
-
-                        detailText.Text =
-                            $"{FriendlyStage(value.Stage)} · " +
-                            $"{value.Processed:N0}/{value.Total:N0} · " +
-                            $"{Path.GetFileName(value.SourcePath)}";
-                    });
-
-                SyncExecutionSummary summary =
-                    await Task.Run(
-                        async () =>
-                            await executor.ExecuteAsync(
-                                settings,
-                                plan,
-                                state,
-                                stateStore,
-                                syncProgress,
-                                cancellation.Token),
-                        cancellation.Token);
-
-                completedSync = true;
-
-                string summaryText =
-                    L(
-                        $"{summary.Local.CopiedTracks:N0} audio · {summary.Local.CopiedCovers:N0} covers · {summary.Local.WrittenPlaylists:N0} playlists · {summary.WrittenLyrics:N0} lyrics · {summary.Errors.Count:N0} errors",
-                        $"音频 {summary.Local.CopiedTracks:N0} · 封面 {summary.Local.CopiedCovers:N0} · 播放列表 {summary.Local.WrittenPlaylists:N0} · 歌词 {summary.WrittenLyrics:N0} · 错误 {summary.Errors.Count:N0}");
-
-                SetStep(
-                    L(
-                        "Step 3 of 3",
-                        "第 3 步，共 3 步"),
-                    summary.Errors.Count == 0
-                        ? L(
-                            "Sync complete",
-                            "同步完成")
-                        : L(
-                            "Sync complete with errors",
-                            "同步完成，但有错误"),
-                    summaryText,
-                    indeterminate: false);
-
-                progressBar.Value = 100;
-
-                string[] errorRows =
-                    summary.Errors
-                        .Select(error =>
-                            $"{Path.GetFileName(error.SourcePath)} · {FriendlyStage(error.Stage)} · {error.Message}")
-                        .ToArray();
-
-                ShowErrors(errorRows);
-
-                LastRunTitle.Text =
-                    summary.Errors.Count == 0
-                        ? L(
-                            "Last sync completed",
-                            "上次同步已完成")
-                        : L(
-                            "Last sync completed with errors",
-                            "上次同步完成，但有错误");
-                LastRunSummaryText.Text =
-                    summaryText;
-
-                AddActivity(
-                    summary.Errors.Count == 0
-                        ? L(
-                            "Sync complete",
-                            "同步完成")
-                        : L(
-                            "Sync warning",
-                            "同步警告"),
-                    summaryText);
-
-                foreach (TrackSyncError error
-                    in summary.Errors)
-                {
-                    AddActivity(
-                        L(
-                            "Track error",
-                            "歌曲错误"),
-                        $"{Path.GetFileName(error.SourcePath)} · {FriendlyStage(error.Stage)} · {error.Message}");
-                }
-
-                if (errorRows.Length > 0)
-                {
-                    errorsList.ScrollIntoView(
-                        errorRows[0]);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                SetStep(
-                    L(
-                        "Step 3 of 3",
-                        "第 3 步，共 3 步"),
-                    L(
-                        "Sync cancelled",
-                        "同步已取消"),
-                    L(
-                        "Completed work was checkpointed.",
-                        "已完成的工作已经保存。"),
-                    indeterminate: false);
-
-                progressBar.Visibility =
-                    Visibility.Collapsed;
-            }
-            catch (Exception exception)
-            {
-                AppDiagnostics.LogException(
-                    "Sync wizard failed.",
-                    exception);
-
-                SetStep(
-                    L(
-                        "Step 3 of 3",
-                        "第 3 步，共 3 步"),
-                    L(
-                        "Sync failed",
-                        "同步失败"),
-                    UserFacingErrors.Describe(
-                        exception),
-                    indeterminate: false);
-
-                progressBar.Visibility =
-                    Visibility.Collapsed;
-            }
-            finally
-            {
-                operationRunning = false;
-                dialog.CloseButtonText =
-                    L(
-                        "Close",
-                        "关闭");
-            }
-        }
-
-        dialog.Opened +=
-            async (_, _) =>
-                await RunPreflightAsync();
-
-        dialog.PrimaryButtonClick +=
-            async (_, args) =>
-            {
-                args.Cancel = true;
-
-                ContentDialogButtonClickDeferral
-                    deferral =
-                        args.GetDeferral();
-
-                try
-                {
-                    await RunSyncAsync();
-                }
-                finally
-                {
-                    deferral.Complete();
-                }
-            };
-
-        dialog.Closing +=
-            (_, args) =>
-            {
-                if (!operationRunning)
-                {
-                    return;
-                }
-
-                args.Cancel = true;
-
-                if (!cancellation
-                    .IsCancellationRequested)
-                {
-                    cancellation.Cancel();
-                    detailText.Text =
-                        L(
-                            "Cancelling…",
-                            "正在取消……");
-                }
-            };
-
-        try
-        {
-            await dialog.ShowAsync();
-        }
-        finally
-        {
-            if (!cancellation
-                .IsCancellationRequested)
-            {
-                await cancellation
-                    .CancelAsync();
-            }
-
-            _operationCancellation = null;
-            _busy = false;
-            ScanButton.IsEnabled = true;
-
-            if (completedSync
-                && settings is not null)
-            {
-                await RefreshLibraryAfterSyncAsync(
-                    settings);
-            }
-            else
-            {
-                SyncButton.IsEnabled =
-                    _plan is
-                    {
-                        PendingCount: > 0,
-                        ErrorCount: 0,
-                    };
-            }
-        }
-    }
-
-    private async Task RefreshLibraryAfterSyncAsync(
-        MusicLoomSettings settings)
-    {
-        try
-        {
             StateStore stateStore =
                 new(StatePath);
             StateDocument state =
-                await stateStore.LoadAsync();
+                await stateStore.LoadAsync(
+                    cancellation.Token);
+
+            Progress<ScanProgress>
+                scanProgress = new(value =>
+                {
+                    if (value.Stage
+                        == "ancillary")
+                    {
+                        SetOperationStatus(
+                            L(
+                                "Checking covers and playlists…",
+                                "正在检查封面和播放列表……"));
+                        SetIndeterminateProgress();
+                        return;
+                    }
+
+                    if (value.Stage
+                        == "complete")
+                    {
+                        SetOperationStatus(
+                            L(
+                                "Preparing sync…",
+                                "正在准备同步……"));
+                        SetIndeterminateProgress();
+                        return;
+                    }
+
+                    SetOperationStatus(
+                        L(
+                            $"Checking tracks {value.Processed:N0}/{value.Total:N0}",
+                            $"正在检查歌曲 {value.Processed:N0}/{value.Total:N0}"));
+                    SetProgress(
+                        value.Processed,
+                        value.Total);
+                });
+
+            LibraryScanner scanner =
+                new(
+                    new AtlMetadataReader());
+
+            LibraryPlan plan =
+                await Task.Run(
+                    async () =>
+                        await scanner.BuildPlanAsync(
+                            settings,
+                            state,
+                            scanProgress,
+                            cancellation.Token),
+                    cancellation.Token);
+
+            await stateStore.SaveAsync(
+                state,
+                cancellation.Token);
+
+            _settings = settings;
+            _stateStore = stateStore;
+            _state = state;
+            _plan = plan;
+
+            if (plan.ErrorCount > 0)
+            {
+                string[] errors =
+                    plan.Entries
+                        .Where(static entry =>
+                            entry.Status
+                                == PlanEntryStatus.Error)
+                        .Select(entry =>
+                            $"{Path.GetFileName(entry.SourcePath)} · {entry.Detail}")
+                        .ToArray();
+
+                foreach (string error
+                    in errors)
+                {
+                    AppDiagnostics.Log(
+                        $"Scan error before sync: {error}");
+                }
+
+                ShowInfo(
+                    InfoBarSeverity.Error,
+                    L(
+                        "Sync blocked",
+                        "同步已阻止"),
+                    errors.Length > 0
+                        ? L(
+                            $"{plan.ErrorCount:N0} scan errors. First: {errors[0]}",
+                            $"{plan.ErrorCount:N0} 个扫描错误。第一个：{errors[0]}")
+                        : L(
+                            "The library has scan errors.",
+                            "音乐库存在扫描错误。"));
+
+                return;
+            }
+
+            if (plan.PendingCount == 0)
+            {
+                ShowInfo(
+                    InfoBarSeverity.Success,
+                    L(
+                        "Already synced",
+                        "已经同步"),
+                    L(
+                        "There are no pending changes.",
+                        "没有待同步的更改。"));
+
+                SetOperationStatus(
+                    L(
+                        "Library is up to date.",
+                        "音乐库已经是最新。"));
+                return;
+            }
+
+            AppDiagnostics.Log(
+                $"Sync started: tracks={plan.PendingTrackCount}, " +
+                $"audio={plan.AudioCopyCount}, covers={plan.CoverWriteCount}, " +
+                $"playlists={plan.PlaylistWriteCount}.");
+
+            using NeteaseClient client =
+                new();
+            CompositeFingerprintPcmDecoder
+                decoder = new();
+            NeteaseTrackProvider provider =
+                new(
+                    client,
+                    decoder);
+
+            ITrackLyricsWriter lyricsWriter =
+                LyricsStorageModes.Normalize(
+                    settings.Organizer.Lyrics
+                        .StorageMode)
+                    == LyricsStorageModes.Sidecar
+                        ? new SidecarLrcLyricsWriter()
+                        : new TagLibSharpLyricsWriter();
+
+            SyncExecutor executor =
+                new(
+                    new LocalLibraryMaterializer(),
+                    provider,
+                    provider,
+                    lyricsWriter);
+
+            Progress<SyncExecutionProgress>
+                syncProgress = new(value =>
+                {
+                    SetOperationStatus(
+                        $"{FriendlyStage(value.Stage)} · " +
+                        $"{value.Processed:N0}/{value.Total:N0} · " +
+                        $"{Path.GetFileName(value.SourcePath)}");
+
+                    SetProgress(
+                        value.Processed,
+                        value.Total);
+
+                    UpdateLiveSyncRow(
+                        value);
+                });
+
+            SyncExecutionSummary summary =
+                await Task.Run(
+                    async () =>
+                        await executor.ExecuteAsync(
+                            settings,
+                            plan,
+                            state,
+                            stateStore,
+                            syncProgress,
+                            cancellation.Token),
+                    cancellation.Token);
+
+            string summaryText =
+                L(
+                    $"{summary.Local.CopiedTracks:N0} audio · " +
+                    $"{summary.Local.CopiedCovers:N0} covers · " +
+                    $"{summary.Local.WrittenPlaylists:N0} playlists · " +
+                    $"{summary.WrittenLyrics:N0} lyrics · " +
+                    $"{summary.Errors.Count:N0} errors",
+                    $"音频 {summary.Local.CopiedTracks:N0} · " +
+                    $"封面 {summary.Local.CopiedCovers:N0} · " +
+                    $"播放列表 {summary.Local.WrittenPlaylists:N0} · " +
+                    $"歌词 {summary.WrittenLyrics:N0} · " +
+                    $"错误 {summary.Errors.Count:N0}");
+
+            AppDiagnostics.Log(
+                "Sync finished: " + summaryText);
+
+            foreach (TrackSyncError error
+                in summary.Errors)
+            {
+                LibraryDisplayItem? errorItem =
+                    _allLibraryItems
+                        .FirstOrDefault(
+                            item =>
+                                string.Equals(
+                                    item.Entry.SourcePath,
+                                    error.SourcePath,
+                                    StringComparison.OrdinalIgnoreCase));
+
+                errorItem?.SetStatus(
+                    "error",
+                    StatusLabel(
+                        "error"));
+            }
+
+            RefreshLiveSyncCounters();
+
+            foreach (TrackSyncError error
+                in summary.Errors)
+            {
+                AppDiagnostics.Log(
+                    $"Track error [{error.Stage}] {error.SourcePath}: {error.Message}");
+            }
+
+            if (summary.Errors.Count == 0)
+            {
+                ShowInfo(
+                    InfoBarSeverity.Success,
+                    L(
+                        "Sync complete",
+                        "同步完成"),
+                    summaryText);
+            }
+            else
+            {
+                TrackSyncError first =
+                    summary.Errors[0];
+
+                ShowInfo(
+                    InfoBarSeverity.Warning,
+                    L(
+                        "Sync completed with errors",
+                        "同步完成，但有错误"),
+                    L(
+                        $"{summary.Errors.Count:N0} errors. First: {Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {first.Message}",
+                        $"{summary.Errors.Count:N0} 个错误。第一个：{Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {first.Message}"));
+            }
+
+            await RefreshLibraryAfterSyncAsync(
+                settings,
+                summary.Errors,
+                cancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppDiagnostics.Log(
+                "Sync cancelled by user.");
+
+            ShowInfo(
+                InfoBarSeverity.Warning,
+                L(
+                    "Sync cancelled",
+                    "同步已取消"),
+                L(
+                    "Completed work was checkpointed.",
+                    "已完成的工作已经保存。"));
+
+            SetOperationStatus(
+                L(
+                    "Sync cancelled.",
+                    "同步已取消。"));
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Background sync failed.",
+                exception);
+
+            ShowInfo(
+                InfoBarSeverity.Error,
+                L(
+                    "Sync failed",
+                    "同步失败"),
+                UserFacingErrors.Describe(
+                    exception));
+        }
+        finally
+        {
+            _operationCancellation = null;
+            SetBusy(
+                false,
+                OperationStatusText.Text);
+        }
+    }
+
+    private void UpdateLiveSyncRow(
+        SyncExecutionProgress progress)
+    {
+        LibraryDisplayItem? item =
+            _allLibraryItems
+                .FirstOrDefault(
+                    candidate =>
+                        string.Equals(
+                            candidate.Entry.SourcePath,
+                            progress.SourcePath,
+                            StringComparison.OrdinalIgnoreCase));
+
+        if (item is null)
+        {
+            return;
+        }
+
+        if (progress.Stage == "complete")
+        {
+            item.SetStatus(
+                "synced",
+                StatusLabel(
+                    "synced"));
+        }
+        else if (progress.Stage
+            == "failed")
+        {
+            item.SetStatus(
+                "error",
+                StatusLabel(
+                    "error"));
+        }
+        else if (progress.Stage
+            is "copy-audio"
+            or "state"
+            or "inspect-lyrics"
+            or "recognize"
+            or "fetch-lyrics"
+            or "write-lyrics"
+            or "cleanup-old-destination")
+        {
+            item.SetStatus(
+                "syncing",
+                L(
+                    "Syncing",
+                    "同步中"));
+        }
+
+        if (ReferenceEquals(
+                item,
+                _selectedLibraryItem))
+        {
+            TrackStatusText.Text =
+                item.StatusText;
+            TrackStatusIcon.Glyph =
+                item.StatusGlyph;
+            TrackStatusIcon.Foreground =
+                item.StatusBrush;
+        }
+
+        RefreshLiveSyncCounters();
+    }
+
+    private void RefreshLiveSyncCounters()
+    {
+        PendingCountText.Text =
+            _allLibraryItems
+                .Count(static item =>
+                    item.Kind
+                    is "pending" or "syncing")
+                .ToString("N0");
+
+        ErrorCountText.Text =
+            _allLibraryItems
+                .Count(static item =>
+                    item.Kind == "error")
+                .ToString("N0");
+    }
+
+    private async Task RefreshLibraryAfterSyncAsync(
+        MusicLoomSettings settings,
+        IReadOnlyList<TrackSyncError> syncErrors,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            SetOperationStatus(
+                L(
+                    "Refreshing sync state…",
+                    "正在刷新同步状态……"));
+            SetIndeterminateProgress();
+
+            StateStore stateStore =
+                new(StatePath);
+            StateDocument state =
+                await stateStore.LoadAsync(
+                    cancellationToken);
 
             LibraryScanner scanner =
                 new(
@@ -1086,39 +880,121 @@ public sealed partial class MainWindow : Window
                     async () =>
                         await scanner.BuildPlanAsync(
                             settings,
-                            state));
+                            state,
+                            cancellationToken:
+                                cancellationToken),
+                    cancellationToken);
 
             await stateStore.SaveAsync(
-                state);
+                state,
+                cancellationToken);
 
             _settings = settings;
             _stateStore = stateStore;
             _state = state;
             _plan = freshPlan;
 
-            PopulateLibrary(
-                settings,
-                freshPlan);
+            Dictionary<string, PlanEntry>
+                freshBySource =
+                    freshPlan.Entries
+                        .ToDictionary(
+                            static entry =>
+                                entry.SourcePath,
+                            StringComparer.OrdinalIgnoreCase);
+
+            bool structureChanged =
+                freshBySource.Count
+                != _allLibraryItems.Count
+                || _allLibraryItems.Any(
+                    item =>
+                        !freshBySource.ContainsKey(
+                            item.Entry.SourcePath));
+
+            if (structureChanged)
+            {
+                PopulateLibrary(
+                    settings,
+                    freshPlan);
+            }
+            else
+            {
+                foreach (LibraryDisplayItem item
+                    in _allLibraryItems)
+                {
+                    PlanEntry entry =
+                        freshBySource[
+                            item.Entry.SourcePath];
+
+                    item.UpdateEntry(
+                        entry);
+
+                    string kind =
+                        entry.Status
+                            == PlanEntryStatus.Error
+                            ? "error"
+                            : entry.Status
+                                == PlanEntryStatus.Unchanged
+                                ? "synced"
+                                : "pending";
+
+                    item.SetStatus(
+                        kind,
+                        StatusLabel(
+                            kind));
+                }
+
+                ApplyLibraryFilter();
+            }
+
             UpdateLibrarySummary(
                 freshPlan);
+
+            foreach (TrackSyncError error
+                in syncErrors)
+            {
+                LibraryDisplayItem? errorItem =
+                    _allLibraryItems
+                        .FirstOrDefault(
+                            item =>
+                                string.Equals(
+                                    item.Entry.SourcePath,
+                                    error.SourcePath,
+                                    StringComparison.OrdinalIgnoreCase));
+
+                errorItem?.SetStatus(
+                    "error",
+                    StatusLabel(
+                        "error"));
+            }
+
+            if (syncErrors.Count > 0)
+            {
+                ErrorCountText.Text =
+                    syncErrors.Count
+                        .ToString("N0");
+            }
 
             await LibraryDatabase.SavePlanAsync(
                 DatabasePath,
                 settings.Path.SourceDirectory,
                 settings.Path.DestinationDirectory,
-                freshPlan);
+                freshPlan,
+                cancellationToken);
 
             PopulatePlaylists(
                 await Task.Run(
                     () => BuildPlaylists(
-                        settings)));
+                        settings),
+                    cancellationToken));
 
-            OperationStatusText.Text =
+            SetOperationStatus(
                 L(
                     $"{freshPlan.TotalCount:N0} tracks · {freshPlan.PendingTrackCount:N0} pending · {freshPlan.ErrorCount:N0} errors",
-                    $"{freshPlan.TotalCount:N0} 首歌曲 · {freshPlan.PendingTrackCount:N0} 首待同步 · {freshPlan.ErrorCount:N0} 个错误");
+                    $"{freshPlan.TotalCount:N0} 首歌曲 · {freshPlan.PendingTrackCount:N0} 首待同步 · {freshPlan.ErrorCount:N0} 个错误"));
         }
         catch (Exception exception)
+            when (exception
+                is not OperationCanceledException)
         {
             AppDiagnostics.LogException(
                 "Could not refresh the library after sync.",
@@ -1148,10 +1024,11 @@ public sealed partial class MainWindow : Window
         }
 
         CancelButton.IsEnabled = false;
-        OperationStatusText.Text =
+        PlaylistCancelButton.IsEnabled = false;
+        SetOperationStatus(
             L(
                 "Cancelling…",
-                "正在取消……");
+                "正在取消……"));
 
         await cancellation.CancelAsync();
     }
@@ -1712,16 +1589,8 @@ public sealed partial class MainWindow : Window
     private void ResetTrackDetails()
     {
         StopTitleAutoScroll();
-        TrackTitleScroller.ChangeView(
-            0,
-            null,
-            null,
-            disableAnimation: true);
-        TrackAlbumScroller.ChangeView(
-            0,
-            null,
-            null,
-            disableAnimation: true);
+        TrackTitleTranslateTransform.X = 0;
+        TrackAlbumTranslateTransform.X = 0;
 
         _currentLyricsRaw = null;
         _currentArtworkBytes = null;
@@ -1768,16 +1637,8 @@ public sealed partial class MainWindow : Window
     {
         StopTitleAutoScroll();
 
-        TrackTitleScroller.ChangeView(
-            0,
-            null,
-            null,
-            disableAnimation: true);
-        TrackAlbumScroller.ChangeView(
-            0,
-            null,
-            null,
-            disableAnimation: true);
+        TrackTitleTranslateTransform.X = 0;
+        TrackAlbumTranslateTransform.X = 0;
 
         string mode =
             CurrentLongTextMode;
@@ -1788,65 +1649,39 @@ public sealed partial class MainWindow : Window
             item.ApplyLongTextMode(mode);
         }
 
-        if (mode == LongTextModes.Wrap)
-        {
-            ConfigureDetailText(
-                TrackTitleScroller,
-                TrackTitleText,
-                wrap: true,
-                tooltip: null,
-                maxLines: 3);
-            ConfigureDetailText(
-                TrackAlbumScroller,
-                TrackAlbumText,
-                wrap: true,
-                tooltip: null,
-                maxLines: 2);
-            return;
-        }
-
-        if (mode == LongTextModes.Hover)
-        {
-            ConfigureDetailText(
-                TrackTitleScroller,
-                TrackTitleText,
-                wrap: false,
-                tooltip: TrackTitleText.Text,
-                maxLines: 1);
-            ConfigureDetailText(
-                TrackAlbumScroller,
-                TrackAlbumText,
-                wrap: false,
-                tooltip: TrackAlbumText.Text,
-                maxLines: 1);
-            return;
-        }
-
         ConfigureDetailText(
-            TrackTitleScroller,
+            TrackTitleViewport,
             TrackTitleText,
-            wrap: false,
-            tooltip: null,
-            maxLines: 1,
-            marquee: true);
+            mode,
+            maxLines: 3);
         ConfigureDetailText(
-            TrackAlbumScroller,
+            TrackAlbumViewport,
             TrackAlbumText,
-            wrap: false,
-            tooltip: null,
-            maxLines: 1,
-            marquee: true);
+            mode,
+            maxLines: 2);
+
+        if (mode != LongTextModes.AutoScroll)
+        {
+            return;
+        }
 
         DispatcherQueue.TryEnqueue(
             () =>
             {
-                TrackTitleScroller.UpdateLayout();
-                TrackAlbumScroller.UpdateLayout();
+                TrackTitleViewport.UpdateLayout();
+                TrackAlbumViewport.UpdateLayout();
 
-                if (TrackTitleScroller.ScrollableWidth
-                        <= 1
-                    && TrackAlbumScroller.ScrollableWidth
-                        <= 1)
+                double titleOverflow =
+                    GetTextOverflow(
+                        TrackTitleViewport,
+                        TrackTitleText);
+                double albumOverflow =
+                    GetTextOverflow(
+                        TrackAlbumViewport,
+                        TrackAlbumText);
+
+                if (titleOverflow <= 1
+                    && albumOverflow <= 1)
                 {
                     return;
                 }
@@ -1855,7 +1690,7 @@ public sealed partial class MainWindow : Window
                 _albumScrollDirection = 1;
                 _titleScrollPauseUntil =
                     DateTimeOffset.UtcNow
-                        .AddMilliseconds(700);
+                        .AddMilliseconds(450);
 
                 DispatcherTimer timer = new()
                 {
@@ -1873,34 +1708,74 @@ public sealed partial class MainWindow : Window
     }
 
     private static void ConfigureDetailText(
-        ScrollViewer scroller,
+        ScrollViewer viewport,
         TextBlock text,
-        bool wrap,
-        string? tooltip,
-        int maxLines,
-        bool marquee = false)
+        string mode,
+        int maxLines)
     {
-        scroller.HorizontalScrollMode =
-            marquee
+        string normalized =
+            LongTextModes.Normalize(
+                mode);
+
+        bool wrap =
+            normalized
+            == LongTextModes.Wrap;
+        bool hover =
+            normalized
+            == LongTextModes.Hover;
+
+        viewport.HorizontalScrollBarVisibility =
+            ScrollBarVisibility.Hidden;
+        viewport.HorizontalScrollMode =
+            normalized
+                == LongTextModes.AutoScroll
                 ? ScrollMode.Enabled
                 : ScrollMode.Disabled;
-        scroller.HorizontalScrollBarVisibility =
-            ScrollBarVisibility.Hidden;
+        viewport.IsHitTestVisible =
+            hover;
+
+        text.HorizontalAlignment =
+            normalized
+                == LongTextModes.AutoScroll
+                ? HorizontalAlignment.Left
+                : HorizontalAlignment.Stretch;
+
+        text.Width =
+            double.NaN;
 
         text.TextWrapping =
             wrap
                 ? TextWrapping.WrapWholeWords
                 : TextWrapping.NoWrap;
         text.TextTrimming =
-            wrap || marquee
-                ? TextTrimming.None
-                : TextTrimming.CharacterEllipsis;
+            hover
+                ? TextTrimming.CharacterEllipsis
+                : TextTrimming.None;
         text.MaxLines =
-            maxLines;
+            wrap
+                ? maxLines
+                : 1;
 
         ToolTipService.SetToolTip(
             text,
-            tooltip);
+            hover
+                ? text.Text
+                : null);
+    }
+
+    private static double GetTextOverflow(
+        ScrollViewer viewport,
+        TextBlock text)
+    {
+        text.Measure(
+            new Windows.Foundation.Size(
+                double.PositiveInfinity,
+                double.PositiveInfinity));
+
+        return Math.Max(
+            0,
+            text.DesiredSize.Width
+            - viewport.ViewportWidth);
     }
 
     private void StopTitleAutoScroll()
@@ -1936,37 +1811,49 @@ public sealed partial class MainWindow : Window
         }
 
         bool titleHit =
-            AdvanceScroller(
-                TrackTitleScroller,
+            AdvanceTextTransform(
+                TrackTitleViewport,
+                TrackTitleText,
+                TrackTitleTranslateTransform,
                 ref _titleScrollDirection);
         bool albumHit =
-            AdvanceScroller(
-                TrackAlbumScroller,
+            AdvanceTextTransform(
+                TrackAlbumViewport,
+                TrackAlbumText,
+                TrackAlbumTranslateTransform,
                 ref _albumScrollDirection);
 
         if (titleHit || albumHit)
         {
             _titleScrollPauseUntil =
                 DateTimeOffset.UtcNow
-                    .AddMilliseconds(650);
+                    .AddMilliseconds(420);
         }
     }
 
-    private static bool AdvanceScroller(
-        ScrollViewer scroller,
+    private static bool AdvanceTextTransform(
+        ScrollViewer viewport,
+        TextBlock text,
+        TranslateTransform transform,
         ref double direction)
     {
         double max =
-            scroller.ScrollableWidth;
+            GetTextOverflow(
+                viewport,
+                text);
 
         if (max <= 1)
         {
+            transform.X = 0;
             return false;
         }
 
+        double offset =
+            -transform.X;
+
         double next =
-            scroller.HorizontalOffset
-            + direction * 1.9;
+            offset
+            + direction * 2.65;
         bool hitEdge = false;
 
         if (next >= max)
@@ -1982,11 +1869,9 @@ public sealed partial class MainWindow : Window
             hitEdge = true;
         }
 
-        scroller.ChangeView(
-            next,
-            null,
-            null,
-            disableAnimation: true);
+        // RenderTransform updates do not invalidate layout, unlike
+        // ScrollViewer.ChangeView(), so this avoids LayoutCycleException.
+        transform.X = -next;
 
         return hitEdge;
     }
@@ -2827,7 +2712,7 @@ public sealed partial class MainWindow : Window
     private void CoverButton_PointerEntered(
         object sender,
         PointerRoutedEventArgs e) =>
-        AnimateCoverScale(1.045);
+        AnimateCoverScale(1.07);
 
     private void CoverButton_PointerExited(
         object sender,
@@ -2849,7 +2734,7 @@ public sealed partial class MainWindow : Window
             Duration =
                 new Duration(
                     TimeSpan.FromMilliseconds(
-                        140)),
+                        180)),
             EasingFunction = ease,
             EnableDependentAnimation = true,
         };
@@ -2859,7 +2744,7 @@ public sealed partial class MainWindow : Window
             Duration =
                 new Duration(
                     TimeSpan.FromMilliseconds(
-                        140)),
+                        180)),
             EasingFunction = ease,
             EnableDependentAnimation = true,
         };
@@ -2953,21 +2838,49 @@ public sealed partial class MainWindow : Window
             double scale = 1;
             double translateX = 0;
             double translateY = 0;
+            double targetScale = 1;
+            double targetTranslateX = 0;
+            double targetTranslateY = 0;
             bool dragging = false;
             Windows.Foundation.Point
                 lastPointer = default;
 
-            void ApplyTransform()
-            {
-                imageTransform.ScaleX =
-                    scale;
-                imageTransform.ScaleY =
-                    scale;
-                imageTransform.TranslateX =
-                    translateX;
-                imageTransform.TranslateY =
-                    translateY;
-            }
+            DispatcherTimer motionTimer =
+                new()
+                {
+                    Interval =
+                        TimeSpan.FromMilliseconds(
+                            16),
+                };
+
+            motionTimer.Tick +=
+                (_, _) =>
+                {
+                    const double Ease = 0.24;
+
+                    scale +=
+                        (targetScale - scale)
+                        * Ease;
+                    translateX +=
+                        (targetTranslateX
+                            - translateX)
+                        * Ease;
+                    translateY +=
+                        (targetTranslateY
+                            - translateY)
+                        * Ease;
+
+                    imageTransform.ScaleX =
+                        scale;
+                    imageTransform.ScaleY =
+                        scale;
+                    imageTransform.TranslateX =
+                        translateX;
+                    imageTransform.TranslateY =
+                        translateY;
+                };
+
+            motionTimer.Start();
 
             PointerEventHandler wheelHandler =
                 (_, args) =>
@@ -2985,10 +2898,10 @@ public sealed partial class MainWindow : Window
                     }
 
                     double oldScale =
-                        scale;
-                    double target =
+                        targetScale;
+                    double nextScale =
                         Math.Clamp(
-                            scale
+                            targetScale
                             * (delta > 0
                                 ? 1.14
                                 : 1.0 / 1.14),
@@ -2996,7 +2909,7 @@ public sealed partial class MainWindow : Window
                             6.0);
 
                     if (Math.Abs(
-                            target - oldScale)
+                            nextScale - oldScale)
                         < 0.0001)
                     {
                         args.Handled = true;
@@ -3007,19 +2920,19 @@ public sealed partial class MainWindow : Window
                         point.Position;
 
                     double factor =
-                        target / oldScale;
+                        nextScale / oldScale;
 
-                    translateX =
+                    targetTranslateX =
                         p.X
-                        - (p.X - translateX)
+                        - (p.X - targetTranslateX)
                         * factor;
-                    translateY =
+                    targetTranslateY =
                         p.Y
-                        - (p.Y - translateY)
+                        - (p.Y - targetTranslateY)
                         * factor;
-                    scale = target;
+                    targetScale =
+                        nextScale;
 
-                    ApplyTransform();
                     args.Handled = true;
                 };
 
@@ -3058,15 +2971,13 @@ public sealed partial class MainWindow : Window
                                 viewport)
                                 .Position;
 
-                    translateX +=
+                    targetTranslateX +=
                         position.X
                         - lastPointer.X;
-                    translateY +=
+                    targetTranslateY +=
                         position.Y
                         - lastPointer.Y;
                     lastPointer = position;
-
-                    ApplyTransform();
                     args.Handled = true;
                 };
 
@@ -3186,9 +3097,16 @@ public sealed partial class MainWindow : Window
                     HorizontalAlignment.Right,
                 VerticalAlignment =
                     VerticalAlignment.Center,
-                Background = null,
+                Background =
+                    Application.Current.Resources[
+                        "CardBackgroundFillColorDefaultBrush"]
+                    as Microsoft.UI.Xaml.Media.Brush,
                 BorderThickness =
                     new Thickness(0),
+                Foreground =
+                    Application.Current.Resources[
+                        "TextFillColorPrimaryBrush"]
+                    as Microsoft.UI.Xaml.Media.Brush,
                 Content = new FontIcon
                 {
                     Glyph = "\uE711",
@@ -3261,6 +3179,11 @@ public sealed partial class MainWindow : Window
             DispatcherTimer?
                 titleTimer = null;
 
+            TranslateTransform
+                dialogTitleTransform = new();
+            titleText.RenderTransform =
+                dialogTitleTransform;
+
             if (longTextMode
                 == LongTextModes.AutoScroll)
             {
@@ -3268,18 +3191,28 @@ public sealed partial class MainWindow : Window
                     (_, _) =>
                     {
                         titleScroller.UpdateLayout();
+                        titleText.Measure(
+                            new Windows.Foundation.Size(
+                                double.PositiveInfinity,
+                                double.PositiveInfinity));
 
-                        if (titleScroller
-                            .ScrollableWidth <= 1)
+                        double max =
+                            Math.Max(
+                                0,
+                                titleText.DesiredSize.Width
+                                - titleScroller.ViewportWidth);
+
+                        if (max <= 1)
                         {
                             return;
                         }
 
+                        double offset = 0;
                         double direction = 1;
                         DateTimeOffset pauseUntil =
                             DateTimeOffset.UtcNow
                                 .AddMilliseconds(
-                                    500);
+                                    420);
 
                         titleTimer =
                             new DispatcherTimer
@@ -3299,13 +3232,9 @@ public sealed partial class MainWindow : Window
                                     return;
                                 }
 
-                                double max =
-                                    titleScroller
-                                        .ScrollableWidth;
                                 double next =
-                                    titleScroller
-                                        .HorizontalOffset
-                                    + direction * 2.0;
+                                    offset
+                                    + direction * 2.4;
 
                                 if (next >= max)
                                 {
@@ -3314,7 +3243,7 @@ public sealed partial class MainWindow : Window
                                     pauseUntil =
                                         DateTimeOffset.UtcNow
                                             .AddMilliseconds(
-                                                550);
+                                                450);
                                 }
                                 else if (next <= 0)
                                 {
@@ -3323,14 +3252,12 @@ public sealed partial class MainWindow : Window
                                     pauseUntil =
                                         DateTimeOffset.UtcNow
                                             .AddMilliseconds(
-                                                550);
+                                                450);
                                 }
 
-                                titleScroller.ChangeView(
-                                    next,
-                                    null,
-                                    null,
-                                    disableAnimation: true);
+                                offset = next;
+                                dialogTitleTransform.X =
+                                    -offset;
                             };
 
                         titleTimer.Start();
@@ -3340,6 +3267,7 @@ public sealed partial class MainWindow : Window
             await dialog.ShowAsync();
 
             titleTimer?.Stop();
+            motionTimer.Stop();
         }
         catch (Exception exception)
         {
@@ -4854,12 +4782,38 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void ClearActivityButton_Click(
+    private void OpenLogFileButton_Click(
         object sender,
         RoutedEventArgs e)
     {
-        _activityItems.Clear();
-        RefreshActivityList();
+        try
+        {
+            AppDiagnostics.OpenLogFile();
+        }
+        catch (Exception exception)
+        {
+            HandleUiException(
+                L(
+                    "Could not open the log file.",
+                    "无法打开日志文件。"),
+                exception);
+        }
+    }
+
+    private void ClearLogButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        AppDiagnostics.ClearLog();
+
+        ShowInfo(
+            InfoBarSeverity.Success,
+            L(
+                "Log cleared",
+                "日志已清空"),
+            L(
+                "The current diagnostic log was cleared.",
+                "当前诊断日志已清空。"));
     }
 
     private void Navigation_SelectionChanged(
@@ -4909,10 +4863,6 @@ public sealed partial class MainWindow : Window
             tag == "playlists"
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-        ActivityPage.Visibility =
-            tag == "activity"
-                ? Visibility.Visible
-                : Visibility.Collapsed;
         SettingsPage.Visibility =
             tag == "settings"
                 ? Visibility.Visible
@@ -4934,21 +4884,25 @@ public sealed partial class MainWindow : Window
                     PendingCount: > 0,
                     ErrorCount: 0,
                 };
+
         CancelButton.Visibility =
             busy
                 ? Visibility.Visible
                 : Visibility.Collapsed;
         CancelButton.IsEnabled =
             busy;
+        PlaylistCancelButton.IsEnabled =
+            busy;
 
-        LibrarySearchBox.IsEnabled =
-            !busy;
-        LibraryFilterBox.IsEnabled =
-            !busy;
-        LibrarySortBox.IsEnabled =
-            !busy;
-        LibraryList.IsEnabled =
-            !busy;
+        // Browsing/searching remains usable while a background sync runs.
+        LibrarySearchBox.IsEnabled = true;
+        LibraryFilterBox.IsEnabled = true;
+        LibrarySortBox.IsEnabled = true;
+        LibraryList.IsEnabled = true;
+        PlaylistSearchBox.IsEnabled = true;
+        PlaylistSortBox.IsEnabled = true;
+        PlaylistTracksList.IsEnabled = true;
+
         OpenMatchDialogButton.IsEnabled =
             !busy
             && _selectedLibraryItem
@@ -4958,49 +4912,106 @@ public sealed partial class MainWindow : Window
             busy
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+        PlaylistProgressPanel.Visibility =
+            busy
+                ? Visibility.Visible
+                : Visibility.Collapsed;
 
         OperationProgressBar.Visibility =
+            busy
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        PlaylistOperationProgressBar.Visibility =
             busy
                 ? Visibility.Visible
                 : Visibility.Collapsed;
 
         if (busy)
         {
-            OperationProgressBar
-                .IsIndeterminate = true;
+            OperationProgressBar.IsIndeterminate =
+                true;
+            PlaylistOperationProgressBar.IsIndeterminate =
+                true;
         }
         else
         {
-            OperationProgressBar
-                .IsIndeterminate = false;
+            OperationProgressBar.IsIndeterminate =
+                false;
             OperationProgressBar.Value = 0;
+            PlaylistOperationProgressBar.IsIndeterminate =
+                false;
+            PlaylistOperationProgressBar.Value = 0;
         }
 
+        SetOperationStatus(
+            operationStatus);
+    }
+
+    private void SetOperationStatus(
+        string status)
+    {
         OperationStatusText.Text =
-            operationStatus;
+            status;
+        PlaylistOperationStatusText.Text =
+            status;
+    }
+
+    private void SetIndeterminateProgress()
+    {
+        LibraryProgressPanel.Visibility =
+            Visibility.Visible;
+        PlaylistProgressPanel.Visibility =
+            Visibility.Visible;
+
+        OperationProgressBar.Visibility =
+            Visibility.Visible;
+        PlaylistOperationProgressBar.Visibility =
+            Visibility.Visible;
+
+        OperationProgressBar.IsIndeterminate =
+            true;
+        PlaylistOperationProgressBar.IsIndeterminate =
+            true;
     }
 
     private void SetProgress(
         int processed,
         int total)
     {
+        LibraryProgressPanel.Visibility =
+            Visibility.Visible;
+        PlaylistProgressPanel.Visibility =
+            Visibility.Visible;
+
         OperationProgressBar.Visibility =
+            Visibility.Visible;
+        PlaylistOperationProgressBar.Visibility =
             Visibility.Visible;
 
         if (total <= 0)
         {
-            OperationProgressBar
-                .IsIndeterminate = true;
+            OperationProgressBar.IsIndeterminate =
+                true;
+            PlaylistOperationProgressBar.IsIndeterminate =
+                true;
             return;
         }
 
-        OperationProgressBar
-            .IsIndeterminate = false;
-        OperationProgressBar.Value =
+        double value =
             Math.Clamp(
                 processed * 100.0 / total,
                 0,
                 100);
+
+        OperationProgressBar.IsIndeterminate =
+            false;
+        OperationProgressBar.Value =
+            value;
+
+        PlaylistOperationProgressBar.IsIndeterminate =
+            false;
+        PlaylistOperationProgressBar.Value =
+            value;
     }
 
     private void ShowInfo(
@@ -5018,32 +5029,8 @@ public sealed partial class MainWindow : Window
         string category,
         string message)
     {
-        _activityItems.Insert(
-            0,
-            $"[{DateTime.Now:T}] " +
+        AppDiagnostics.Log(
             $"{category} · {message}");
-
-        if (_activityItems.Count > 300)
-        {
-            _activityItems.RemoveRange(
-                300,
-                _activityItems.Count - 300);
-        }
-
-        RefreshActivityList();
-    }
-
-    private void RefreshActivityList()
-    {
-        ActivityList.ItemsSource =
-            _activityItems.Count == 0
-                ? new[]
-                {
-                    L(
-                        "No activity yet.",
-                        "暂无活动记录。"),
-                }
-                : _activityItems.ToArray();
     }
 
     private void HandleUiException(
@@ -5080,6 +5067,10 @@ public sealed partial class MainWindow : Window
                 L(
                     "Error",
                     "错误"),
+            "syncing" =>
+                L(
+                    "Syncing",
+                    "同步中"),
             _ =>
                 L(
                     "Pending",
@@ -5143,8 +5134,6 @@ public sealed partial class MainWindow : Window
             L("Library", "音乐库");
         PlaylistsNav.Content =
             L("Playlists", "音乐列表");
-        ActivityNav.Content =
-            L("Activity", "活动");
         SettingsNav.Content =
             L("Settings", "设置");
 
@@ -5166,6 +5155,8 @@ public sealed partial class MainWindow : Window
                 "Sync pending",
                 "同步待处理");
         CancelButtonText.Text =
+            L("Cancel", "取消");
+        PlaylistCancelButtonText.Text =
             L("Cancel", "取消");
 
         if (OperationStatusText.Text
@@ -5314,23 +5305,6 @@ public sealed partial class MainWindow : Window
                     "Select a playlist",
                     "选择一个音乐列表");
         }
-
-        ActivityTitleText.Text =
-            L(
-                "Activity",
-                "活动");
-        ActivitySubtitleText.Text =
-            L(
-                "Recent scans, syncs, recoveries and errors.",
-                "最近的扫描、同步、恢复和错误记录。");
-        OpenLogFolderButton.Content =
-            L(
-                "Open log folder",
-                "打开日志目录");
-        ClearActivityButton.Content =
-            L(
-                "Clear activity",
-                "清空活动");
 
         SettingsTitleText.Text =
             L(
@@ -5528,47 +5502,30 @@ public sealed partial class MainWindow : Window
         OpenPlaylistButton.Content =
             L("Open", "打开");
 
-        if (LastRunTitle.Text
-            is "No sync run yet"
-            or "尚无同步记录")
-        {
-            LastRunTitle.Text =
-                L(
-                    "No sync run yet",
-                    "尚无同步记录");
-            LastRunSummaryText.Text =
-                L(
-                    "Refresh the library to begin.",
-                    "刷新音乐库即可开始。");
-        }
+        LogsSettingsHeadingText.Text =
+            L(
+                "Logs",
+                "日志");
+        DiagnosticsLogSettingTitle.Text =
+            L(
+                "Diagnostic log",
+                "诊断日志");
+        OpenLogFileButton.Content =
+            L(
+                "Open log",
+                "打开日志");
+        OpenLogFolderButton.Content =
+            L(
+                "Open folder",
+                "打开目录");
+        ClearLogButton.Content =
+            L(
+                "Clear",
+                "清空");
+        DiagnosticsLogPathText.Text =
+            AppDiagnostics.LogPath;
 
-        foreach (LibraryDisplayItem item
-            in _allLibraryItems)
-        {
-            item.StatusText =
-                StatusLabel(item.Kind);
-        }
-
-        if (_selectedLibraryItem
-            is LibraryDisplayItem selected)
-        {
-            TrackStatusText.Text =
-                selected.StatusText;
-            CurrentMatchText.Text =
-                GetCachedMatchText(
-                    selected.Entry.SourcePath);
-        }
-        else
-        {
-            CurrentMatchText.Text =
-                L(
-                    "No NetEase match cached.",
-                    "尚未缓存网易云匹配。");
-        }
-
-        UpdateLibraryEmptyState();
         RenderLyrics();
-        RefreshActivityList();
         ApplyLibraryFilter();
         ApplyPlaylistTrackFilter();
     }

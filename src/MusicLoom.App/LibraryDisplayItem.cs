@@ -11,6 +11,7 @@ namespace MusicLoom.App;
 internal sealed class LibraryDisplayItem : INotifyPropertyChanged
 {
     private ImageSource? _artwork;
+    private string _kind;
     private string _statusText;
     private TextWrapping _rowTextWrapping =
         TextWrapping.NoWrap;
@@ -30,7 +31,7 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
         string statusText)
     {
         Entry = entry;
-        Kind = kind;
+        _kind = kind;
         Title = title;
         Artist = artist;
         Album = album;
@@ -41,8 +42,9 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
             LongTextModes.Hover);
     }
 
-    public PlanEntry Entry { get; }
-    public string Kind { get; }
+    public PlanEntry Entry { get; private set; }
+
+    public string Kind => _kind;
     public string Title { get; }
     public string Artist { get; }
     public string Album { get; }
@@ -100,6 +102,10 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
             new SolidColorBrush(
                 Color.FromArgb(
                     255, 196, 43, 28)),
+        "syncing" =>
+            new SolidColorBrush(
+                Color.FromArgb(
+                    255, 0, 120, 212)),
         _ =>
             new SolidColorBrush(
                 Color.FromArgb(
@@ -110,6 +116,7 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
     {
         "synced" => "\uE73E",
         "error" => "\uEA39",
+        "syncing" => "\uE895",
         _ => "\uE823",
     };
 
@@ -127,6 +134,38 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
 
             _artwork = value;
             OnPropertyChanged();
+        }
+    }
+
+    public void UpdateEntry(
+        PlanEntry entry)
+    {
+        Entry = entry;
+        OnPropertyChanged(
+            nameof(Entry));
+    }
+
+    public void SetStatus(
+        string kind,
+        string statusText)
+    {
+        bool kindChanged =
+            !string.Equals(
+                _kind,
+                kind,
+                StringComparison.Ordinal);
+
+        _kind = kind;
+        StatusText = statusText;
+
+        if (kindChanged)
+        {
+            OnPropertyChanged(
+                nameof(Kind));
+            OnPropertyChanged(
+                nameof(StatusBrush));
+            OnPropertyChanged(
+                nameof(StatusGlyph));
         }
     }
 

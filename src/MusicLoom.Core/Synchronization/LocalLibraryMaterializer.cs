@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using MusicLoom.Core.Configuration;
 using MusicLoom.Core.Planning;
@@ -27,11 +28,19 @@ public sealed record LocalMaterializeSummary(
     int SkippedPlaylists,
     IReadOnlyList<LocalMaterializeError> Errors);
 
+public sealed record LocalMaterializeProgress(
+    int Processed,
+    int Total,
+    string SourcePath,
+    string Stage);
+
 public sealed class LocalLibraryMaterializer
 {
     public async Task<LocalMaterializeSummary> ApplyAsync(
         MusicLoomSettings settings,
         LibraryPlan plan,
+        IProgress<LocalMaterializeProgress>? progress = null,
+        int? maxParallelTrackCopies = null,
         CancellationToken cancellationToken = default)
     {
         string destinationRoot =
@@ -58,71 +67,139 @@ public sealed class LocalLibraryMaterializer
             playlists = ancillary.Playlists;
         }
 
+        PlanEntry[] trackWork =
+            plan.Entries
+                .Where(static entry =>
+                    entry.Status
+                        != PlanEntryStatus.Error
+                    && entry.DestinationPath
+                        is not null
+                    && entry.NeedsAudioCopy)
+                .ToArray();
+
+        CoverPlanEntry[] coverWork =
+            covers
+                .Where(static cover =>
+                    cover.NeedsWrite)
+                .ToArray();
+
+        PlaylistPlanEntry[] playlistWork =
+            playlists
+                .Where(static playlist =>
+                    playlist.NeedsWrite)
+                .ToArray();
+
+        int totalWork =
+            trackWork.Length
+            + coverWork.Length
+            + playlistWork.Length;
+
+        int completedWork = 0;
         int copiedTracks = 0;
         int skippedTracks = 0;
         int copiedCovers = 0;
-        int skippedCovers = 0;
+        int skippedCovers =
+            covers.Count
+            - coverWork.Length;
         int writtenPlaylists = 0;
-        int skippedPlaylists = 0;
-        List<LocalMaterializeError> errors = [];
+        int skippedPlaylists =
+            playlists.Count
+            - playlistWork.Length;
 
-        foreach (PlanEntry entry in plan.Entries)
+        ConcurrentBag<LocalMaterializeError>
+            errors = [];
+
+        int degree =
+            maxParallelTrackCopies
+            ?? Math.Clamp(
+                Environment.ProcessorCount / 2,
+                2,
+                4);
+
+        ParallelOptions options = new()
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            CancellationToken =
+                cancellationToken,
+            MaxDegreeOfParallelism =
+                degree,
+        };
 
-            if (entry.Status == PlanEntryStatus.Error
-                || entry.DestinationPath is null
-                || !entry.NeedsAudioCopy)
+        await Parallel.ForEachAsync(
+            trackWork,
+            options,
+            (entry, token) =>
             {
-                continue;
-            }
+                token.ThrowIfCancellationRequested();
 
-            try
-            {
-                string? destinationDirectory =
-                    Path.GetDirectoryName(
-                        entry.DestinationPath);
-                if (!string.IsNullOrEmpty(
-                        destinationDirectory))
+                try
                 {
-                    Directory.CreateDirectory(
-                        destinationDirectory);
+                    string destination =
+                        entry.DestinationPath
+                        ?? throw new InvalidOperationException(
+                            "Track copy is missing a destination path.");
+
+                    string? destinationDirectory =
+                        Path.GetDirectoryName(
+                            destination);
+
+                    if (!string.IsNullOrEmpty(
+                            destinationDirectory))
+                    {
+                        Directory.CreateDirectory(
+                            destinationDirectory);
+                    }
+
+                    if (FilesAreIdentical(
+                            entry.SourcePath,
+                            destination))
+                    {
+                        Interlocked.Increment(
+                            ref skippedTracks);
+                    }
+                    else
+                    {
+                        AtomicCopyWithTimes(
+                            entry.SourcePath,
+                            destination);
+
+                        Interlocked.Increment(
+                            ref copiedTracks);
+                    }
+                }
+                catch (Exception exception)
+                    when (exception
+                        is not OperationCanceledException)
+                {
+                    errors.Add(
+                        new LocalMaterializeError(
+                            LocalMaterializeErrorKind.Track,
+                            entry.SourcePath,
+                            entry.DestinationPath
+                                ?? string.Empty,
+                            exception.Message));
+                }
+                finally
+                {
+                    int processed =
+                        Interlocked.Increment(
+                            ref completedWork);
+
+                    progress?.Report(
+                        new LocalMaterializeProgress(
+                            processed,
+                            totalWork,
+                            entry.SourcePath,
+                            "copy-audio"));
                 }
 
-                if (FilesAreIdentical(
-                        entry.SourcePath,
-                        entry.DestinationPath))
-                {
-                    skippedTracks++;
-                    continue;
-                }
+                return ValueTask.CompletedTask;
+            });
 
-                AtomicCopyWithTimes(
-                    entry.SourcePath,
-                    entry.DestinationPath);
-                copiedTracks++;
-            }
-            catch (Exception exception)
-                when (exception
-                    is not OperationCanceledException)
-            {
-                errors.Add(new LocalMaterializeError(
-                    LocalMaterializeErrorKind.Track,
-                    entry.SourcePath,
-                    entry.DestinationPath,
-                    exception.Message));
-            }
-        }
-
-        foreach (CoverPlanEntry cover in covers)
+        foreach (CoverPlanEntry cover
+            in coverWork)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (!cover.NeedsWrite)
-            {
-                skippedCovers++;
-                continue;
-            }
+            cancellationToken
+                .ThrowIfCancellationRequested();
 
             try
             {
@@ -131,43 +208,58 @@ public sealed class LocalLibraryMaterializer
                         cover.DestinationPath))
                 {
                     skippedCovers++;
-                    continue;
                 }
-
-                string? directory =
-                    Path.GetDirectoryName(
-                        cover.DestinationPath);
-                if (!string.IsNullOrEmpty(directory))
+                else
                 {
-                    Directory.CreateDirectory(directory);
-                }
+                    string? directory =
+                        Path.GetDirectoryName(
+                            cover.DestinationPath);
 
-                AtomicCopyWithTimes(
-                    cover.SourcePath,
-                    cover.DestinationPath);
-                copiedCovers++;
+                    if (!string.IsNullOrEmpty(
+                            directory))
+                    {
+                        Directory.CreateDirectory(
+                            directory);
+                    }
+
+                    AtomicCopyWithTimes(
+                        cover.SourcePath,
+                        cover.DestinationPath);
+
+                    copiedCovers++;
+                }
             }
             catch (Exception exception)
                 when (exception
                     is not OperationCanceledException)
             {
-                errors.Add(new LocalMaterializeError(
-                    LocalMaterializeErrorKind.Cover,
-                    cover.SourcePath,
-                    cover.DestinationPath,
-                    exception.Message));
+                errors.Add(
+                    new LocalMaterializeError(
+                        LocalMaterializeErrorKind.Cover,
+                        cover.SourcePath,
+                        cover.DestinationPath,
+                        exception.Message));
+            }
+            finally
+            {
+                int processed =
+                    Interlocked.Increment(
+                        ref completedWork);
+
+                progress?.Report(
+                    new LocalMaterializeProgress(
+                        processed,
+                        totalWork,
+                        cover.SourcePath,
+                        "copy-cover"));
             }
         }
 
-        foreach (PlaylistPlanEntry playlist in playlists)
+        foreach (PlaylistPlanEntry playlist
+            in playlistWork)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (!playlist.NeedsWrite)
-            {
-                skippedPlaylists++;
-                continue;
-            }
+            cancellationToken
+                .ThrowIfCancellationRequested();
 
             try
             {
@@ -176,32 +268,51 @@ public sealed class LocalLibraryMaterializer
                         cancellationToken))
                 {
                     skippedPlaylists++;
-                    continue;
                 }
-
-                string? directory =
-                    Path.GetDirectoryName(
-                        playlist.DestinationPath);
-                if (!string.IsNullOrEmpty(directory))
+                else
                 {
-                    Directory.CreateDirectory(directory);
-                }
+                    string? directory =
+                        Path.GetDirectoryName(
+                            playlist.DestinationPath);
 
-                await AtomicWriteTextAsync(
-                    playlist.DestinationPath,
-                    playlist.Content,
-                    cancellationToken);
-                writtenPlaylists++;
+                    if (!string.IsNullOrEmpty(
+                            directory))
+                    {
+                        Directory.CreateDirectory(
+                            directory);
+                    }
+
+                    await AtomicWriteTextAsync(
+                        playlist.DestinationPath,
+                        playlist.Content,
+                        cancellationToken);
+
+                    writtenPlaylists++;
+                }
             }
             catch (Exception exception)
                 when (exception
                     is not OperationCanceledException)
             {
-                errors.Add(new LocalMaterializeError(
-                    LocalMaterializeErrorKind.Playlist,
-                    playlist.SourcePath,
-                    playlist.DestinationPath,
-                    exception.Message));
+                errors.Add(
+                    new LocalMaterializeError(
+                        LocalMaterializeErrorKind.Playlist,
+                        playlist.SourcePath,
+                        playlist.DestinationPath,
+                        exception.Message));
+            }
+            finally
+            {
+                int processed =
+                    Interlocked.Increment(
+                        ref completedWork);
+
+                progress?.Report(
+                    new LocalMaterializeProgress(
+                        processed,
+                        totalWork,
+                        playlist.SourcePath,
+                        "write-playlist"));
             }
         }
 
@@ -212,7 +323,7 @@ public sealed class LocalLibraryMaterializer
             skippedCovers,
             writtenPlaylists,
             skippedPlaylists,
-            errors);
+            errors.ToArray());
     }
 
     private static async Task<bool> PlaylistMatchesAsync(

@@ -25,9 +25,6 @@
       <NavigationViewItem x:Name="PlaylistsNav" Content="Playlists" Tag="playlists">
         <NavigationViewItem.Icon><SymbolIcon Symbol="List" /></NavigationViewItem.Icon>
       </NavigationViewItem>
-      <NavigationViewItem x:Name="ActivityNav" Content="Activity" Tag="activity">
-        <NavigationViewItem.Icon><SymbolIcon Symbol="Sync" /></NavigationViewItem.Icon>
-      </NavigationViewItem>
       <NavigationViewItem x:Name="SettingsNav" Content="Settings" Tag="settings">
         <NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon>
       </NavigationViewItem>
@@ -368,32 +365,44 @@
 
                   <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5">
                     <ScrollViewer
-                        x:Name="TrackTitleScroller"
+                        x:Name="TrackTitleViewport"
                         HorizontalScrollBarVisibility="Hidden"
                         VerticalScrollBarVisibility="Disabled"
-                        HorizontalScrollMode="Enabled"
+                        HorizontalScrollMode="Disabled"
                         VerticalScrollMode="Disabled"
-                        ZoomMode="Disabled">
+                        ZoomMode="Disabled"
+                        IsTabStop="False">
                       <TextBlock
                           x:Name="TrackTitleText"
                           Text=""
                           FontSize="26"
                           FontWeight="SemiBold"
-                          TextWrapping="NoWrap" />
+                          TextWrapping="NoWrap"
+                          HorizontalAlignment="Left">
+                        <TextBlock.RenderTransform>
+                          <TranslateTransform x:Name="TrackTitleTranslateTransform" />
+                        </TextBlock.RenderTransform>
+                      </TextBlock>
                     </ScrollViewer>
                     <TextBlock x:Name="TrackArtistText" Text="" FontSize="16" TextWrapping="Wrap" />
                     <ScrollViewer
-                        x:Name="TrackAlbumScroller"
+                        x:Name="TrackAlbumViewport"
                         HorizontalScrollBarVisibility="Hidden"
                         VerticalScrollBarVisibility="Disabled"
-                        HorizontalScrollMode="Enabled"
+                        HorizontalScrollMode="Disabled"
                         VerticalScrollMode="Disabled"
-                        ZoomMode="Disabled">
+                        ZoomMode="Disabled"
+                        IsTabStop="False">
                       <TextBlock
                           x:Name="TrackAlbumText"
                           Text=""
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                          TextWrapping="NoWrap" />
+                          TextWrapping="NoWrap"
+                          HorizontalAlignment="Left">
+                        <TextBlock.RenderTransform>
+                          <TranslateTransform x:Name="TrackAlbumTranslateTransform" />
+                        </TextBlock.RenderTransform>
+                      </TextBlock>
                     </ScrollViewer>
                     <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
                       <FontIcon x:Name="TrackStatusIcon" Glyph="&#xE823;" FontSize="13" />
@@ -686,6 +695,7 @@
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
                   <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
@@ -721,9 +731,45 @@
                   </ComboBox>
                 </Grid>
 
+                <Border
+                    x:Name="PlaylistProgressPanel"
+                    Grid.Row="2"
+                    Visibility="Collapsed"
+                    Margin="0,0,0,8"
+                    Padding="10,8"
+                    CornerRadius="8"
+                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                  <StackPanel Spacing="6">
+                    <Grid ColumnSpacing="8">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock
+                          x:Name="PlaylistOperationStatusText"
+                          Text="Ready."
+                          VerticalAlignment="Center"
+                          TextTrimming="CharacterEllipsis"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <Button
+                          x:Name="PlaylistCancelButton"
+                          Grid.Column="1"
+                          Padding="8,3"
+                          Click="CancelButton_Click">
+                        <TextBlock x:Name="PlaylistCancelButtonText" Text="Cancel" />
+                      </Button>
+                    </Grid>
+                    <ProgressBar
+                        x:Name="PlaylistOperationProgressBar"
+                        Height="3"
+                        Minimum="0"
+                        Maximum="100" />
+                  </StackPanel>
+                </Border>
+
                 <ListView
                     x:Name="PlaylistTracksList"
-                    Grid.Row="2"
+                    Grid.Row="3"
                     RightTapped="PlaylistTracksList_RightTapped"
                     HorizontalContentAlignment="Stretch"
                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -789,41 +835,6 @@
               </Grid>
             </Border>
           </Grid>
-        </Grid>
-
-        <!-- Activity -->
-        <Grid x:Name="ActivityPage" Visibility="Collapsed" Padding="28,22,28,24">
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-          </Grid.RowDefinitions>
-
-          <StackPanel Spacing="3">
-            <TextBlock x:Name="ActivityTitleText" Text="Activity" FontSize="32" FontWeight="SemiBold" />
-            <TextBlock x:Name="ActivitySubtitleText" Text="Recent scans, syncs, recoveries and errors." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-          </StackPanel>
-
-          <Grid Grid.Row="1" Margin="0,18,0,14" ColumnSpacing="12">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-              <StackPanel Spacing="5">
-                <TextBlock x:Name="LastRunTitle" Text="No sync run yet" FontSize="18" FontWeight="SemiBold" />
-                <TextBlock x:Name="LastRunSummaryText" Text="Refresh the library to begin." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-              </StackPanel>
-            </Border>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <Button x:Name="OpenLogFolderButton" Content="Open log folder" Click="OpenLogFolderButton_Click" />
-              <Button x:Name="ClearActivityButton" Content="Clear activity" Click="ClearActivityButton_Click" />
-            </StackPanel>
-          </Grid>
-
-          <Border Grid.Row="2" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="10">
-            <ListView x:Name="ActivityList" />
-          </Border>
         </Grid>
 
         <!-- Settings -->
@@ -936,7 +947,7 @@
                       <TextBlock x:Name="LyricsStorageSettingTitle" Text="Lyrics storage" FontWeight="SemiBold" />
                       <TextBlock x:Name="LyricsStorageSettingDescription" Text="Choose embedded tags or sidecar .lrc files." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <ComboBox x:Name="LyricsStorageModeBox" Grid.Column="1" Width="280" HorizontalAlignment="Right" SelectionChanged="SettingsControl_Changed">
+                    <ComboBox x:Name="LyricsStorageModeBox" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem x:Name="LyricsStorageEmbeddedItem" Content="Embedded in audio file" Tag="embedded" />
                       <ComboBoxItem x:Name="LyricsStorageSidecarItem" Content="Sidecar .lrc file" Tag="sidecar" />
                     </ComboBox>
@@ -953,8 +964,7 @@
                     <NumberBox
                         x:Name="LyricsRefreshHoursBox"
                         Grid.Column="1"
-                        Width="280"
-                        HorizontalAlignment="Right"
+                        HorizontalAlignment="Stretch"
                         Minimum="1"
                         Maximum="87600"
                         Value="24"
@@ -981,8 +991,7 @@
                     <ComboBox
                         x:Name="ThemeBox"
                         Grid.Column="1"
-                        Width="280"
-                        HorizontalAlignment="Right"
+                        HorizontalAlignment="Stretch"
                         SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem x:Name="ThemeSystemItem" Content="Use system setting" Tag="system" />
                       <ComboBoxItem x:Name="ThemeLightItem" Content="Light" Tag="light" />
@@ -1005,8 +1014,7 @@
                     <ComboBox
                         x:Name="LongTextModeBox"
                         Grid.Column="1"
-                        Width="280"
-                        HorizontalAlignment="Right"
+                        HorizontalAlignment="Stretch"
                         SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem x:Name="LongTextAutoScrollItem" Content="Auto-scroll" Tag="autoScroll" />
                       <ComboBoxItem x:Name="LongTextHoverItem" Content="Show on hover" Tag="hover" />
@@ -1038,8 +1046,7 @@
                     <StackPanel
                         x:Name="AccentControlRail"
                         Grid.Column="1"
-                        Width="280"
-                        HorizontalAlignment="Right"
+                        HorizontalAlignment="Stretch"
                         Orientation="Horizontal"
                         Spacing="8">
                       <Border x:Name="AccentPreview" Width="28" Height="28" CornerRadius="14" Background="{ThemeResource AccentFillColorDefaultBrush}" />
@@ -1056,10 +1063,62 @@
                       <TextBlock x:Name="LanguageSettingTitle" Text="Interface language" FontWeight="SemiBold" />
                       <TextBlock x:Name="LanguageSettingDescription" Visibility="Collapsed" />
                     </StackPanel>
-                    <ComboBox x:Name="LanguageBox" Grid.Column="1" Width="280" HorizontalAlignment="Right" SelectionChanged="SettingsControl_Changed">
+                    <ComboBox x:Name="LanguageBox" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem Content="English" Tag="en-US" />
                       <ComboBoxItem Content="简体中文" Tag="zh-CN" />
                     </ComboBox>
+                  </Grid>
+                </Border>
+              </StackPanel>
+
+              <StackPanel Spacing="10">
+                <TextBlock
+                    x:Name="LogsSettingsHeadingText"
+                    Text="Logs"
+                    FontSize="18"
+                    FontWeight="SemiBold" />
+
+                <Border
+                    Padding="18"
+                    CornerRadius="10"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="280" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Spacing="2">
+                      <TextBlock
+                          x:Name="DiagnosticsLogSettingTitle"
+                          Text="Diagnostic log"
+                          FontWeight="SemiBold" />
+                      <TextBlock
+                          x:Name="DiagnosticsLogPathText"
+                          Text=""
+                          TextTrimming="CharacterEllipsis"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+
+                    <StackPanel
+                        Grid.Column="1"
+                        Width="280"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                      <Button
+                          x:Name="OpenLogFileButton"
+                          Content="Open log"
+                          Click="OpenLogFileButton_Click" />
+                      <Button
+                          x:Name="OpenLogFolderButton"
+                          Content="Open folder"
+                          Click="OpenLogFolderButton_Click" />
+                      <Button
+                          x:Name="ClearLogButton"
+                          Content="Clear"
+                          Click="ClearLogButton_Click" />
+                    </StackPanel>
                   </Grid>
                 </Border>
               </StackPanel>
