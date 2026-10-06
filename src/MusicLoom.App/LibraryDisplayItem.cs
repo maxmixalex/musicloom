@@ -9,6 +9,7 @@ namespace MusicLoom.App;
 internal sealed class LibraryDisplayItem : INotifyPropertyChanged
 {
     private ImageSource? _artwork;
+    private string _statusText;
 
     public LibraryDisplayItem(
         PlanEntry entry,
@@ -25,7 +26,7 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
         Artist = artist;
         Album = album;
         RelativePath = relativePath;
-        StatusText = statusText;
+        _statusText = statusText;
     }
 
     public PlanEntry Entry { get; }
@@ -34,7 +35,23 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
     public string Artist { get; }
     public string Album { get; }
     public string RelativePath { get; }
-    public string StatusText { get; }
+    public string StatusText
+    {
+        get => _statusText;
+        set
+        {
+            if (string.Equals(
+                    _statusText,
+                    value,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _statusText = value;
+            OnPropertyChanged();
+        }
+    }
 
     public string ArtistAlbum =>
         string.IsNullOrWhiteSpace(Album)
