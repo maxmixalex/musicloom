@@ -740,11 +740,25 @@
                     CornerRadius="8"
                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                   <StackPanel Spacing="6">
-                    <TextBlock
-                        x:Name="PlaylistOperationStatusText"
-                        Text="Ready."
-                        TextTrimming="CharacterEllipsis"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Grid ColumnSpacing="8">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock
+                          x:Name="PlaylistOperationStatusText"
+                          Text="Ready."
+                          VerticalAlignment="Center"
+                          TextTrimming="CharacterEllipsis"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <Button
+                          x:Name="PlaylistCancelButton"
+                          Grid.Column="1"
+                          Padding="8,3"
+                          Click="CancelButton_Click">
+                        <TextBlock x:Name="PlaylistCancelButtonText" Text="Cancel" />
+                      </Button>
+                    </Grid>
                     <ProgressBar
                         x:Name="PlaylistOperationProgressBar"
                         Height="3"
