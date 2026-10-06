@@ -69,9 +69,11 @@ public sealed partial class MainWindow : Window
     private string? _currentLyricsRaw;
     private DispatcherTimer? _titleScrollTimer;
     private double _titleScrollDirection = 1;
+    private double _albumScrollDirection = 1;
     private DateTimeOffset _titleScrollPauseUntil;
     private byte[]? _currentArtworkBytes;
-    private bool _showTranslations = true;
+    private string _lyricsDisplayMode =
+        LyricsDisplayModes.PreferOriginal;
 
     public MainWindow()
     {
@@ -1671,6 +1673,11 @@ public sealed partial class MainWindow : Window
             null,
             null,
             disableAnimation: true);
+        TrackAlbumScroller.ChangeView(
+            0,
+            null,
+            null,
+            disableAnimation: true);
 
         _currentLyricsRaw = null;
         _currentArtworkBytes = null;
@@ -1707,6 +1714,12 @@ public sealed partial class MainWindow : Window
         TrackDestinationModifiedText.Text = string.Empty;
     }
 
+    private string CurrentLongTextMode =>
+        LongTextModes.Normalize(
+            _settings?.Ui.LongTextMode,
+            _settings?.Ui.AutoScrollLongTitles
+                ?? true);
+
     private void ConfigureTitleAutoScroll()
     {
         StopTitleAutoScroll();
@@ -1716,34 +1729,95 @@ public sealed partial class MainWindow : Window
             null,
             null,
             disableAnimation: true);
+        TrackAlbumScroller.ChangeView(
+            0,
+            null,
+            null,
+            disableAnimation: true);
 
-        if (_settings?.Ui.AutoScrollLongTitles
-            != true)
+        string mode =
+            CurrentLongTextMode;
+
+        foreach (LibraryDisplayItem item
+            in _allLibraryItems)
         {
+            item.ApplyLongTextMode(mode);
+        }
+
+        if (mode == LongTextModes.Wrap)
+        {
+            ConfigureDetailText(
+                TrackTitleScroller,
+                TrackTitleText,
+                wrap: true,
+                tooltip: null,
+                maxLines: 3);
+            ConfigureDetailText(
+                TrackAlbumScroller,
+                TrackAlbumText,
+                wrap: true,
+                tooltip: null,
+                maxLines: 2);
             return;
         }
+
+        if (mode == LongTextModes.Hover)
+        {
+            ConfigureDetailText(
+                TrackTitleScroller,
+                TrackTitleText,
+                wrap: false,
+                tooltip: TrackTitleText.Text,
+                maxLines: 1);
+            ConfigureDetailText(
+                TrackAlbumScroller,
+                TrackAlbumText,
+                wrap: false,
+                tooltip: TrackAlbumText.Text,
+                maxLines: 1);
+            return;
+        }
+
+        ConfigureDetailText(
+            TrackTitleScroller,
+            TrackTitleText,
+            wrap: false,
+            tooltip: null,
+            maxLines: 1,
+            marquee: true);
+        ConfigureDetailText(
+            TrackAlbumScroller,
+            TrackAlbumText,
+            wrap: false,
+            tooltip: null,
+            maxLines: 1,
+            marquee: true);
 
         DispatcherQueue.TryEnqueue(
             () =>
             {
                 TrackTitleScroller.UpdateLayout();
+                TrackAlbumScroller.UpdateLayout();
 
                 if (TrackTitleScroller.ScrollableWidth
-                    <= 1)
+                        <= 1
+                    && TrackAlbumScroller.ScrollableWidth
+                        <= 1)
                 {
                     return;
                 }
 
                 _titleScrollDirection = 1;
+                _albumScrollDirection = 1;
                 _titleScrollPauseUntil =
                     DateTimeOffset.UtcNow
-                        .AddSeconds(1.2);
+                        .AddMilliseconds(700);
 
                 DispatcherTimer timer = new()
                 {
                     Interval =
                         TimeSpan.FromMilliseconds(
-                            24),
+                            16),
                 };
 
                 timer.Tick +=
@@ -1752,6 +1826,37 @@ public sealed partial class MainWindow : Window
                 _titleScrollTimer = timer;
                 timer.Start();
             });
+    }
+
+    private static void ConfigureDetailText(
+        ScrollViewer scroller,
+        TextBlock text,
+        bool wrap,
+        string? tooltip,
+        int maxLines,
+        bool marquee = false)
+    {
+        scroller.HorizontalScrollMode =
+            marquee
+                ? ScrollMode.Enabled
+                : ScrollMode.Disabled;
+        scroller.HorizontalScrollBarVisibility =
+            ScrollBarVisibility.Hidden;
+
+        text.TextWrapping =
+            wrap
+                ? TextWrapping.WrapWholeWords
+                : TextWrapping.NoWrap;
+        text.TextTrimming =
+            wrap || marquee
+                ? TextTrimming.None
+                : TextTrimming.CharacterEllipsis;
+        text.MaxLines =
+            maxLines;
+
+        ToolTipService.SetToolTip(
+            text,
+            tooltip);
     }
 
     private void StopTitleAutoScroll()
@@ -1771,8 +1876,8 @@ public sealed partial class MainWindow : Window
         object? sender,
         object e)
     {
-        if (_settings?.Ui.AutoScrollLongTitles
-                != true
+        if (CurrentLongTextMode
+                != LongTextModes.AutoScroll
             || DetailPane.Visibility
                 != Visibility.Visible)
         {
@@ -1786,41 +1891,60 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        bool titleHit =
+            AdvanceScroller(
+                TrackTitleScroller,
+                ref _titleScrollDirection);
+        bool albumHit =
+            AdvanceScroller(
+                TrackAlbumScroller,
+                ref _albumScrollDirection);
+
+        if (titleHit || albumHit)
+        {
+            _titleScrollPauseUntil =
+                DateTimeOffset.UtcNow
+                    .AddMilliseconds(650);
+        }
+    }
+
+    private static bool AdvanceScroller(
+        ScrollViewer scroller,
+        ref double direction)
+    {
         double max =
-            TrackTitleScroller.ScrollableWidth;
+            scroller.ScrollableWidth;
 
         if (max <= 1)
         {
-            StopTitleAutoScroll();
-            return;
+            return false;
         }
 
         double next =
-            TrackTitleScroller.HorizontalOffset
-            + _titleScrollDirection * 0.9;
+            scroller.HorizontalOffset
+            + direction * 1.9;
+        bool hitEdge = false;
 
         if (next >= max)
         {
             next = max;
-            _titleScrollDirection = -1;
-            _titleScrollPauseUntil =
-                DateTimeOffset.UtcNow
-                    .AddSeconds(1.1);
+            direction = -1;
+            hitEdge = true;
         }
         else if (next <= 0)
         {
             next = 0;
-            _titleScrollDirection = 1;
-            _titleScrollPauseUntil =
-                DateTimeOffset.UtcNow
-                    .AddSeconds(1.1);
+            direction = 1;
+            hitEdge = true;
         }
 
-        TrackTitleScroller.ChangeView(
+        scroller.ChangeView(
             next,
             null,
             null,
             disableAnimation: true);
+
+        return hitEdge;
     }
 
     private async Task ShowTrackDetailsAsync(
@@ -1831,11 +1955,11 @@ public sealed partial class MainWindow : Window
 
         TrackTitleText.Text =
             item.Title;
-        ConfigureTitleAutoScroll();
         TrackArtistText.Text =
             item.Artist;
         TrackAlbumText.Text =
             item.Album;
+        ConfigureTitleAutoScroll();
         TrackStatusText.Text =
             item.StatusText;
         TrackStatusIcon.Glyph =
@@ -2017,39 +2141,67 @@ public sealed partial class MainWindow : Window
 
     private void RenderLyrics()
     {
-        LyricDisplayLine[] translatedLines =
+        LyricDisplayLine[] detected =
             BuildLyricLines(
                 _currentLyricsRaw,
-                showTranslation: true);
+                LyricsDisplayModes
+                    .PreferOriginal);
 
         bool hasLyrics =
-            translatedLines.Length > 0;
+            detected.Length > 0;
         bool hasTranslation =
-            translatedLines.Any(
+            detected.Any(
                 static line =>
                     !string.IsNullOrWhiteSpace(
                         line.Translation));
 
-        TranslationButton.Visibility =
+        LyricsModeButton.Visibility =
             hasLyrics && hasTranslation
                 ? Visibility.Visible
                 : Visibility.Collapsed;
 
+        _lyricsDisplayMode =
+            LyricsDisplayModes.Normalize(
+                _lyricsDisplayMode);
+
+        LyricsModeIcon.Glyph =
+            _lyricsDisplayMode switch
+            {
+                LyricsDisplayModes
+                    .OriginalOnly =>
+                    "\uE8A5",
+                LyricsDisplayModes
+                    .PreferTranslation =>
+                    "\uE8C1",
+                _ =>
+                    "\uE8D2",
+            };
+
         ToolTipService.SetToolTip(
-            TranslationButton,
-            _showTranslations
-                ? L(
-                    "Hide translation",
-                    "仅显示原文")
-                : L(
-                    "Show translation",
-                    "显示翻译"));
+            LyricsModeButton,
+            _lyricsDisplayMode switch
+            {
+                LyricsDisplayModes
+                    .OriginalOnly =>
+                    L(
+                        "Original only",
+                        "仅原文"),
+                LyricsDisplayModes
+                    .PreferTranslation =>
+                    L(
+                        "Prefer translation",
+                        "优先翻译"),
+                _ =>
+                    L(
+                        "Prefer original",
+                        "优先原文"),
+            });
 
         LyricDisplayLine[] lines =
             hasLyrics
                 ? BuildLyricLines(
                     _currentLyricsRaw,
-                    _showTranslations)
+                    _lyricsDisplayMode)
                 : [];
 
         LyricsList.ItemsSource =
@@ -2061,18 +2213,28 @@ public sealed partial class MainWindow : Window
                             "No lyrics found.",
                             "没有找到歌词。"),
                         null,
-                        false),
+                        LyricsDisplayModes
+                            .OriginalOnly),
                 }
                 : lines;
     }
 
-    private void TranslationButton_Click(
+    private void LyricsModeItem_Click(
         object sender,
         RoutedEventArgs e)
     {
-        _showTranslations =
-            !_showTranslations;
+        if (sender is not MenuFlyoutItem item
+            || item.Tag is not string mode)
+        {
+            return;
+        }
+
+        _lyricsDisplayMode =
+            LyricsDisplayModes.Normalize(
+                mode);
+
         RenderLyrics();
+        ScheduleSettingsSave();
     }
 
     private void LyricLineMenu_Opening(
@@ -2122,11 +2284,12 @@ public sealed partial class MainWindow : Window
         }
 
         string text =
-            line.ShowTranslation
-            && !string.IsNullOrWhiteSpace(
-                line.Translation)
-                ? $"{line.Original}/{line.Translation}"
-                : line.Original;
+            string.IsNullOrWhiteSpace(
+                line.SecondaryText)
+                ? line.PrimaryText
+                : line.PrimaryText
+                    + Environment.NewLine
+                    + line.SecondaryText;
 
         CopyText(text);
     }
@@ -2134,12 +2297,16 @@ public sealed partial class MainWindow : Window
     private static LyricDisplayLine[]
         BuildLyricLines(
             string? raw,
-            bool showTranslation)
+            string displayMode)
     {
         if (string.IsNullOrWhiteSpace(raw))
         {
             return [];
         }
+
+        string normalizedMode =
+            LyricsDisplayModes.Normalize(
+                displayMode);
 
         LrcDocument document =
             LrcDocument.Parse(raw);
@@ -2187,7 +2354,7 @@ public sealed partial class MainWindow : Window
                     new LyricDisplayLine(
                         original,
                         translation,
-                        showTranslation));
+                        normalizedMode));
             }
 
             return [.. result];
@@ -2218,7 +2385,7 @@ public sealed partial class MainWindow : Window
                 new LyricDisplayLine(
                     original,
                     translation,
-                    showTranslation));
+                    normalizedMode));
         }
 
         return [.. result];
