@@ -83,6 +83,8 @@ public sealed partial class MainWindow : Window
         StartupTrace.Mark(
             "MainWindow.InitializeComponent.after");
 
+        ApplyWindowIcon();
+
         LibraryFilterBox.SelectedIndex = 0;
         LibrarySortBox.SelectedIndex = 0;
         PlaylistSortBox.SelectedIndex = 0;
@@ -112,6 +114,49 @@ public sealed partial class MainWindow : Window
         string english,
         string chinese) =>
         IsChinese ? chinese : english;
+
+    private void ApplyWindowIcon()
+    {
+        try
+        {
+            string iconPath =
+                Path.Combine(
+                    AppDiagnostics.DataDirectory,
+                    "MusicLoom.ico");
+
+            Directory.CreateDirectory(
+                AppDiagnostics.DataDirectory);
+
+            using Stream? resource =
+                typeof(MainWindow)
+                    .Assembly
+                    .GetManifestResourceStream(
+                        "MusicLoom.AppIcon.ico");
+
+            if (resource is null)
+            {
+                return;
+            }
+
+            using (FileStream output =
+                new(
+                    iconPath,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.Read))
+            {
+                resource.CopyTo(output);
+            }
+
+            AppWindow.SetIcon(iconPath);
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Could not apply the MusicLoom window icon.",
+                exception);
+        }
+    }
 
     private async Task InitializeSettingsAsync()
     {
