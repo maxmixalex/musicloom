@@ -1,4 +1,5 @@
 using MusicLoom.Core.Configuration;
+using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.Scanning;
 using MusicLoom.Core.State;
 using MusicLoom.Core.Synchronization;
