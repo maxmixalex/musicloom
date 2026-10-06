@@ -49,8 +49,6 @@ public sealed partial class MainWindow : Window
         _allLibraryItems = [];
     private readonly List<PlaylistDisplayItem>
         _playlists = [];
-    private readonly List<string>
-        _activityItems = [];
 
     private MusicLoomSettings? _settings;
     private StateDocument? _state;
@@ -97,6 +95,9 @@ public sealed partial class MainWindow : Window
             IsChinese ? 1 : 0;
         Navigation.SelectedItem =
             Navigation.MenuItems[0];
+
+        DiagnosticsLogPathText.Text =
+            AppDiagnostics.LogPath;
 
         ApplyLanguage();
         HideDetailPane();
@@ -4682,12 +4683,38 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void ClearActivityButton_Click(
+    private void OpenLogFileButton_Click(
         object sender,
         RoutedEventArgs e)
     {
-        _activityItems.Clear();
-        RefreshActivityList();
+        try
+        {
+            AppDiagnostics.OpenLogFile();
+        }
+        catch (Exception exception)
+        {
+            HandleUiException(
+                L(
+                    "Could not open the log file.",
+                    "无法打开日志文件。"),
+                exception);
+        }
+    }
+
+    private void ClearLogButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        AppDiagnostics.ClearLog();
+
+        ShowInfo(
+            InfoBarSeverity.Success,
+            L(
+                "Log cleared",
+                "日志已清空"),
+            L(
+                "The current diagnostic log was cleared.",
+                "当前诊断日志已清空。"));
     }
 
     private void Navigation_SelectionChanged(
@@ -4735,10 +4762,6 @@ public sealed partial class MainWindow : Window
                 : Visibility.Collapsed;
         PlaylistsPage.Visibility =
             tag == "playlists"
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-        ActivityPage.Visibility =
-            tag == "activity"
                 ? Visibility.Visible
                 : Visibility.Collapsed;
         SettingsPage.Visibility =
@@ -4905,32 +4928,8 @@ public sealed partial class MainWindow : Window
         string category,
         string message)
     {
-        _activityItems.Insert(
-            0,
-            $"[{DateTime.Now:T}] " +
+        AppDiagnostics.Log(
             $"{category} · {message}");
-
-        if (_activityItems.Count > 300)
-        {
-            _activityItems.RemoveRange(
-                300,
-                _activityItems.Count - 300);
-        }
-
-        RefreshActivityList();
-    }
-
-    private void RefreshActivityList()
-    {
-        ActivityList.ItemsSource =
-            _activityItems.Count == 0
-                ? new[]
-                {
-                    L(
-                        "No activity yet.",
-                        "暂无活动记录。"),
-                }
-                : _activityItems.ToArray();
     }
 
     private void HandleUiException(
@@ -5030,8 +5029,6 @@ public sealed partial class MainWindow : Window
             L("Library", "音乐库");
         PlaylistsNav.Content =
             L("Playlists", "音乐列表");
-        ActivityNav.Content =
-            L("Activity", "活动");
         SettingsNav.Content =
             L("Settings", "设置");
 
@@ -5201,23 +5198,6 @@ public sealed partial class MainWindow : Window
                     "Select a playlist",
                     "选择一个音乐列表");
         }
-
-        ActivityTitleText.Text =
-            L(
-                "Activity",
-                "活动");
-        ActivitySubtitleText.Text =
-            L(
-                "Recent scans, syncs, recoveries and errors.",
-                "最近的扫描、同步、恢复和错误记录。");
-        OpenLogFolderButton.Content =
-            L(
-                "Open log folder",
-                "打开日志目录");
-        ClearActivityButton.Content =
-            L(
-                "Clear activity",
-                "清空活动");
 
         SettingsTitleText.Text =
             L(
@@ -5415,47 +5395,30 @@ public sealed partial class MainWindow : Window
         OpenPlaylistButton.Content =
             L("Open", "打开");
 
-        if (LastRunTitle.Text
-            is "No sync run yet"
-            or "尚无同步记录")
-        {
-            LastRunTitle.Text =
-                L(
-                    "No sync run yet",
-                    "尚无同步记录");
-            LastRunSummaryText.Text =
-                L(
-                    "Refresh the library to begin.",
-                    "刷新音乐库即可开始。");
-        }
+        LogsSettingsHeadingText.Text =
+            L(
+                "Logs",
+                "日志");
+        DiagnosticsLogSettingTitle.Text =
+            L(
+                "Diagnostic log",
+                "诊断日志");
+        OpenLogFileButton.Content =
+            L(
+                "Open log",
+                "打开日志");
+        OpenLogFolderButton.Content =
+            L(
+                "Open folder",
+                "打开目录");
+        ClearLogButton.Content =
+            L(
+                "Clear",
+                "清空");
+        DiagnosticsLogPathText.Text =
+            AppDiagnostics.LogPath;
 
-        foreach (LibraryDisplayItem item
-            in _allLibraryItems)
-        {
-            item.StatusText =
-                StatusLabel(item.Kind);
-        }
-
-        if (_selectedLibraryItem
-            is LibraryDisplayItem selected)
-        {
-            TrackStatusText.Text =
-                selected.StatusText;
-            CurrentMatchText.Text =
-                GetCachedMatchText(
-                    selected.Entry.SourcePath);
-        }
-        else
-        {
-            CurrentMatchText.Text =
-                L(
-                    "No NetEase match cached.",
-                    "尚未缓存网易云匹配。");
-        }
-
-        UpdateLibraryEmptyState();
         RenderLyrics();
-        RefreshActivityList();
         ApplyLibraryFilter();
         ApplyPlaylistTrackFilter();
     }
