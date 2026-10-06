@@ -45,6 +45,9 @@ public sealed record LyricsSettings
 
     [JsonPropertyName("overrideExisting")]
     public bool OverrideExisting { get; init; }
+
+    [JsonPropertyName("refreshIntervalHours")]
+    public double RefreshIntervalHours { get; init; } = 24;
 }
 
 public sealed record LoggingSettings
