@@ -62,7 +62,11 @@ public sealed class LibraryScanner
         {
             cancellationToken.ThrowIfCancellationRequested();
             string sourcePath = sourcePaths[index];
-            progress?.Report(new ScanProgress(index, sourcePaths.Length, sourcePath));
+            progress?.Report(new ScanProgress(
+                index + 1,
+                sourcePaths.Length,
+                sourcePath,
+                "tracks"));
 
             FileInfo source = new(sourcePath);
             TryGetState(state, sourcePath, out TrackState? trackState);
@@ -297,6 +301,12 @@ public sealed class LibraryScanner
             }
         }
 
+        progress?.Report(new ScanProgress(
+            sourcePaths.Length,
+            sourcePaths.Length,
+            string.Empty,
+            "ancillary"));
+
         AncillaryPlan ancillary = await AncillaryPlanner.BuildAsync(
             settings,
             entries,
@@ -305,7 +315,8 @@ public sealed class LibraryScanner
         progress?.Report(new ScanProgress(
             sourcePaths.Length,
             sourcePaths.Length,
-            string.Empty));
+            string.Empty,
+            "complete"));
         return new LibraryPlan(
             entries,
             ancillary.Covers,

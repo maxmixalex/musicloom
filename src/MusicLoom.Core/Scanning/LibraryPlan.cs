@@ -30,7 +30,8 @@ public sealed record PlaylistPlanEntry(
 public sealed record ScanProgress(
     int Processed,
     int Total,
-    string CurrentPath);
+    string CurrentPath,
+    string Stage = "tracks");
 
 public sealed record LibraryPlan
 {
