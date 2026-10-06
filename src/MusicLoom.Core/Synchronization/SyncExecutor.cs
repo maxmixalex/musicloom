@@ -215,6 +215,9 @@ public sealed class SyncExecutor
                                 : RecognitionState.NoMatch,
                         RecognitionCheckedAt = DateTimeOffset.UtcNow,
                         NeteaseSongId = recognition.TrackId,
+                        NeteaseTrackName = recognition.TrackName,
+                        NeteaseTrackArtist = recognition.Artist,
+                        NeteaseTrackAlbum = recognition.Album,
                     };
 
                     if (recognition.Status == TrackRecognitionStatus.NoMatch
@@ -462,6 +465,15 @@ public sealed class SyncExecutor
                 ? previous?.RecognitionCheckedAt
                 : null,
             NeteaseSongId = songId,
+            NeteaseTrackName = sourceUnchanged
+                ? previous?.NeteaseTrackName
+                : null,
+            NeteaseTrackArtist = sourceUnchanged
+                ? previous?.NeteaseTrackArtist
+                : null,
+            NeteaseTrackAlbum = sourceUnchanged
+                ? previous?.NeteaseTrackAlbum
+                : null,
             Lyrics = canReuseEnrichment
                 ? previous?.Lyrics ?? LyricsState.Unknown
                 : LyricsState.Unknown,
@@ -472,6 +484,7 @@ public sealed class SyncExecutor
                 ? previous?.LyricsFingerprint
                 : null,
             MetadataCaptured = true,
+            Title = metadata.Title,
             Artist = metadata.Artist,
             AlbumArtist = metadata.AlbumArtist,
             Album = metadata.Album,
