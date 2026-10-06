@@ -3,7 +3,6 @@ using MusicLoom.Core.Scanning;
 using MusicLoom.Core.State;
 using MusicLoom.Core.Synchronization;
 
-namespace MusicLoom.Tests;
 
 internal static class ParityRegression
 {
