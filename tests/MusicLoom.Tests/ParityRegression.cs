@@ -11,6 +11,8 @@ internal static class ParityRegression
         DetectSameStatContentChangeAsync().GetAwaiter().GetResult();
         PreserveUnreadableMetadataAsync().GetAwaiter().GetResult();
         SettingsSaveRoundTripAsync().GetAwaiter().GetResult();
+        SidecarLyricsRoundTripAsync().GetAwaiter().GetResult();
+        LyricStorageChangesRecipe();
         LyricRefreshTtl();
     }
 
@@ -163,6 +165,7 @@ internal static class ParityRegression
                         Enabled = true,
                         OverrideExisting = true,
                         RefreshIntervalHours = 12,
+                        StorageMode = LyricsStorageModes.Sidecar,
                     },
                 },
                 Ui = new UiSettings
@@ -184,12 +187,100 @@ internal static class ParityRegression
             Equal(expected.Path.DestinationDirectory, actual.Path.DestinationDirectory);
             Equal(expected.Organizer.Lyrics.RefreshIntervalHours,
                 actual.Organizer.Lyrics.RefreshIntervalHours);
+            Equal(expected.Organizer.Lyrics.StorageMode,
+                actual.Organizer.Lyrics.StorageMode);
             Equal(expected.Ui.Language, actual.Ui.Language);
         }
         finally
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    private static async Task SidecarLyricsRoundTripAsync()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "musicloom-sidecar-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            string audio = Path.Combine(root, "track.flac");
+            await File.WriteAllBytesAsync(audio, [1, 2, 3]);
+
+            SidecarLrcLyricsWriter writer = new();
+            LyricsProbeResult before =
+                await writer.ProbeAsync(audio);
+            Equal(LyricsProbeStatus.Missing, before.Status);
+
+            LrcDocument lyrics =
+                LrcDocument.Parse("[00:01.000]hello");
+            LyricsWriteResult first =
+                await writer.WriteAsync(
+                    audio,
+                    lyrics,
+                    overrideExisting: true);
+            Equal(LyricsWriteStatus.Written, first.Status);
+
+            string sidecar =
+                SidecarLrcLyricsWriter.GetSidecarPath(audio);
+            True(File.Exists(sidecar));
+            Equal(
+                lyrics.ToString(),
+                await File.ReadAllTextAsync(sidecar));
+
+            LyricsProbeResult after =
+                await writer.ProbeAsync(audio);
+            Equal(LyricsProbeStatus.Present, after.Status);
+
+            LyricsWriteResult skipped =
+                await writer.WriteAsync(
+                    audio,
+                    LrcDocument.Parse("[00:02.000]new"),
+                    overrideExisting: false);
+            Equal(
+                LyricsWriteStatus.SkippedExisting,
+                skipped.Status);
+            Equal(
+                lyrics.ToString(),
+                await File.ReadAllTextAsync(sidecar));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void LyricStorageChangesRecipe()
+    {
+        MusicLoomSettings embedded = new()
+        {
+            Organizer = new OrganizerSettings
+            {
+                Lyrics = new LyricsSettings
+                {
+                    Enabled = true,
+                    StorageMode = LyricsStorageModes.Embedded,
+                },
+            },
+        };
+
+        MusicLoomSettings sidecar = embedded with
+        {
+            Organizer = embedded.Organizer with
+            {
+                Lyrics = embedded.Organizer.Lyrics with
+                {
+                    StorageMode = LyricsStorageModes.Sidecar,
+                },
+            },
+        };
+
+        True(!string.Equals(
+            SyncRecipe.For(embedded),
+            SyncRecipe.For(sidecar),
+            StringComparison.Ordinal));
     }
 
     private static void LyricRefreshTtl()
