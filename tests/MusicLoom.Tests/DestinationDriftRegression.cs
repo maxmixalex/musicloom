@@ -81,6 +81,7 @@ internal static class DestinationDriftRegression
                 SourceSize = source.Length,
                 SourceLastWriteUtcTicks =
                     source.LastWriteTimeUtc.Ticks,
+                QuickHash = QuickFileHash.Compute(sourcePath),
                 DestinationPath = destinationPath,
                 DestinationSize = destination.Length,
                 DestinationLastWriteUtcTicks =

@@ -31,6 +31,7 @@ List<(string Name, Action Test)> tests =
     ("Cover and playlist-only changes remain actionable", AncillaryPlanningRegression.Run),
     ("Destination drift is rematerialized without touching source metadata", DestinationDriftRegression.Run),
     ("State recovery and materialization failures are isolated", ResilienceRegression.Run),
+    ("Source hashing, metadata fallback, and lyric TTL stay safe", ParityRegression.Run),
 ];
 
 int failed = 0;
@@ -189,6 +190,7 @@ static async Task WarmScanSkipsMetadataAsync()
             SourcePath = sourcePath,
             SourceSize = source.Length,
             SourceLastWriteUtcTicks = source.LastWriteTimeUtc.Ticks,
+            QuickHash = QuickFileHash.Compute(sourcePath),
             DestinationPath = destinationPath,
             RecipeVersion = SyncRecipe.For(settings),
             MetadataCaptured = true,
@@ -263,6 +265,7 @@ static async Task RecipeRefreshDoesNotCopyAsync()
             SourcePath = sourcePath,
             SourceSize = source.Length,
             SourceLastWriteUtcTicks = source.LastWriteTimeUtc.Ticks,
+            QuickHash = QuickFileHash.Compute(sourcePath),
             RecipeVersion = "1",
             DestinationPath = destinationPath,
             ProcessedAt = DateTimeOffset.UtcNow,

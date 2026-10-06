@@ -9,12 +9,16 @@
   "organizer": {
     "lyrics": {
       "enabled": true,
-      "overrideExisting": true
+      "overrideExisting": true,
+      "refreshIntervalHours": 24
     }
   },
   "logging": {
     "level": "INFO",
     "fmt": "{levelname} [{name}] {message}",
     "datefmt": "%Y-%m-%d %H:%M:%S"
+  },
+  "ui": {
+    "language": "en-US"
   }
 }

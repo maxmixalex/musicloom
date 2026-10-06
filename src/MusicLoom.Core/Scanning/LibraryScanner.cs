@@ -66,9 +66,23 @@ public sealed class LibraryScanner
 
             FileInfo source = new(sourcePath);
             TryGetState(state, sourcePath, out TrackState? trackState);
-            bool sourceVersionUnchanged =
+
+            bool sourceStatUnchanged =
                 trackState is not null
-                && StateStore.IsSourceVersionUnchanged(trackState, source);
+                && StateStore.IsSourceStatUnchanged(trackState, source);
+            bool sourceVersionUnchanged = false;
+            bool quickHashNeedsCapture = false;
+
+            if (trackState is not null && sourceStatUnchanged)
+            {
+                ulong quickHash = QuickFileHash.Compute(sourcePath);
+                quickHashNeedsCapture = trackState.QuickHash == 0;
+                sourceVersionUnchanged =
+                    StateStore.IsSourceVersionUnchanged(
+                        trackState,
+                        source,
+                        quickHash);
+            }
 
             TrackMetadata? cachedMetadata = trackState is { MetadataCaptured: true }
                 ? new TrackMetadata(
@@ -119,7 +133,8 @@ public sealed class LibraryScanner
                     && destinationExists
                     && destinationVersionMatches
                     && recipeMatches
-                    && enrichmentFresh)
+                    && enrichmentFresh
+                    && !quickHashNeedsCapture)
                 {
                     entries.Add(new PlanEntry(
                         sourcePath,
@@ -137,7 +152,9 @@ public sealed class LibraryScanner
                             ? "Destination file changed."
                             : !recipeMatches
                                 ? "Processing recipe changed."
-                                : "Enrichment retry is due.";
+                                : !enrichmentFresh
+                                    ? "Enrichment retry is due."
+                                    : "Capturing source quick hash.";
 
                 entries.Add(new PlanEntry(
                     sourcePath,
@@ -229,11 +246,54 @@ public sealed class LibraryScanner
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
+                // Metadata problems must not prevent a readable audio file from
+                // being copied. Fall back to the destination root, matching the
+                // user's explicit "preserve the file first" policy.
+                TrackMetadata fallbackMetadata = new(
+                    Artist: null,
+                    AlbumArtist: null,
+                    Album: null,
+                    HasEmbeddedArt: false);
+                string destinationPath = GetDestinationPath(
+                    sourcePath,
+                    sourceRoot,
+                    destinationRoot,
+                    fallbackMetadata,
+                    neteaseSongId: null);
+
+                bool destinationMatchesState =
+                    trackState?.DestinationPath is not null
+                    && PathsEqual(
+                        trackState.DestinationPath,
+                        destinationPath);
+                bool destinationExists =
+                    File.Exists(destinationPath);
+                bool destinationVersionMatches =
+                    trackState is null
+                    || !sourceVersionUnchanged
+                    || !StateStore.HasDestinationVersion(trackState)
+                    || (destinationExists
+                        && StateStore.IsDestinationVersionUnchanged(
+                            trackState,
+                            new FileInfo(destinationPath)));
+
+                bool needsAudioCopy =
+                    trackState is null
+                    || !sourceVersionUnchanged
+                    || !destinationMatchesState
+                    || !destinationExists
+                    || !destinationVersionMatches;
+
                 entries.Add(new PlanEntry(
                     sourcePath,
-                    trackState?.DestinationPath,
-                    PlanEntryStatus.Error,
-                    Detail: exception.Message));
+                    destinationPath,
+                    trackState is null
+                        ? PlanEntryStatus.New
+                        : PlanEntryStatus.Modified,
+                    fallbackMetadata,
+                    "Metadata could not be read; copying to the destination root. "
+                        + exception.Message,
+                    needsAudioCopy));
             }
         }
 

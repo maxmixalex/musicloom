@@ -134,16 +134,28 @@ public class StateStore
         }
     }
 
-    public static readonly TimeSpan NegativeEnrichmentTtl =
-        TimeSpan.FromHours(24);
-
-    public static bool IsSourceVersionUnchanged(
+    public static bool IsSourceStatUnchanged(
         TrackState state,
         FileInfo source)
     {
         return state.SourceSize == source.Length
             && state.SourceLastWriteUtcTicks
                 == source.LastWriteTimeUtc.Ticks;
+    }
+
+    public static bool IsSourceVersionUnchanged(
+        TrackState state,
+        FileInfo source,
+        ulong quickHash)
+    {
+        if (!IsSourceStatUnchanged(state, source))
+        {
+            return false;
+        }
+
+        // State created before quick-hash validation is migrated lazily.
+        return state.QuickHash == 0
+            || state.QuickHash == quickHash;
     }
 
     public static bool HasDestinationVersion(
@@ -175,17 +187,31 @@ public class StateStore
             return true;
         }
 
+        TimeSpan refreshTtl =
+            GetRefreshTtl(settings.Organizer.Lyrics.RefreshIntervalHours);
+
         return state.Lyrics switch
         {
-            LyricsState.Written => true,
+            LyricsState.Written =>
+                !settings.Organizer.Lyrics.OverrideExisting
+                || IsFresh(
+                    state.LyricsCheckedAt,
+                    now,
+                    refreshTtl),
             LyricsState.Existing => true,
             LyricsState.Unsupported => true,
             LyricsState.NoLyrics =>
-                IsFresh(state.LyricsCheckedAt, now),
+                IsFresh(
+                    state.LyricsCheckedAt,
+                    now,
+                    refreshTtl),
             LyricsState.Unknown
                 when state.Recognition
                     == RecognitionState.NoMatch =>
-                IsFresh(state.RecognitionCheckedAt, now),
+                IsFresh(
+                    state.RecognitionCheckedAt,
+                    now,
+                    refreshTtl),
             _ => false,
         };
     }
@@ -225,9 +251,21 @@ public class StateStore
         or IOException
         or UnauthorizedAccessException;
 
+    private static TimeSpan GetRefreshTtl(double hours)
+    {
+        if (!double.IsFinite(hours) || hours <= 0)
+        {
+            return TimeSpan.Zero;
+        }
+
+        // Prevent invalid/overflowing config values from destabilizing scans.
+        return TimeSpan.FromHours(Math.Min(hours, 24 * 365 * 10));
+    }
+
     private static bool IsFresh(
         DateTimeOffset? checkedAt,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        TimeSpan ttl)
     {
         if (checkedAt is not DateTimeOffset timestamp)
         {
@@ -236,7 +274,7 @@ public class StateStore
 
         TimeSpan age = now - timestamp;
         return age >= TimeSpan.Zero
-            && age <= NegativeEnrichmentTtl;
+            && age <= ttl;
     }
 
     private static void TryDelete(string path)
