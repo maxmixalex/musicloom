@@ -1597,16 +1597,8 @@ public sealed partial class MainWindow : Window
     {
         StopTitleAutoScroll();
 
-        TrackTitleScroller.ChangeView(
-            0,
-            null,
-            null,
-            disableAnimation: true);
-        TrackAlbumScroller.ChangeView(
-            0,
-            null,
-            null,
-            disableAnimation: true);
+        TrackTitleTranslateTransform.X = 0;
+        TrackAlbumTranslateTransform.X = 0;
 
         string mode =
             CurrentLongTextMode;
@@ -1617,65 +1609,39 @@ public sealed partial class MainWindow : Window
             item.ApplyLongTextMode(mode);
         }
 
-        if (mode == LongTextModes.Wrap)
-        {
-            ConfigureDetailText(
-                TrackTitleScroller,
-                TrackTitleText,
-                wrap: true,
-                tooltip: null,
-                maxLines: 3);
-            ConfigureDetailText(
-                TrackAlbumScroller,
-                TrackAlbumText,
-                wrap: true,
-                tooltip: null,
-                maxLines: 2);
-            return;
-        }
-
-        if (mode == LongTextModes.Hover)
-        {
-            ConfigureDetailText(
-                TrackTitleScroller,
-                TrackTitleText,
-                wrap: false,
-                tooltip: TrackTitleText.Text,
-                maxLines: 1);
-            ConfigureDetailText(
-                TrackAlbumScroller,
-                TrackAlbumText,
-                wrap: false,
-                tooltip: TrackAlbumText.Text,
-                maxLines: 1);
-            return;
-        }
-
         ConfigureDetailText(
-            TrackTitleScroller,
+            TrackTitleViewport,
             TrackTitleText,
-            wrap: false,
-            tooltip: null,
-            maxLines: 1,
-            marquee: true);
+            mode,
+            maxLines: 3);
         ConfigureDetailText(
-            TrackAlbumScroller,
+            TrackAlbumViewport,
             TrackAlbumText,
-            wrap: false,
-            tooltip: null,
-            maxLines: 1,
-            marquee: true);
+            mode,
+            maxLines: 2);
+
+        if (mode != LongTextModes.AutoScroll)
+        {
+            return;
+        }
 
         DispatcherQueue.TryEnqueue(
             () =>
             {
-                TrackTitleScroller.UpdateLayout();
-                TrackAlbumScroller.UpdateLayout();
+                TrackTitleViewport.UpdateLayout();
+                TrackAlbumViewport.UpdateLayout();
 
-                if (TrackTitleScroller.ScrollableWidth
-                        <= 1
-                    && TrackAlbumScroller.ScrollableWidth
-                        <= 1)
+                double titleOverflow =
+                    GetTextOverflow(
+                        TrackTitleViewport,
+                        TrackTitleText);
+                double albumOverflow =
+                    GetTextOverflow(
+                        TrackAlbumViewport,
+                        TrackAlbumText);
+
+                if (titleOverflow <= 1
+                    && albumOverflow <= 1)
                 {
                     return;
                 }
@@ -1684,7 +1650,7 @@ public sealed partial class MainWindow : Window
                 _albumScrollDirection = 1;
                 _titleScrollPauseUntil =
                     DateTimeOffset.UtcNow
-                        .AddMilliseconds(700);
+                        .AddMilliseconds(450);
 
                 DispatcherTimer timer = new()
                 {
@@ -1702,34 +1668,79 @@ public sealed partial class MainWindow : Window
     }
 
     private static void ConfigureDetailText(
-        ScrollViewer scroller,
+        ScrollViewer viewport,
         TextBlock text,
-        bool wrap,
-        string? tooltip,
-        int maxLines,
-        bool marquee = false)
+        string mode,
+        int maxLines)
     {
-        scroller.HorizontalScrollMode =
-            marquee
+        string normalized =
+            LongTextModes.Normalize(
+                mode);
+
+        bool wrap =
+            normalized
+            == LongTextModes.Wrap;
+        bool hover =
+            normalized
+            == LongTextModes.Hover;
+
+        viewport.HorizontalScrollBarVisibility =
+            ScrollBarVisibility.Hidden;
+        viewport.HorizontalScrollMode =
+            normalized
+                == LongTextModes.AutoScroll
                 ? ScrollMode.Enabled
                 : ScrollMode.Disabled;
-        scroller.HorizontalScrollBarVisibility =
-            ScrollBarVisibility.Hidden;
+        viewport.IsHitTestVisible =
+            hover;
+
+        text.HorizontalAlignment =
+            normalized
+                == LongTextModes.AutoScroll
+                ? HorizontalAlignment.Left
+                : HorizontalAlignment.Stretch;
+
+        text.Width =
+            normalized
+                == LongTextModes.AutoScroll
+                ? double.NaN
+                : Math.Max(
+                    0,
+                    viewport.ActualWidth);
 
         text.TextWrapping =
             wrap
                 ? TextWrapping.WrapWholeWords
                 : TextWrapping.NoWrap;
         text.TextTrimming =
-            wrap || marquee
-                ? TextTrimming.None
-                : TextTrimming.CharacterEllipsis;
+            hover
+                ? TextTrimming.CharacterEllipsis
+                : TextTrimming.None;
         text.MaxLines =
-            maxLines;
+            wrap
+                ? maxLines
+                : 1;
 
         ToolTipService.SetToolTip(
             text,
-            tooltip);
+            hover
+                ? text.Text
+                : null);
+    }
+
+    private static double GetTextOverflow(
+        ScrollViewer viewport,
+        TextBlock text)
+    {
+        text.Measure(
+            new Windows.Foundation.Size(
+                double.PositiveInfinity,
+                double.PositiveInfinity));
+
+        return Math.Max(
+            0,
+            text.DesiredSize.Width
+            - viewport.ViewportWidth);
     }
 
     private void StopTitleAutoScroll()
@@ -1765,37 +1776,49 @@ public sealed partial class MainWindow : Window
         }
 
         bool titleHit =
-            AdvanceScroller(
-                TrackTitleScroller,
+            AdvanceTextTransform(
+                TrackTitleViewport,
+                TrackTitleText,
+                TrackTitleTranslateTransform,
                 ref _titleScrollDirection);
         bool albumHit =
-            AdvanceScroller(
-                TrackAlbumScroller,
+            AdvanceTextTransform(
+                TrackAlbumViewport,
+                TrackAlbumText,
+                TrackAlbumTranslateTransform,
                 ref _albumScrollDirection);
 
         if (titleHit || albumHit)
         {
             _titleScrollPauseUntil =
                 DateTimeOffset.UtcNow
-                    .AddMilliseconds(650);
+                    .AddMilliseconds(420);
         }
     }
 
-    private static bool AdvanceScroller(
-        ScrollViewer scroller,
+    private static bool AdvanceTextTransform(
+        ScrollViewer viewport,
+        TextBlock text,
+        TranslateTransform transform,
         ref double direction)
     {
         double max =
-            scroller.ScrollableWidth;
+            GetTextOverflow(
+                viewport,
+                text);
 
         if (max <= 1)
         {
+            transform.X = 0;
             return false;
         }
 
+        double offset =
+            -transform.X;
+
         double next =
-            scroller.HorizontalOffset
-            + direction * 1.9;
+            offset
+            + direction * 2.65;
         bool hitEdge = false;
 
         if (next >= max)
@@ -1811,11 +1834,9 @@ public sealed partial class MainWindow : Window
             hitEdge = true;
         }
 
-        scroller.ChangeView(
-            next,
-            null,
-            null,
-            disableAnimation: true);
+        // RenderTransform updates do not invalidate layout, unlike
+        // ScrollViewer.ChangeView(), so this avoids LayoutCycleException.
+        transform.X = -next;
 
         return hitEdge;
     }
