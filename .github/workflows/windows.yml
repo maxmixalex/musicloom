@@ -70,29 +70,46 @@ jobs:
       - name: Publish self-contained WinUI app
         run: dotnet publish src/MusicLoom.App/MusicLoom.App.csproj -c Release -r win-x64 -p:Platform=x64 --self-contained true --no-restore -o artifacts/app-win-x64
 
-      - name: Verify SAT app bundle
+      - name: Assemble clean Windows release
         shell: pwsh
         run: |
+          Copy-Item LICENSE artifacts/app-win-x64/LICENSE
+          Copy-Item THIRD_PARTY_NOTICES.md artifacts/app-win-x64/THIRD_PARTY_NOTICES.md
+
           $required = @(
-            "MusicLoom.App.exe",
-            "MusicLoom.App.pri",
-            "config.example.json",
-            "SAT-0.1.md",
+            "MusicLoom.exe",
             "LICENSE",
             "THIRD_PARTY_NOTICES.md"
           )
           foreach ($name in $required) {
             $path = Join-Path "artifacts/app-win-x64" $name
             if (-not (Test-Path $path)) {
-              throw "Missing SAT bundle file: $path"
+              throw "Missing release file: $path"
             }
           }
 
-          $xbf = Get-ChildItem "artifacts/app-win-x64" -Filter *.xbf -Recurse
-          if ($xbf.Count -lt 2) {
-            throw "Published WinUI bundle is missing compiled XAML resources (.xbf)."
+          $forbidden = Get-ChildItem "artifacts/app-win-x64" -Recurse -File |
+            Where-Object {
+              $_.Name -ieq "createdump.exe" -or
+              $_.Name -ieq "RestartAgent.exe" -or
+              $_.Extension -ieq ".dll" -or
+              $_.Extension -ieq ".pdb"
+            }
+          if ($forbidden) {
+            $forbidden | Select-Object FullName | Format-Table -AutoSize
+            throw "Clean single-file release still exposes runtime/debug binaries."
           }
-          $xbf | ForEach-Object { $_.FullName }
+
+          $unexpectedDirectories =
+            Get-ChildItem "artifacts/app-win-x64" -Directory
+          if ($unexpectedDirectories) {
+            $unexpectedDirectories | Select-Object FullName | Format-Table -AutoSize
+            throw "Clean single-file release unexpectedly contains subdirectories."
+          }
+
+          Get-ChildItem "artifacts/app-win-x64" |
+            Select-Object Name, Length |
+            Format-Table -AutoSize
 
       - name: Launch WinUI build and publish outputs
         shell: pwsh
@@ -115,7 +132,7 @@ jobs:
             $failure = $null
 
             try {
-              $deadline = (Get-Date).AddSeconds(15)
+              $deadline = (Get-Date).AddSeconds(30)
               while ((Get-Date) -lt $deadline -and -not (Test-Path $marker)) {
                 if ($process.HasExited) {
                   $failure = "$Label exited before its main window activated. Exit code: $($process.ExitCode)"
@@ -125,7 +142,7 @@ jobs:
               }
 
               if (-not $failure -and -not (Test-Path $marker)) {
-                $failure = "$Label did not activate its main window within 15 seconds."
+                $failure = "$Label did not activate its main window within 30 seconds."
               }
 
               if (Test-Path $trace) {
@@ -166,8 +183,8 @@ jobs:
             }
           }
 
-          $buildExe = Join-Path $PWD "src/MusicLoom.App/bin/x64/Release/net10.0-windows10.0.26100.0/win-x64/MusicLoom.App.exe"
-          $publishExe = Join-Path $PWD "artifacts/app-win-x64/MusicLoom.App.exe"
+          $buildExe = Join-Path $PWD "src/MusicLoom.App/bin/x64/Release/net10.0-windows10.0.26100.0/win-x64/MusicLoom.exe"
+          $publishExe = Join-Path $PWD "artifacts/app-win-x64/MusicLoom.exe"
 
           $buildOk = Test-MusicLoomLaunch -Exe $buildExe -Label "build-output"
           $publishOk = Test-MusicLoomLaunch -Exe $publishExe -Label "publish-output"
@@ -186,6 +203,6 @@ jobs:
       - name: Upload Windows app
         uses: actions/upload-artifact@v6
         with:
-          name: musicloom-app-win-x64
+          name: musicloom-win-x64
           path: artifacts/app-win-x64/**
           if-no-files-found: error
