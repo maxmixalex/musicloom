@@ -35,7 +35,14 @@
     <ProjectReference Include="../MusicLoom.Tagging/MusicLoom.Tagging.csproj" />
     <ProjectReference Include="../MusicLoom.Netease/MusicLoom.Netease.csproj" />
     <Content Remove="Assets/MusicLoom.ico" />
+    <EmbeddedResource Include="Assets/MusicLoom.ico"
+                      LogicalName="MusicLoom.AppIcon.ico" />
   </ItemGroup>
+  <Target Name="GenerateMusicLoomWindowsIcon"
+          BeforeTargets="PrepareResources;GenerateWin32Resources;CoreCompile"
+          Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\tools\Generate-MusicLoomIcon.ps1&quot; -OutputPath &quot;$(MSBuildProjectDirectory)\Assets\MusicLoom.ico&quot;" />
+  </Target>
   <Target Name="CopyWinUiResourcesForNativeAot"
           AfterTargets="Publish"
           Condition="'$(WindowsPackageType)' == 'None' and '$(PublishSingleFile)' != 'true'">
