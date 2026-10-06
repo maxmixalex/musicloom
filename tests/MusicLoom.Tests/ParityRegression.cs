@@ -72,6 +72,8 @@ internal static class ParityRegression
                 DestinationSize = destination.Length,
                 DestinationLastWriteUtcTicks = destination.LastWriteTimeUtc.Ticks,
                 MetadataCaptured = true,
+            MetadataSchemaVersion = TrackMetadata.CurrentSchemaVersion,
+                MetadataSchemaVersion = TrackMetadata.CurrentSchemaVersion,
                 TitleCaptured = true,
                 Artist = metadata.Artist,
                 AlbumArtist = metadata.AlbumArtist,
