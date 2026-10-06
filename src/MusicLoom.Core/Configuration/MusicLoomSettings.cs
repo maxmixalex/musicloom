@@ -15,6 +15,9 @@ public sealed record MusicLoomSettings
 
     [JsonPropertyName("logging")]
     public LoggingSettings Logging { get; init; } = new();
+
+    [JsonPropertyName("ui")]
+    public UiSettings Ui { get; init; } = new();
 }
 
 public sealed record PathSettings
@@ -60,4 +63,11 @@ public sealed record LoggingSettings
 
     [JsonPropertyName("datefmt")]
     public string DateFormat { get; init; } = "%Y-%m-%d %H:%M:%S";
+}
+
+
+public sealed record UiSettings
+{
+    [JsonPropertyName("language")]
+    public string Language { get; init; } = "en-US";
 }
