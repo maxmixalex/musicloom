@@ -465,7 +465,10 @@ public sealed partial class MainWindow : Window
         {
             FontSize = 20,
             FontWeight =
-                Windows.UI.Text.FontWeights.SemiBold,
+                new Windows.UI.Text.FontWeight
+                {
+                    Weight = 600,
+                },
             TextWrapping =
                 TextWrapping.Wrap,
         };
@@ -2743,7 +2746,7 @@ public sealed partial class MainWindow : Window
             viewer.PointerPressed +=
                 (_, args) =>
                 {
-                    PointerPoint point =
+                    var point =
                         args.GetCurrentPoint(
                             viewer);
 
