@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">MusicLoom</title>
+  <desc id="desc">A woven musical note on an indigo-to-cyan rounded square.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#16A3B8"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bg)"/>
+  <g fill="none" stroke="#fff" stroke-linecap="round">
+    <path d="M150 108v248M220 108v248M290 108v248M360 108v248" stroke-width="14" opacity=".45"/>
+    <path d="M110 210l40-30 70 60 70-60 70 60 35-25" stroke-width="24" stroke-linejoin="round"/>
+    <path d="M360 240v90M418 215v-75" stroke-width="24"/>
+  </g>
+  <circle cx="353" cy="338" r="28" fill="#fff"/>
+  <circle cx="418" cy="218" r="28" fill="#fff"/>
+</svg>
