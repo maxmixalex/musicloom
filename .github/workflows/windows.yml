@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   winui:
-    name: Regression / WinUI 3 / NativeAOT
+    name: Regression / WinUI 3 / NativeAOT core
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
@@ -67,8 +67,114 @@ jobs:
       - name: Build WinUI shell
         run: dotnet build src/MusicLoom.App/MusicLoom.App.csproj -c Release -r win-x64 -p:Platform=x64 --no-restore
 
-      - name: Publish NativeAOT app
+      - name: Publish self-contained WinUI app
         run: dotnet publish src/MusicLoom.App/MusicLoom.App.csproj -c Release -r win-x64 -p:Platform=x64 --self-contained true --no-restore -o artifacts/app-win-x64
+
+      - name: Verify SAT app bundle
+        shell: pwsh
+        run: |
+          $required = @(
+            "MusicLoom.App.exe",
+            "MusicLoom.App.pri",
+            "config.example.json",
+            "SAT-0.1.md",
+            "LICENSE",
+            "THIRD_PARTY_NOTICES.md"
+          )
+          foreach ($name in $required) {
+            $path = Join-Path "artifacts/app-win-x64" $name
+            if (-not (Test-Path $path)) {
+              throw "Missing SAT bundle file: $path"
+            }
+          }
+
+          $xbf = Get-ChildItem "artifacts/app-win-x64" -Filter *.xbf -Recurse
+          if ($xbf.Count -lt 2) {
+            throw "Published WinUI bundle is missing compiled XAML resources (.xbf)."
+          }
+          $xbf | ForEach-Object { $_.FullName }
+
+      - name: Launch WinUI build and publish outputs
+        shell: pwsh
+        run: |
+          function Test-MusicLoomLaunch {
+            param(
+              [Parameter(Mandatory = $true)][string]$Exe,
+              [Parameter(Mandatory = $true)][string]$Label
+            )
+
+            $safeLabel = $Label -replace '[^A-Za-z0-9_.-]', '-'
+            $marker = Join-Path $PWD "artifacts/$safeLabel.launch-ok"
+            $trace = Join-Path $PWD "artifacts/$safeLabel.startup.log"
+            Remove-Item $marker, $trace -Force -ErrorAction SilentlyContinue
+
+            $env:MUSICLOOM_SMOKE_MARKER = $marker
+            $env:MUSICLOOM_STARTUP_TRACE = $trace
+            $startedAt = Get-Date
+            $process = Start-Process -FilePath $Exe -PassThru
+            $failure = $null
+
+            try {
+              $deadline = (Get-Date).AddSeconds(15)
+              while ((Get-Date) -lt $deadline -and -not (Test-Path $marker)) {
+                if ($process.HasExited) {
+                  $failure = "$Label exited before its main window activated. Exit code: $($process.ExitCode)"
+                  break
+                }
+                Start-Sleep -Milliseconds 250
+              }
+
+              if (-not $failure -and -not (Test-Path $marker)) {
+                $failure = "$Label did not activate its main window within 15 seconds."
+              }
+
+              if (Test-Path $trace) {
+                Write-Host "=== $Label startup trace ==="
+                Get-Content $trace | ForEach-Object { Write-Host $_ }
+              } else {
+                Write-Host "=== $Label startup trace: no trace file ==="
+              }
+
+              if ($failure) {
+                Write-Host "=== Windows Application events since launch ==="
+                Get-WinEvent -FilterHashtable @{
+                  LogName = 'Application'
+                  StartTime = $startedAt.AddSeconds(-2)
+                } -ErrorAction SilentlyContinue |
+                  Where-Object {
+                    $_.Message -match 'MusicLoom|Microsoft\.UI\.Xaml|0xc000027b|C000027B'
+                  } |
+                  Select-Object TimeCreated, Id, ProviderName, LevelDisplayName, Message |
+                  Format-List |
+                  Out-String -Width 4096 |
+                  Write-Host
+
+                Write-Host "FAIL: $failure"
+                return $false
+              }
+
+              Write-Host "=== $Label activated ==="
+              Get-Content $marker | ForEach-Object { Write-Host $_ }
+              return $true
+            }
+            finally {
+              if (-not $process.HasExited) {
+                Stop-Process -Id $process.Id -Force
+              }
+              Remove-Item Env:MUSICLOOM_SMOKE_MARKER -ErrorAction SilentlyContinue
+              Remove-Item Env:MUSICLOOM_STARTUP_TRACE -ErrorAction SilentlyContinue
+            }
+          }
+
+          $buildExe = Join-Path $PWD "src/MusicLoom.App/bin/x64/Release/net10.0-windows10.0.26100.0/win-x64/MusicLoom.App.exe"
+          $publishExe = Join-Path $PWD "artifacts/app-win-x64/MusicLoom.App.exe"
+
+          $buildOk = Test-MusicLoomLaunch -Exe $buildExe -Label "build-output"
+          $publishOk = Test-MusicLoomLaunch -Exe $publishExe -Label "publish-output"
+
+          if (-not $buildOk -or -not $publishOk) {
+            throw "WinUI launch smoke test failed."
+          }
 
       - name: Upload Windows CLI
         uses: actions/upload-artifact@v6

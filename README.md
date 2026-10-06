@@ -4,7 +4,7 @@ MusicLoom is a local music-library organizer and synchronization tool for keepin
 
 It is a compiled rewrite of a personal Python `musicorg` workflow originally built around **MusicBee → Salt Player (Android)**. The rewrite focuses first on preserving the existing organization, lyrics, cover, and playlist behavior while removing the Python/NumPy/PythonMonkey/WASM/PyNCM runtime stack and making unchanged libraries genuinely incremental.
 
-> **Status:** early but runnable rewrite. Native AFP, Netease WEAPI, recipe-aware incremental state, local materialization, Windows Media Foundation decoding, legacy-compatible lyric writing for ID3/Vorbis/MP4, the transactional sync executor, and a guarded WinUI 3 live-sync flow are in place.
+> **Status:** first-SAT candidate. Native AFP, Netease WEAPI, recipe-aware incremental state, atomic/resumable sync, legacy-compatible lyric writing for ID3/Vorbis/MP4, and a guarded WinUI 3 scan/review/apply workflow are in place.
 
 ## Why a rewrite?
 
@@ -44,6 +44,18 @@ A scan produces `Unchanged`, `New`, `Modified`, or `Error` entries and does **no
 
 ATL.NET is isolated behind `ITrackMetadataReader` and is used for scanning because it reads through stream/seek-oriented parsers. TagLibSharp2 0.6.0 currently uses `ReadAllBytes` in its file readers, so it is not used on the scan hot path. Mutation is separate: `MusicLoom.Tagging` uses classic TagLib# 2.3.0 with explicit format classes, avoiding its reflection-based factory in NativeAOT code.
 
+## Windows audio decoding
+
+Recognition uses a composite NativeAOT-safe Windows decoder instead of assuming every format is available through system codecs:
+
+- MP3 → NLayer
+- WAV → NAudio PCM reader
+- Ogg Vorbis → NAudio.Vorbis / NVorbis
+- Opus → Concentus.Oggfile / Concentus
+- FLAC / M4A / WMA → Windows Media Foundation
+
+All seven legacy formats are exercised against pinned real/synthetic fixtures in both managed and NativeAOT runs.
+
 ## Native AFP progress
 
 The fingerprint implementation no longer depends on the old Emscripten module. Current golden checks include:
@@ -75,9 +87,9 @@ The WinUI 3 app exposes the same planner as the CLI. **Scan library** is read-on
 
 ## Build
 
-Core projects target .NET 10. CI runs regression tests and NativeAOT CLI publishing on the `home-docker` runner. WinUI 3 and Windows NativeAOT are validated separately on GitHub's Windows runner.
+Core projects target .NET 10. CI runs regression tests and NativeAOT CLI publishing on the `home-docker` runner. The SAT WinUI 3 app is currently published self-contained with JIT on GitHub's Windows runner, while Windows NativeAOT remains covered by the core/audio regression executables.
 
-See [`docs/architecture.md`](docs/architecture.md) and [`docs/legacy-behavior.md`](docs/legacy-behavior.md).
+See [`docs/architecture.md`](docs/architecture.md), [`docs/legacy-behavior.md`](docs/legacy-behavior.md), and the first [`SAT checklist`](docs/sat-01.md).
 
 
 ## Licensing note
