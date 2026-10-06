@@ -67,23 +67,6 @@
                   x:Name="LibrarySubtitleText"
                   Text="Browse, inspect and sync your local collection."
                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-              <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,5,0,0">
-                <ProgressBar
-                    x:Name="OperationProgressBar"
-                    Width="150"
-                    Height="3"
-                    Minimum="0"
-                    Maximum="100"
-                    VerticalAlignment="Center"
-                    Visibility="Collapsed" />
-                <TextBlock
-                    x:Name="OperationStatusText"
-                    Text="Ready."
-                    VerticalAlignment="Center"
-                    MaxWidth="520"
-                    TextTrimming="CharacterEllipsis"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-              </StackPanel>
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -180,8 +163,36 @@
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 CornerRadius="10">
               <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border
+                    x:Name="LibraryProgressPanel"
+                    Grid.Row="0"
+                    Visibility="Collapsed"
+                    Margin="10,10,10,4"
+                    Padding="10,8"
+                    CornerRadius="8"
+                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                  <StackPanel Spacing="6">
+                    <TextBlock
+                        x:Name="OperationStatusText"
+                        Text="Ready."
+                        TextTrimming="CharacterEllipsis"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <ProgressBar
+                        x:Name="OperationProgressBar"
+                        Height="3"
+                        Minimum="0"
+                        Maximum="100" />
+                  </StackPanel>
+                </Border>
+
                 <ListView
                     x:Name="LibraryList"
+                    Grid.Row="1"
                     Visibility="Collapsed"
                     SelectionMode="Single"
                     SelectionChanged="LibraryList_SelectionChanged"
@@ -249,6 +260,7 @@
 
                 <StackPanel
                     x:Name="LibraryEmptyPanel"
+                    Grid.Row="1"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     MaxWidth="340"
@@ -295,7 +307,14 @@
                     <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
 
-                  <Border Width="132" Height="132" CornerRadius="9" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                  <Border
+                      x:Name="CoverHost"
+                      Width="132"
+                      Height="132"
+                      CornerRadius="9"
+                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                      DoubleTapped="CoverHost_DoubleTapped"
+                      ToolTipService.ToolTip="Double-click to view artwork">
                     <Grid>
                       <Image x:Name="CoverImage" Stretch="UniformToFill" />
                       <TextBlock
@@ -308,7 +327,19 @@
                   </Border>
 
                   <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5">
-                    <TextBlock x:Name="TrackTitleText" Text="" FontSize="26" FontWeight="SemiBold" TextWrapping="WrapWholeWords" />
+                    <ScrollViewer
+                        HorizontalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Enabled"
+                        VerticalScrollMode="Disabled"
+                        ZoomMode="Disabled">
+                      <TextBlock
+                          x:Name="TrackTitleText"
+                          Text=""
+                          FontSize="26"
+                          FontWeight="SemiBold"
+                          TextWrapping="NoWrap" />
+                    </ScrollViewer>
                     <TextBlock x:Name="TrackArtistText" Text="" FontSize="16" TextWrapping="Wrap" />
                     <TextBlock x:Name="TrackAlbumText" Text="" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
@@ -320,11 +351,14 @@
                   <Button
                       x:Name="CloseDetailButton"
                       Grid.Column="2"
-                      Width="32"
-                      Height="32"
+                      Width="36"
+                      Height="36"
+                      Padding="0"
+                      Background="Transparent"
+                      BorderThickness="0"
                       Click="CloseDetailButton_Click"
                       ToolTipService.ToolTip="Close details">
-                    <SymbolIcon Symbol="Cancel" />
+                    <FontIcon Glyph="&#xE711;" FontSize="12" />
                   </Button>
                 </Grid>
 
@@ -352,12 +386,17 @@
                             VerticalAlignment="Center"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             TextWrapping="Wrap" />
-                        <ToggleButton
-                            x:Name="ShowTranslationToggle"
+                        <Button
+                            x:Name="TranslationButton"
                             Grid.Column="1"
-                            IsChecked="True"
-                            Click="ShowTranslationToggle_Click"
-                            Content="Show translation" />
+                            Width="36"
+                            Height="36"
+                            Padding="0"
+                            Visibility="Collapsed"
+                            Click="TranslationButton_Click"
+                            ToolTipService.ToolTip="Show translation">
+                          <FontIcon Glyph="&#xE8C1;" FontSize="16" />
+                        </Button>
                       </Grid>
 
                       <ListView
@@ -376,6 +415,15 @@
                         <ListView.ItemTemplate>
                           <DataTemplate>
                             <StackPanel Padding="8,7" Spacing="3">
+                              <StackPanel.ContextFlyout>
+                                <MenuFlyout>
+                                  <MenuFlyoutItem
+                                      x:Name="CopyLyricLineItem"
+                                      Text="Copy line"
+                                      Tag="{Binding}"
+                                      Click="CopyLyricLineItem_Click" />
+                                </MenuFlyout>
+                              </StackPanel.ContextFlyout>
                               <TextBlock
                                   Text="{Binding Original}"
                                   FontSize="16"
@@ -473,19 +521,27 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
+
           <StackPanel Spacing="3">
             <TextBlock x:Name="PlaylistsTitleText" Text="Playlists" FontSize="32" FontWeight="SemiBold" />
-            <TextBlock x:Name="PlaylistsSubtitleText" Text="Browse the MusicBee playlists that MusicLoom exports for your phone." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="PlaylistsSubtitleText" Text="Browse your MusicBee playlists." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
           </StackPanel>
 
           <Grid Grid.Row="1" Margin="0,18,0,0" ColumnSpacing="16">
             <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="320" MinWidth="240" />
+              <ColumnDefinition Width="300" MinWidth="240" />
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="10">
-              <ListView x:Name="PlaylistsList" SelectionChanged="PlaylistsList_SelectionChanged" HorizontalContentAlignment="Stretch">
+            <Border
+                BorderThickness="1"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="10">
+              <ListView
+                  x:Name="PlaylistsList"
+                  SelectionChanged="PlaylistsList_SelectionChanged"
+                  HorizontalContentAlignment="Stretch">
                 <ListView.ItemTemplate>
                   <DataTemplate>
                     <Grid Padding="14,10" ColumnSpacing="10">
@@ -501,23 +557,104 @@
               </ListView>
             </Border>
 
-            <Border Grid.Column="1" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="10">
-              <Grid Padding="18">
+            <Border
+                Grid.Column="1"
+                BorderThickness="1"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="10">
+              <Grid Padding="12">
                 <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <StackPanel Spacing="3">
-                  <TextBlock x:Name="PlaylistTitleText" Text="Select a playlist" FontSize="24" FontWeight="SemiBold" />
-                  <TextBlock x:Name="PlaylistMetaText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+
+                <StackPanel Spacing="2">
+                  <TextBlock x:Name="PlaylistTitleText" Text="Select a playlist" FontSize="22" FontWeight="SemiBold" />
+                  <TextBlock x:Name="PlaylistMetaText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <ListView x:Name="PlaylistTracksList" Grid.Row="1" Margin="0,12,0,0">
+
+                <Grid Grid.Row="1" Margin="0,12,0,8" ColumnSpacing="8">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="170" />
+                  </Grid.ColumnDefinitions>
+                  <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <SymbolIcon Symbol="Find" VerticalAlignment="Center" Margin="4,0,0,0" />
+                    <TextBox
+                        x:Name="PlaylistSearchBox"
+                        Grid.Column="1"
+                        PlaceholderText="Search this playlist"
+                        TextChanged="PlaylistSearchBox_TextChanged" />
+                  </Grid>
+                  <ComboBox
+                      x:Name="PlaylistSortBox"
+                      Grid.Column="1"
+                      SelectionChanged="PlaylistSortBox_SelectionChanged">
+                    <ComboBoxItem x:Name="PlaylistSortTitleItem" Content="Sort by title" Tag="title" />
+                    <ComboBoxItem x:Name="PlaylistSortAlbumItem" Content="Sort by album" Tag="album" />
+                    <ComboBoxItem x:Name="PlaylistSortArtistItem" Content="Sort by artist" Tag="artist" />
+                  </ComboBox>
+                </Grid>
+
+                <ListView
+                    x:Name="PlaylistTracksList"
+                    Grid.Row="2"
+                    RightTapped="PlaylistTracksList_RightTapped"
+                    HorizontalContentAlignment="Stretch"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                  <ListView.ContextFlyout>
+                    <MenuFlyout>
+                      <MenuFlyoutItem
+                          x:Name="PlaylistShowInLibraryItem"
+                          Text="Show in library"
+                          Click="PlaylistShowInLibraryItem_Click" />
+                    </MenuFlyout>
+                  </ListView.ContextFlyout>
+                  <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                      <Setter Property="Padding" Value="0" />
+                      <Setter Property="Margin" Value="0,1" />
+                    </Style>
+                  </ListView.ItemContainerStyle>
                   <ListView.ItemTemplate>
                     <DataTemplate>
-                      <StackPanel Padding="10,7" Spacing="2">
-                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
-                      </StackPanel>
+                      <Grid MinHeight="62" Padding="12,8" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="44" />
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="28" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            Width="44"
+                            Height="44"
+                            CornerRadius="6"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                          <Image Source="{Binding Artwork}" Stretch="UniformToFill" />
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                          <TextBlock
+                              Text="{Binding ArtistAlbum}"
+                              FontSize="12"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                              TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <FontIcon
+                            Grid.Column="2"
+                            Glyph="{Binding StatusGlyph}"
+                            FontSize="14"
+                            Foreground="{Binding StatusBrush}"
+                            ToolTipService.ToolTip="{Binding StatusText}"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center" />
+                      </Grid>
                     </DataTemplate>
                   </ListView.ItemTemplate>
                 </ListView>
@@ -575,40 +712,40 @@
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid ColumnSpacing="14">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="260" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="190" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center" Spacing="2">
                       <TextBlock x:Name="SourceLibrarySettingTitle" Text="Source library" FontWeight="SemiBold" />
-                      <TextBlock x:Name="SourceLibrarySettingDescription" Text="Your original music collection. MusicLoom never writes here." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <TextBlock x:Name="SourceLibrarySettingDescription" Visibility="Collapsed" />
                     </StackPanel>
                     <TextBox x:Name="SourcePathBox" Grid.Column="1" TextChanged="SettingsControl_Changed" />
-                    <Button x:Name="BrowseSourceButton" Grid.Column="2" Click="BrowseSourceButton_Click" ToolTipService.ToolTip="Choose folder"><SymbolIcon Symbol="Folder" /></Button>
-                    <Button x:Name="OpenSourceButton" Grid.Column="3" Click="OpenSourceButton_Click" ToolTipService.ToolTip="Open folder"><SymbolIcon Symbol="OpenFile" /></Button>
+                    <Button x:Name="BrowseSourceButton" Grid.Column="2" Content="Browse" Click="BrowseSourceButton_Click" />
+                    <Button x:Name="OpenSourceButton" Grid.Column="3" Content="Open" Click="OpenSourceButton_Click" />
                   </Grid>
                 </Border>
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid ColumnSpacing="14">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="260" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="190" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center" Spacing="2">
                       <TextBlock x:Name="DestinationLibrarySettingTitle" Text="Destination library" FontWeight="SemiBold" />
-                      <TextBlock x:Name="DestinationLibrarySettingDescription" Text="The organized library MusicLoom creates." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <TextBlock x:Name="DestinationLibrarySettingDescription" Visibility="Collapsed" />
                     </StackPanel>
                     <TextBox x:Name="DestinationPathBox" Grid.Column="1" TextChanged="SettingsControl_Changed" />
-                    <Button x:Name="BrowseDestinationButton" Grid.Column="2" Click="BrowseDestinationButton_Click" ToolTipService.ToolTip="Choose folder"><SymbolIcon Symbol="Folder" /></Button>
-                    <Button x:Name="OpenDestinationSettingButton" Grid.Column="3" Click="OpenDestinationSettingButton_Click" ToolTipService.ToolTip="Open folder"><SymbolIcon Symbol="OpenFile" /></Button>
+                    <Button x:Name="BrowseDestinationButton" Grid.Column="2" Content="Browse" Click="BrowseDestinationButton_Click" />
+                    <Button x:Name="OpenDestinationSettingButton" Grid.Column="3" Content="Open" Click="OpenDestinationSettingButton_Click" />
                   </Grid>
                 </Border>
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid ColumnSpacing="14">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="260" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="190" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center" Spacing="2">
                       <TextBlock x:Name="PlaylistFolderSettingTitle" Text="MusicBee playlist folder" FontWeight="SemiBold" />
-                      <TextBlock x:Name="PlaylistFolderSettingDescription" Text="Optional folder containing .m3u playlists." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <TextBlock x:Name="PlaylistFolderSettingDescription" Visibility="Collapsed" />
                     </StackPanel>
                     <TextBox x:Name="PlaylistSourcePathBox" Grid.Column="1" TextChanged="SettingsControl_Changed" />
-                    <Button x:Name="BrowsePlaylistButton" Grid.Column="2" Click="BrowsePlaylistButton_Click" ToolTipService.ToolTip="Choose folder"><SymbolIcon Symbol="Folder" /></Button>
-                    <Button x:Name="OpenPlaylistButton" Grid.Column="3" Click="OpenPlaylistButton_Click" ToolTipService.ToolTip="Open folder"><SymbolIcon Symbol="OpenFile" /></Button>
+                    <Button x:Name="BrowsePlaylistButton" Grid.Column="2" Content="Browse" Click="BrowsePlaylistButton_Click" />
+                    <Button x:Name="OpenPlaylistButton" Grid.Column="3" Content="Open" Click="OpenPlaylistButton_Click" />
                   </Grid>
                 </Border>
 
@@ -716,7 +853,7 @@
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions>
                     <StackPanel Spacing="2">
                       <TextBlock x:Name="LanguageSettingTitle" Text="Interface language" FontWeight="SemiBold" />
-                      <TextBlock x:Name="LanguageSettingDescription" Text="MusicLoom supports English and Simplified Chinese." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <TextBlock x:Name="LanguageSettingDescription" Visibility="Collapsed" />
                     </StackPanel>
                     <ComboBox x:Name="LanguageBox" Grid.Column="1" SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem Content="English" Tag="en-US" />
@@ -726,7 +863,7 @@
                 </Border>
               </StackPanel>
 
-              <TextBlock x:Name="SettingsStatusText" Text="Changes are saved automatically." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+              <TextBlock x:Name="SettingsStatusText" Visibility="Collapsed" />
             </StackPanel>
           </Grid>
         </ScrollViewer>
