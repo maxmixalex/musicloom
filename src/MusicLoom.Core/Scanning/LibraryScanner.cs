@@ -93,7 +93,8 @@ public sealed class LibraryScanner
                     trackState.Artist,
                     trackState.AlbumArtist,
                     trackState.Album,
-                    trackState.HasEmbeddedArt)
+                    trackState.HasEmbeddedArt,
+                    trackState.Title)
                 : null;
 
             // Source metadata remains valid even when the output recipe changes.
@@ -257,7 +258,8 @@ public sealed class LibraryScanner
                     Artist: null,
                     AlbumArtist: null,
                     Album: null,
-                    HasEmbeddedArt: false);
+                    HasEmbeddedArt: false,
+                    Title: null);
                 string destinationPath = GetDestinationPath(
                     sourcePath,
                     sourceRoot,
