@@ -33,7 +33,12 @@ public sealed partial class MainWindow : Window
             AppDiagnostics.DataDirectory,
             "state.json");
 
-    private static readonly string SnapshotPath =
+    private static readonly string DatabasePath =
+        Path.Combine(
+            AppDiagnostics.DataDirectory,
+            "musicloom.db");
+
+    private static readonly string LegacySnapshotPath =
         Path.Combine(
             AppDiagnostics.DataDirectory,
             "library-index.json");
@@ -132,6 +137,9 @@ public sealed partial class MainWindow : Window
             SettingsStatusText.Text =
                 string.Empty;
 
+            await LibraryDatabase.InitializeAsync(
+                DatabasePath);
+
             await RestoreCachedLibraryAsync(
                 settings);
 
@@ -191,34 +199,46 @@ public sealed partial class MainWindow : Window
             _stateStore = stateStore;
             _state = state;
 
-            LibraryPlan? cachedPlan = null;
-
-            LibrarySnapshotDocument? snapshot =
-                await LibrarySnapshotStore.LoadAsync(
-                    SnapshotPath);
-
-            if (snapshot is not null
-                && LibrarySnapshotStore.Matches(
-                    snapshot,
+            LibraryPlan? cachedPlan =
+                await LibraryDatabase.LoadPlanAsync(
+                    DatabasePath,
                     settings.Path.SourceDirectory,
-                    settings.Path.DestinationDirectory))
+                    settings.Path.DestinationDirectory);
+
+            // One-version migration path from the earlier JSON snapshot.
+            if (cachedPlan is null)
             {
-                cachedPlan =
-                    LibrarySnapshotStore.ToPlan(
-                        snapshot);
+                LibrarySnapshotDocument? snapshot =
+                    await LibrarySnapshotStore.LoadAsync(
+                        LegacySnapshotPath);
+
+                if (snapshot is not null
+                    && LibrarySnapshotStore.Matches(
+                        snapshot,
+                        settings.Path.SourceDirectory,
+                        settings.Path.DestinationDirectory))
+                {
+                    cachedPlan =
+                        LibrarySnapshotStore.ToPlan(
+                            snapshot);
+                }
             }
-            else
-            {
-                cachedPlan =
-                    BuildCachedPlanFromState(
-                        settings,
-                        state);
-            }
+
+            cachedPlan ??=
+                BuildCachedPlanFromState(
+                    settings,
+                    state);
 
             if (cachedPlan.TotalCount == 0)
             {
                 return;
             }
+
+            await LibraryDatabase.SavePlanAsync(
+                DatabasePath,
+                settings.Path.SourceDirectory,
+                settings.Path.DestinationDirectory,
+                cachedPlan);
 
             PopulateLibrary(
                 settings,
@@ -768,8 +788,8 @@ public sealed partial class MainWindow : Window
                 settings,
                 plan);
 
-            await LibrarySnapshotStore.SaveAsync(
-                SnapshotPath,
+            await LibraryDatabase.SavePlanAsync(
+                DatabasePath,
                 settings.Path.SourceDirectory,
                 settings.Path.DestinationDirectory,
                 plan,
