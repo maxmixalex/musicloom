@@ -9,7 +9,8 @@
   "organizer": {
     "lyrics": {
       "enabled": true,
-      "overrideExisting": true
+      "overrideExisting": true,
+      "refreshIntervalHours": 24
     }
   },
   "logging": {
