@@ -1028,7 +1028,7 @@ public sealed partial class MainWindow : Window
         SetOperationStatus(
             L(
                 "Cancelling…",
-                "正在取消……");
+                "正在取消……"));
 
         await cancellation.CancelAsync();
     }
