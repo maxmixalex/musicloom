@@ -19,6 +19,7 @@ List<(string Name, Action Test)> tests =
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
     ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),
+    ("Legacy metadata cache migrates multi-artist separators", LegacyMetadataMigratesMultiArtist),
     ("Fingerprint window preserves legacy silence semantics", FingerprintWindowCollectorRegression.Run),
     ("WEAPI crypto matches PyNCM reference vector", WeApiCryptoReference),
     ("Recipe refresh does not recopy unchanged audio", RecipeRefreshDoesNotCopy),
@@ -208,6 +209,7 @@ static async Task WarmScanSkipsMetadataAsync()
             DestinationPath = destinationPath,
             RecipeVersion = SyncRecipe.For(settings),
             MetadataCaptured = true,
+            MetadataSchemaVersion = TrackMetadata.CurrentSchemaVersion,
             TitleCaptured = true,
             Artist = "Artist",
             AlbumArtist = "Album Artist",
@@ -236,6 +238,135 @@ static async Task WarmScanSkipsMetadataAsync()
     finally
     {
         Directory.Delete(root, recursive: true);
+    }
+}
+
+static void LegacyMetadataMigratesMultiArtist()
+{
+    LegacyMetadataMigratesMultiArtistAsync()
+        .GetAwaiter()
+        .GetResult();
+}
+
+static async Task LegacyMetadataMigratesMultiArtistAsync()
+{
+    string root = Path.Combine(
+        Path.GetTempPath(),
+        "musicloom-multiartist-" + Guid.NewGuid().ToString("N"));
+    string sourceRoot = Path.Combine(root, "source");
+    string destinationRoot = Path.Combine(root, "destination");
+    Directory.CreateDirectory(sourceRoot);
+    Directory.CreateDirectory(destinationRoot);
+
+    try
+    {
+        string sourcePath =
+            Path.Combine(sourceRoot, "track.mp3");
+        await File.WriteAllBytesAsync(
+            sourcePath,
+            [1, 2, 3, 4]);
+
+        MusicLoomSettings settings = new()
+        {
+            Path = new PathSettings
+            {
+                SourceDirectory = sourceRoot,
+                DestinationDirectory = destinationRoot,
+            },
+        };
+
+        string oldDestination =
+            Path.Combine(
+                destinationRoot,
+                "Adam Gubman Telle Smith Sage X Price",
+                "Album",
+                "track.mp3");
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(
+                oldDestination)!);
+        File.Copy(
+            sourcePath,
+            oldDestination);
+
+        FileInfo source = new(sourcePath);
+        FileInfo oldFile =
+            new(oldDestination);
+
+        StateDocument state = new();
+        state.Tracks[sourcePath] =
+            new TrackState
+            {
+                SourcePath = sourcePath,
+                SourceSize = source.Length,
+                SourceLastWriteUtcTicks =
+                    source.LastWriteTimeUtc.Ticks,
+                QuickHash =
+                    QuickFileHash.Compute(
+                        sourcePath),
+                RecipeVersion =
+                    SyncRecipe.For(settings),
+                DestinationPath =
+                    oldDestination,
+                DestinationSize =
+                    oldFile.Length,
+                DestinationLastWriteUtcTicks =
+                    oldFile.LastWriteTimeUtc.Ticks,
+                MetadataCaptured = true,
+                MetadataSchemaVersion = 0,
+                TitleCaptured = true,
+                Title = "Track",
+                AlbumArtist =
+                    "Adam Gubman Telle Smith Sage X Price",
+                Album = "Album",
+                ProcessedAt =
+                    DateTimeOffset.UtcNow,
+            };
+
+        FixedMetadataReader reader =
+            new(
+                new TrackMetadata(
+                    Artist: null,
+                    AlbumArtist:
+                        "Adam Gubman;Telle Smith;Sage;X Price",
+                    Album: "Album",
+                    HasEmbeddedArt: false,
+                    Title: "Track"));
+
+        LibraryPlan plan =
+            await new LibraryScanner(reader)
+                .BuildPlanAsync(
+                    settings,
+                    state);
+
+        Equal(1, reader.ReadCount);
+        Equal(
+            TrackMetadata.CurrentSchemaVersion,
+            state.Tracks[sourcePath]
+                .MetadataSchemaVersion);
+
+        string expectedDirectory =
+            Path.Combine(
+                destinationRoot,
+                "Adam Gubman;Telle Smith;Sage;X Price",
+                "Album");
+
+        Equal(
+            Path.GetFullPath(
+                Path.Combine(
+                    expectedDirectory,
+                    "track.mp3")),
+            Path.GetFullPath(
+                plan.Entries[0]
+                    .DestinationPath!));
+        True(
+            plan.Entries[0]
+                .NeedsAudioCopy);
+    }
+    finally
+    {
+        Directory.Delete(
+            root,
+            recursive: true);
     }
 }
 
@@ -447,6 +578,29 @@ static void True(bool value)
     if (!value)
     {
         throw new InvalidOperationException("condition was false");
+    }
+}
+
+file sealed class FixedMetadataReader : ITrackMetadataReader
+{
+    private readonly TrackMetadata _metadata;
+
+    public FixedMetadataReader(
+        TrackMetadata metadata)
+    {
+        _metadata = metadata;
+    }
+
+    public int ReadCount { get; private set; }
+
+    public ValueTask<TrackMetadata> ReadAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ReadCount++;
+        return ValueTask.FromResult(
+            _metadata);
     }
 }
 

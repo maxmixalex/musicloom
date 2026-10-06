@@ -138,7 +138,7 @@ internal static class ResilienceRegression
         Equal("copy-audio", summary.Errors[0].Stage);
         Equal(fixture.BadSourcePath, summary.Errors[0].SourcePath);
         Equal(1, recognizer.CallCount);
-        Equal(1, writer.ProbeCalls);
+        Equal(0, writer.ProbeCalls);
 
         StateDocument persisted =
             await store.LoadAsync();

@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
   <title id="title">MusicLoom</title>
-  <desc id="desc">A layered blue woven music mark.</desc>
-  <g transform="translate(10 0)">
-    <rect x="132" y="326" width="430" height="560" rx="96" fill="#5BC8F5" fill-opacity=".40"/>
-    <rect x="250" y="236" width="430" height="560" rx="96" fill="#2D9BE8" fill-opacity=".65"/>
-    <rect x="368" y="146" width="430" height="560" rx="96" fill="#2457B8"/>
+  <desc id="desc">A layered blue tile with a woven musical sharp mark.</desc>
+  <rect x="120" y="290" width="490" height="570" rx="110" fill="#5bc8f5" fill-opacity=".48"/>
+  <rect x="235" y="205" width="490" height="570" rx="110" fill="#2d9be8" fill-opacity=".72"/>
+  <rect x="350" y="120" width="490" height="570" rx="110" fill="#1c5cbe"/>
+  <g fill="none" stroke="#fff" stroke-width="42" stroke-linecap="round">
+    <path d="M500 245 470 565"/>
+    <path d="M650 225 620 545"/>
+    <path d="M435 350 695 305"/>
+    <path d="M425 465 685 420"/>
   </g>
-  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M500 300v250" stroke-width="34" opacity=".94"/>
-    <path d="M640 300v250" stroke-width="34" opacity=".94"/>
-    <path d="M500 344c46-48 94-48 140 0s94 48 140 0" stroke-width="30"/>
-    <path d="M500 434c46 48 94 48 140 0s94-48 140 0" stroke-width="30" opacity=".86"/>
+  <g fill="#1c5cbe">
+    <rect x="608" y="293" width="54" height="44" rx="15"/>
+    <rect x="453" y="433" width="54" height="44" rx="15"/>
   </g>
-  <ellipse cx="482" cy="572" rx="55" ry="40" transform="rotate(-18 482 572)" fill="#fff"/>
-  <ellipse cx="622" cy="572" rx="55" ry="40" transform="rotate(-18 622 572)" fill="#fff"/>
 </svg>

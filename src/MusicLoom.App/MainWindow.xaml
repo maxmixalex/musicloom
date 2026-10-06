@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives"
     mc:Ignorable="d"
     Title="MusicLoom">
 
@@ -70,21 +71,21 @@
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <Button x:Name="ScanButton" Click="ScanButton_Click">
+              <Button x:Name="ScanButton" Padding="10,5" Click="ScanButton_Click">
                 <StackPanel Orientation="Horizontal" Spacing="7">
-                  <SymbolIcon Symbol="Refresh" />
+                  <Viewbox Width="14" Height="14"><SymbolIcon Symbol="Refresh" /></Viewbox>
                   <TextBlock x:Name="ScanButtonText" Text="Refresh library" />
                 </StackPanel>
               </Button>
-              <Button x:Name="SyncButton" Style="{StaticResource AccentButtonStyle}" Click="SyncButton_Click" IsEnabled="False">
+              <Button x:Name="SyncButton" Padding="10,5" Style="{StaticResource AccentButtonStyle}" Click="SyncButton_Click" IsEnabled="False">
                 <StackPanel Orientation="Horizontal" Spacing="7">
-                  <SymbolIcon Symbol="Sync" />
+                  <Viewbox Width="14" Height="14"><SymbolIcon Symbol="Sync" /></Viewbox>
                   <TextBlock x:Name="SyncButtonText" Text="Sync pending" />
                 </StackPanel>
               </Button>
-              <Button x:Name="CancelButton" Click="CancelButton_Click" Visibility="Collapsed">
+              <Button x:Name="CancelButton" Padding="10,5" Click="CancelButton_Click" Visibility="Collapsed">
                 <StackPanel Orientation="Horizontal" Spacing="7">
-                  <SymbolIcon Symbol="Cancel" />
+                  <Viewbox Width="14" Height="14"><SymbolIcon Symbol="Cancel" /></Viewbox>
                   <TextBlock x:Name="CancelButtonText" Text="Cancel" />
                 </StackPanel>
               </Button>
@@ -216,6 +217,23 @@
                       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                       <Setter Property="Padding" Value="0" />
                       <Setter Property="Margin" Value="0,1" />
+                      <Setter Property="Template">
+                        <Setter.Value>
+                          <ControlTemplate TargetType="ListViewItem">
+                            <primitives:ListViewItemPresenter
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Padding="{TemplateBinding Padding}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                SelectionIndicatorVisualEnabled="True"
+                                SelectionIndicatorMode="Inline"
+                                SelectionIndicatorBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                SelectionIndicatorPointerOverBrush="{ThemeResource AccentFillColorSecondaryBrush}"
+                                SelectionIndicatorPressedBrush="{ThemeResource AccentFillColorTertiaryBrush}" />
+                          </ControlTemplate>
+                        </Setter.Value>
+                      </Setter>
                     </Style>
                   </ListView.ItemContainerStyle>
 
@@ -307,28 +325,42 @@
                     <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
 
-                  <Border
-                      x:Name="CoverHost"
+                  <Button
+                      x:Name="CoverButton"
                       Width="132"
                       Height="132"
-                      CornerRadius="9"
-                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                      DoubleTapped="CoverHost_DoubleTapped"
-                      ToolTipService.ToolTip="Double-click to view artwork">
-                    <Grid>
-                      <Image x:Name="CoverImage" Stretch="UniformToFill" />
-                      <TextBlock
-                          x:Name="CoverPlaceholderText"
-                          Text="No artwork"
-                          HorizontalAlignment="Center"
-                          VerticalAlignment="Center"
-                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </Grid>
-                  </Border>
+                      Padding="0"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      RenderTransformOrigin="0.5,0.5"
+                      Click="CoverButton_Click"
+                      PointerEntered="CoverButton_PointerEntered"
+                      PointerExited="CoverButton_PointerExited"
+                      ToolTipService.ToolTip="Open artwork">
+                    <Button.RenderTransform>
+                      <ScaleTransform x:Name="CoverScaleTransform" ScaleX="1" ScaleY="1" />
+                    </Button.RenderTransform>
+                    <Border
+                        Width="132"
+                        Height="132"
+                        CornerRadius="9"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                      <Grid>
+                        <Image x:Name="CoverImage" Stretch="UniformToFill" />
+                        <TextBlock
+                            x:Name="CoverPlaceholderText"
+                            Text="No artwork"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      </Grid>
+                    </Border>
+                  </Button>
 
                   <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5">
                     <ScrollViewer
-                        HorizontalScrollBarVisibility="Auto"
+                        x:Name="TrackTitleScroller"
+                        HorizontalScrollBarVisibility="Hidden"
                         VerticalScrollBarVisibility="Disabled"
                         HorizontalScrollMode="Enabled"
                         VerticalScrollMode="Disabled"
@@ -351,8 +383,11 @@
                   <Button
                       x:Name="CloseDetailButton"
                       Grid.Column="2"
-                      Width="36"
-                      Height="36"
+                      Width="32"
+                      Height="32"
+                      Margin="0,-10,-10,0"
+                      HorizontalAlignment="Right"
+                      VerticalAlignment="Top"
                       Padding="0"
                       Background="Transparent"
                       BorderThickness="0"
@@ -402,14 +437,32 @@
                       <ListView
                           x:Name="LyricsList"
                           Grid.Row="1"
-                          SelectionMode="None"
+                          SelectionMode="Single"
                           IsItemClickEnabled="False"
+                          RightTapped="LyricsList_RightTapped"
                           HorizontalContentAlignment="Stretch">
                         <ListView.ItemContainerStyle>
                           <Style TargetType="ListViewItem">
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             <Setter Property="Padding" Value="0" />
                             <Setter Property="IsTabStop" Value="False" />
+                            <Setter Property="Template">
+                              <Setter.Value>
+                                <ControlTemplate TargetType="ListViewItem">
+                                  <primitives:ListViewItemPresenter
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      SelectionIndicatorVisualEnabled="True"
+                                      SelectionIndicatorMode="Inline"
+                                      SelectionIndicatorBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                      SelectionIndicatorPointerOverBrush="{ThemeResource AccentFillColorSecondaryBrush}"
+                                      SelectionIndicatorPressedBrush="{ThemeResource AccentFillColorTertiaryBrush}" />
+                                </ControlTemplate>
+                              </Setter.Value>
+                            </Setter>
                           </Style>
                         </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
@@ -548,9 +601,21 @@
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="24" />
                       </Grid.ColumnDefinitions>
                       <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Grid.Column="1" Text="{Binding CountText}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <TextBlock
+                          Grid.Column="1"
+                          Text="{Binding CountText}"
+                          VerticalAlignment="Center"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <FontIcon
+                          Grid.Column="2"
+                          Glyph="{Binding StatusGlyph}"
+                          Foreground="{Binding StatusBrush}"
+                          FontSize="13"
+                          VerticalAlignment="Center"
+                          HorizontalAlignment="Center" />
                     </Grid>
                   </DataTemplate>
                 </ListView.ItemTemplate>
@@ -751,12 +816,23 @@
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid ColumnSpacing="14">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="260" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center" Spacing="2">
-                      <TextBlock x:Name="PlaylistBaseSettingTitle" Text="Playlist path on phone" FontWeight="SemiBold" />
-                      <TextBlock x:Name="PlaylistBaseSettingDescription" Visibility="Collapsed" />
-                    </StackPanel>
-                    <TextBox x:Name="PlaylistBaseBox" Grid.Column="1" TextChanged="SettingsControl_Changed" />
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="190" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        x:Name="PlaylistBaseSettingTitle"
+                        Text="Playlist path on phone"
+                        FontWeight="SemiBold"
+                        VerticalAlignment="Center" />
+                    <TextBox
+                        x:Name="PlaylistBaseBox"
+                        Grid.Column="1"
+                        Grid.ColumnSpan="3"
+                        HorizontalAlignment="Stretch"
+                        TextChanged="SettingsControl_Changed" />
                   </Grid>
                 </Border>
               </StackPanel>
@@ -771,7 +847,7 @@
                       <TextBlock x:Name="FetchLyricsSettingTitle" Text="Fetch lyrics from NetEase" FontWeight="SemiBold" />
                       <TextBlock x:Name="FetchLyricsSettingDescription" Text="Recognize tracks and cache synchronized lyrics." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <ToggleSwitch x:Name="LyricsEnabledToggle" Grid.Column="1" Toggled="SettingsControl_Changed" />
+                    <ToggleSwitch x:Name="LyricsEnabledToggle" Grid.Column="1" HorizontalAlignment="Right" Toggled="SettingsControl_Changed" />
                   </Grid>
                 </Border>
 
@@ -782,7 +858,7 @@
                       <TextBlock x:Name="OverwriteLyricsSettingTitle" Text="Overwrite existing lyrics" FontWeight="SemiBold" />
                       <TextBlock x:Name="OverwriteLyricsSettingDescription" Text="Replace lyrics already present in the destination." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <ToggleSwitch x:Name="LyricsOverrideToggle" Grid.Column="1" Toggled="SettingsControl_Changed" />
+                    <ToggleSwitch x:Name="LyricsOverrideToggle" Grid.Column="1" HorizontalAlignment="Right" Toggled="SettingsControl_Changed" />
                   </Grid>
                 </Border>
 
@@ -793,7 +869,7 @@
                       <TextBlock x:Name="LyricsStorageSettingTitle" Text="Lyrics storage" FontWeight="SemiBold" />
                       <TextBlock x:Name="LyricsStorageSettingDescription" Text="Choose embedded tags or sidecar .lrc files." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <ComboBox x:Name="LyricsStorageModeBox" Grid.Column="1" SelectionChanged="SettingsControl_Changed">
+                    <ComboBox x:Name="LyricsStorageModeBox" Grid.Column="1" Width="240" HorizontalAlignment="Right" SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem x:Name="LyricsStorageEmbeddedItem" Content="Embedded in audio file" Tag="embedded" />
                       <ComboBoxItem x:Name="LyricsStorageSidecarItem" Content="Sidecar .lrc file" Tag="sidecar" />
                     </ComboBox>
@@ -810,6 +886,8 @@
                     <NumberBox
                         x:Name="LyricsRefreshHoursBox"
                         Grid.Column="1"
+                        Width="240"
+                        HorizontalAlignment="Right"
                         Minimum="1"
                         Maximum="87600"
                         Value="24"
@@ -823,13 +901,56 @@
                 <TextBlock x:Name="AppearanceSettingsHeadingText" Text="Appearance" FontSize="18" FontWeight="SemiBold" />
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="240" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        x:Name="ThemeSettingTitle"
+                        Text="Theme"
+                        FontWeight="SemiBold"
+                        VerticalAlignment="Center" />
+                    <ComboBox
+                        x:Name="ThemeBox"
+                        Grid.Column="1"
+                        Width="240"
+                        HorizontalAlignment="Right"
+                        SelectionChanged="SettingsControl_Changed">
+                      <ComboBoxItem x:Name="ThemeSystemItem" Content="Use system setting" Tag="system" />
+                      <ComboBoxItem x:Name="ThemeLightItem" Content="Light" Tag="light" />
+                      <ComboBoxItem x:Name="ThemeDarkItem" Content="Dark" Tag="dark" />
+                    </ComboBox>
+                  </Grid>
+                </Border>
+
+                <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        x:Name="AutoScrollTitleSettingTitle"
+                        Text="Auto-scroll long track titles"
+                        FontWeight="SemiBold"
+                        VerticalAlignment="Center" />
+                    <ToggleSwitch
+                        x:Name="AutoScrollTitleToggle"
+                        Grid.Column="1"
+                        HorizontalAlignment="Right"
+                        Toggled="SettingsControl_Changed" />
+                  </Grid>
+                </Border>
+
+                <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel Spacing="2">
                       <TextBlock x:Name="AcrylicSettingTitle" Text="Acrylic backdrop" FontWeight="SemiBold" />
                       <TextBlock x:Name="AcrylicSettingDescription" Text="Use desktop acrylic instead of the default Mica backdrop." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <ToggleSwitch x:Name="AcrylicToggle" Grid.Column="1" Toggled="SettingsControl_Changed" />
+                    <ToggleSwitch x:Name="AcrylicToggle" Grid.Column="1" HorizontalAlignment="Right" Toggled="SettingsControl_Changed" />
                   </Grid>
                 </Border>
 
@@ -840,7 +961,7 @@
                       <TextBlock x:Name="AccentSettingTitle" Text="Accent color" FontWeight="SemiBold" />
                       <TextBlock x:Name="AccentSettingDescription" Text="Customize MusicLoom's primary accent or follow Windows." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <StackPanel Grid.Column="1" Width="240" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
                       <Border x:Name="AccentPreview" Width="28" Height="28" CornerRadius="14" Background="{ThemeResource AccentFillColorDefaultBrush}" />
                       <Button x:Name="ChooseAccentButton" Content="Choose…" Click="ChooseAccentButton_Click" />
                       <Button x:Name="ResetAccentButton" Content="Use system" Click="ResetAccentButton_Click" />
@@ -855,7 +976,7 @@
                       <TextBlock x:Name="LanguageSettingTitle" Text="Interface language" FontWeight="SemiBold" />
                       <TextBlock x:Name="LanguageSettingDescription" Visibility="Collapsed" />
                     </StackPanel>
-                    <ComboBox x:Name="LanguageBox" Grid.Column="1" SelectionChanged="SettingsControl_Changed">
+                    <ComboBox x:Name="LanguageBox" Grid.Column="1" Width="240" HorizontalAlignment="Right" SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem Content="English" Tag="en-US" />
                       <ComboBoxItem Content="简体中文" Tag="zh-CN" />
                     </ComboBox>

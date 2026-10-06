@@ -57,6 +57,7 @@ public sealed record TrackState
     public string? LyricsFingerprint { get; init; }
 
     public bool MetadataCaptured { get; init; }
+    public int MetadataSchemaVersion { get; init; }
     public bool TitleCaptured { get; init; }
     public string? Title { get; init; }
     public string? Artist { get; init; }

@@ -17,13 +17,16 @@ internal static class SyncExecutorRegression
     {
         await LyricsDisabledUsesZeroNetworkAsync();
         await ExistingLyricsUsesZeroNetworkAsync();
-        await UnsupportedLyricsUsesZeroNetworkAsync();
+        await OverrideExistingSkipsProbeAsync();
+        await UnsupportedLyricsUsesZeroProbeAsync();
         await NoMatchIsNonFatalAsync();
         await LyricsWritePersistsEnrichmentStateAsync();
         await RetryableFailureKeepsWarmMetadataAndAvoidsRecopyAsync();
         await PeriodicCheckpointPersistsBeforeFinalSaveAsync();
         await RetryableErrorCheckpointsImmediatelyAsync();
         await CancellationPersistsPartialStateAsync();
+        await PathMigrationCleansUnchangedOldDestinationAsync();
+        await PathMigrationPreservesDriftedOldDestinationAsync();
     }
 
     private static async Task LyricsDisabledUsesZeroNetworkAsync()
@@ -83,31 +86,66 @@ internal static class SyncExecutorRegression
             state.RecipeVersion);
     }
 
-    private static async Task UnsupportedLyricsUsesZeroNetworkAsync()
+    private static async Task OverrideExistingSkipsProbeAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: true);
+
+        FakeRecognizer recognizer = new(
+            TrackRecognitionResult.Matched(42));
+        FakeLyricsProvider lyricsProvider = new(
+            LyricsLookupResult.Found(
+                LrcDocument.Parse("[00:01.000]hello")));
+        FakeLyricsWriter writer = new(
+            LyricsProbeStatus.Present);
+
+        SyncExecutionSummary summary =
+            await fixture.ExecuteAsync(
+                recognizer,
+                lyricsProvider,
+                writer);
+
+        Equal(0, summary.Errors.Count);
+        Equal(0, writer.ProbeCalls);
+        Equal(1, writer.WriteCalls);
+        Equal(1, recognizer.CallCount);
+        Equal(1, lyricsProvider.CallCount);
+    }
+
+    private static async Task UnsupportedLyricsUsesZeroProbeAsync()
     {
         await using Fixture fixture = await Fixture.CreateAsync(
             lyricsEnabled: true,
             overrideExisting: true,
             extension: ".wma");
 
-        FakeRecognizer recognizer = new(TrackRecognitionResult.Matched(42));
+        FakeRecognizer recognizer =
+            new(TrackRecognitionResult.Matched(42));
         FakeLyricsProvider lyricsProvider = new(
-            LyricsLookupResult.Found(LrcDocument.Parse("[00:01.000]hello")));
-        FakeLyricsWriter writer = new(LyricsProbeStatus.UnsupportedFormat);
+            LyricsLookupResult.Found(
+                LrcDocument.Parse("[00:01.000]hello")));
+        FakeLyricsWriter writer = new(
+            LyricsProbeStatus.UnsupportedFormat,
+            LyricsWriteStatus.UnsupportedFormat);
 
-        SyncExecutionSummary summary = await fixture.ExecuteAsync(
-            recognizer,
-            lyricsProvider,
-            writer);
+        SyncExecutionSummary summary =
+            await fixture.ExecuteAsync(
+                recognizer,
+                lyricsProvider,
+                writer);
 
         Equal(1, summary.UnsupportedLyrics);
-        Equal(0, recognizer.CallCount);
-        Equal(0, lyricsProvider.CallCount);
-        Equal(1, writer.ProbeCalls);
-        Equal(0, writer.WriteCalls);
+        Equal(1, recognizer.CallCount);
+        Equal(1, lyricsProvider.CallCount);
+        Equal(0, writer.ProbeCalls);
+        Equal(1, writer.WriteCalls);
 
-        TrackState state = await fixture.LoadTrackStateAsync();
-        Equal(LyricsState.Unsupported, state.Lyrics);
+        TrackState state =
+            await fixture.LoadTrackStateAsync();
+        Equal(
+            LyricsState.Unsupported,
+            state.Lyrics);
         Equal(
             SyncRecipe.For(fixture.Settings),
             state.RecipeVersion);
@@ -168,6 +206,7 @@ internal static class SyncExecutorRegression
         Equal(0, summary.Errors.Count);
         Equal(1, recognizer.CallCount);
         Equal(1, lyricsProvider.CallCount);
+        Equal(0, writer.ProbeCalls);
         Equal(1, writer.WriteCalls);
 
         TrackState state = await fixture.LoadTrackStateAsync();
@@ -313,6 +352,209 @@ internal static class SyncExecutorRegression
         Equal(0, metadataReader.ReadCount);
         Equal(1, retryPlan.ModifiedCount);
         Equal(false, retryPlan.Entries[0].NeedsAudioCopy);
+    }
+
+    private static async Task
+        PathMigrationCleansUnchangedOldDestinationAsync()
+    {
+        await RunPathMigrationCleanupAsync(
+            mutateOldDestination: false,
+            expectOldDestination: false);
+    }
+
+    private static async Task
+        PathMigrationPreservesDriftedOldDestinationAsync()
+    {
+        await RunPathMigrationCleanupAsync(
+            mutateOldDestination: true,
+            expectOldDestination: true);
+    }
+
+    private static async Task RunPathMigrationCleanupAsync(
+        bool mutateOldDestination,
+        bool expectOldDestination)
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "musicloom-path-migration-"
+            + Guid.NewGuid().ToString("N"));
+        string sourceRoot =
+            Path.Combine(root, "source");
+        string destinationRoot =
+            Path.Combine(root, "destination");
+
+        Directory.CreateDirectory(sourceRoot);
+        Directory.CreateDirectory(destinationRoot);
+
+        try
+        {
+            string sourcePath =
+                Path.Combine(
+                    sourceRoot,
+                    "track.mp3");
+            await File.WriteAllBytesAsync(
+                sourcePath,
+                [1, 2, 3, 4, 5, 6]);
+
+            FileInfo source =
+                new(sourcePath);
+
+            string oldDestination =
+                Path.Combine(
+                    destinationRoot,
+                    "Artist A Artist B",
+                    "Album",
+                    "track.mp3");
+            string newDestination =
+                Path.Combine(
+                    destinationRoot,
+                    "Artist A;Artist B",
+                    "Album",
+                    "track.mp3");
+
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(
+                    oldDestination)!);
+            File.Copy(
+                sourcePath,
+                oldDestination);
+            File.SetLastWriteTimeUtc(
+                oldDestination,
+                source.LastWriteTimeUtc);
+
+            FileInfo oldFile =
+                new(oldDestination);
+
+            TrackState previous =
+                new()
+                {
+                    SourcePath = sourcePath,
+                    SourceSize = source.Length,
+                    SourceLastWriteUtcTicks =
+                        source.LastWriteTimeUtc.Ticks,
+                    QuickHash =
+                        QuickFileHash.Compute(
+                            sourcePath),
+                    RecipeVersion = "legacy",
+                    DestinationPath =
+                        oldDestination,
+                    DestinationSize =
+                        oldFile.Length,
+                    DestinationLastWriteUtcTicks =
+                        oldFile.LastWriteTimeUtc.Ticks,
+                    MetadataCaptured = true,
+                    MetadataSchemaVersion =
+                        TrackMetadata.CurrentSchemaVersion,
+                    TitleCaptured = true,
+                    Title = "Track",
+                    AlbumArtist =
+                        "Artist A;Artist B",
+                    Album = "Album",
+                    ProcessedAt =
+                        DateTimeOffset.UtcNow,
+                };
+
+            if (mutateOldDestination)
+            {
+                await File.AppendAllTextAsync(
+                    oldDestination,
+                    "user edit");
+            }
+
+            MusicLoomSettings settings =
+                new()
+                {
+                    Path = new PathSettings
+                    {
+                        SourceDirectory =
+                            sourceRoot,
+                        DestinationDirectory =
+                            destinationRoot,
+                    },
+                    Organizer =
+                        new OrganizerSettings
+                        {
+                            Lyrics =
+                                new LyricsSettings
+                                {
+                                    Enabled = false,
+                                },
+                        },
+                };
+
+            TrackMetadata metadata =
+                new(
+                    Artist: null,
+                    AlbumArtist:
+                        "Artist A;Artist B",
+                    Album: "Album",
+                    HasEmbeddedArt: false,
+                    Title: "Track");
+
+            LibraryPlan plan =
+                new(
+                [
+                    new PlanEntry(
+                        sourcePath,
+                        newDestination,
+                        PlanEntryStatus.Modified,
+                        metadata,
+                        "Destination path changed.",
+                        NeedsAudioCopy: true),
+                ]);
+
+            StateDocument state =
+                new();
+            state.Tracks[sourcePath] =
+                previous;
+
+            StateStore store =
+                new(
+                    Path.Combine(
+                        root,
+                        "state.json"));
+
+            SyncExecutor executor =
+                new(
+                    new LocalLibraryMaterializer(),
+                    new FakeRecognizer(
+                        TrackRecognitionResult
+                            .NoMatch()),
+                    new FakeLyricsProvider(
+                        LyricsLookupResult
+                            .NoLyrics()),
+                    new FakeLyricsWriter(
+                        LyricsProbeStatus.Missing));
+
+            SyncExecutionSummary summary =
+                await executor.ExecuteAsync(
+                    settings,
+                    plan,
+                    state,
+                    store);
+
+            Equal(0, summary.Errors.Count);
+            True(File.Exists(
+                newDestination));
+            Equal(
+                expectOldDestination,
+                File.Exists(
+                    oldDestination));
+
+            if (!expectOldDestination)
+            {
+                True(!Directory.Exists(
+                    Path.Combine(
+                        destinationRoot,
+                        "Artist A Artist B")));
+            }
+        }
+        finally
+        {
+            Directory.Delete(
+                root,
+                recursive: true);
+        }
     }
 
     private static void Equal<T>(T expected, T actual)

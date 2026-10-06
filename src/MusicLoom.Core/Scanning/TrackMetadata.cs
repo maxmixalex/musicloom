@@ -5,7 +5,11 @@ public sealed record TrackMetadata(
     string? AlbumArtist,
     string? Album,
     bool HasEmbeddedArt,
-    string? Title = null);
+    string? Title = null)
+{
+    // v2 preserves true multi-value Artist/AlbumArtist boundaries as ';'.
+    public const int CurrentSchemaVersion = 2;
+}
 
 public interface ITrackMetadataReader
 {

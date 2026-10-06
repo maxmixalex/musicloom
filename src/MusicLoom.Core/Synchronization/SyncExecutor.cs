@@ -95,6 +95,79 @@ public sealed class SyncExecutor
             .Select(static error => error.SourcePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // When metadata changes the destination path (for example after fixing
+        // multi-artist separators), clean up the old file only if it still
+        // exactly matches the version MusicLoom previously wrote. User-edited
+        // or otherwise drifted destination files are never deleted.
+        string destinationRoot =
+            Path.GetFullPath(
+                settings.Path.DestinationDirectory);
+
+        foreach (PlanEntry entry in plan.Entries)
+        {
+            if (!entry.NeedsAudioCopy
+                || entry.DestinationPath is null
+                || failedTrackSources.Contains(
+                    entry.SourcePath)
+                || !state.Tracks.TryGetValue(
+                    entry.SourcePath,
+                    out TrackState? previous)
+                || previous.DestinationPath is null
+                || PathsEqual(
+                    previous.DestinationPath,
+                    entry.DestinationPath)
+                || !File.Exists(
+                    entry.DestinationPath)
+                || !File.Exists(
+                    previous.DestinationPath)
+                || !StateStore.HasDestinationVersion(
+                    previous))
+            {
+                continue;
+            }
+
+            try
+            {
+                string previousFull =
+                    Path.GetFullPath(
+                        previous.DestinationPath);
+
+                if (!IsWithinRoot(
+                        destinationRoot,
+                        previousFull))
+                {
+                    continue;
+                }
+
+                FileInfo previousFile =
+                    new(previousFull);
+
+                if (!StateStore
+                    .IsDestinationVersionUnchanged(
+                        previous,
+                        previousFile))
+                {
+                    continue;
+                }
+
+                File.Delete(previousFull);
+                RemoveEmptyParents(
+                    Path.GetDirectoryName(
+                        previousFull),
+                    destinationRoot);
+            }
+            catch (Exception exception)
+                when (exception
+                    is not OperationCanceledException)
+            {
+                errors.Add(
+                    new TrackSyncError(
+                        entry.SourcePath,
+                        "cleanup-old-destination",
+                        exception.Message));
+            }
+        }
+
         StateDocument updatedState = state with
         {
             RecipeVersion = SyncRecipe.CurrentVersion,
@@ -156,40 +229,53 @@ public sealed class SyncExecutor
                     continue;
                 }
 
-                stage = "inspect-lyrics";
-                progress?.Report(new SyncExecutionProgress(
-                    index,
-                    work.Length,
-                    entry.SourcePath,
-                    stage));
-
-                LyricsProbeResult probe = await _lyricsWriter.ProbeAsync(
-                    entry.DestinationPath,
-                    cancellationToken);
-
-                if (probe.Status == LyricsProbeStatus.UnsupportedFormat)
+                if (!settings.Organizer.Lyrics.OverrideExisting)
                 {
-                    partial = partial with
-                    {
-                        Lyrics = LyricsState.Unsupported,
-                        LyricsCheckedAt = DateTimeOffset.UtcNow,
-                    };
-                    unsupportedLyrics++;
-                    await CompleteAsync(entry, partial, expectedRecipe, index + 1);
-                    continue;
-                }
+                    stage = "inspect-lyrics";
+                    progress?.Report(new SyncExecutionProgress(
+                        index,
+                        work.Length,
+                        entry.SourcePath,
+                        stage));
 
-                if (probe.Status == LyricsProbeStatus.Present
-                    && !settings.Organizer.Lyrics.OverrideExisting)
-                {
-                    partial = partial with
+                    LyricsProbeResult probe =
+                        await _lyricsWriter.ProbeAsync(
+                            entry.DestinationPath,
+                            cancellationToken);
+
+                    if (probe.Status
+                        == LyricsProbeStatus.UnsupportedFormat)
                     {
-                        Lyrics = LyricsState.Existing,
-                        LyricsCheckedAt = DateTimeOffset.UtcNow,
-                    };
-                    existingLyrics++;
-                    await CompleteAsync(entry, partial, expectedRecipe, index + 1);
-                    continue;
+                        partial = partial with
+                        {
+                            Lyrics = LyricsState.Unsupported,
+                            LyricsCheckedAt = DateTimeOffset.UtcNow,
+                        };
+                        unsupportedLyrics++;
+                        await CompleteAsync(
+                            entry,
+                            partial,
+                            expectedRecipe,
+                            index + 1);
+                        continue;
+                    }
+
+                    if (probe.Status
+                        == LyricsProbeStatus.Present)
+                    {
+                        partial = partial with
+                        {
+                            Lyrics = LyricsState.Existing,
+                            LyricsCheckedAt = DateTimeOffset.UtcNow,
+                        };
+                        existingLyrics++;
+                        await CompleteAsync(
+                            entry,
+                            partial,
+                            expectedRecipe,
+                            index + 1);
+                        continue;
+                    }
                 }
 
                 long? songId = partial.NeteaseSongId;
@@ -484,6 +570,8 @@ public sealed class SyncExecutor
                 ? previous?.LyricsFingerprint
                 : null,
             MetadataCaptured = true,
+            MetadataSchemaVersion =
+                TrackMetadata.CurrentSchemaVersion,
             TitleCaptured = true,
             Title = metadata.Title,
             Artist = metadata.Artist,
@@ -570,6 +658,72 @@ public sealed class SyncExecutor
             DestinationLastWriteUtcTicks =
                 destination.LastWriteTimeUtc.Ticks,
         };
+    }
+
+    private static bool IsWithinRoot(
+        string root,
+        string path)
+    {
+        string fullRoot =
+            Path.GetFullPath(root)
+                .TrimEnd(
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        string fullPath =
+            Path.GetFullPath(path);
+
+        return fullPath.StartsWith(
+            fullRoot,
+            OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
+    }
+
+    private static void RemoveEmptyParents(
+        string? directory,
+        string root)
+    {
+        if (string.IsNullOrWhiteSpace(
+                directory))
+        {
+            return;
+        }
+
+        string fullRoot =
+            Path.GetFullPath(root)
+                .TrimEnd(
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar);
+
+        string? current =
+            Path.GetFullPath(directory);
+
+        while (!string.IsNullOrWhiteSpace(
+                   current)
+            && !string.Equals(
+                current,
+                fullRoot,
+                OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal)
+            && IsWithinRoot(
+                fullRoot,
+                current))
+        {
+            if (Directory.EnumerateFileSystemEntries(
+                    current)
+                .Any())
+            {
+                break;
+            }
+
+            Directory.Delete(current);
+            current =
+                Path.GetDirectoryName(
+                    current);
+        }
     }
 
     private static bool PathsEqual(string left, string right) =>
