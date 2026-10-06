@@ -22,6 +22,9 @@
   "ui": {
     "language": "system",
     "acrylicEnabled": false,
-    "accentColor": "system"
+    "accentColor": "system",
+    "theme": "system",
+    "longTextMode": "autoScroll",
+    "lyricsDisplayMode": "preferOriginal"
   }
 }
