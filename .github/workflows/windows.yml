@@ -73,6 +73,9 @@ jobs:
       - name: Assemble clean Windows release
         shell: pwsh
         run: |
+          Get-ChildItem "artifacts/app-win-x64" -Filter *.pdb -Recurse -File |
+            Remove-Item -Force
+
           Copy-Item LICENSE artifacts/app-win-x64/LICENSE
           Copy-Item THIRD_PARTY_NOTICES.md artifacts/app-win-x64/THIRD_PARTY_NOTICES.md
 
