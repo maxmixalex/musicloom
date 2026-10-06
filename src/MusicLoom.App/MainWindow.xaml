@@ -255,12 +255,21 @@
                         </Border>
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                          <TextBlock
+                              Text="{Binding Title}"
+                              FontWeight="SemiBold"
+                              TextWrapping="{Binding RowTextWrapping}"
+                              TextTrimming="{Binding RowTextTrimming}"
+                              MaxLines="{Binding RowMaxLines}"
+                              ToolTipService.ToolTip="{Binding TitleToolTip}" />
                           <TextBlock
                               Text="{Binding ArtistAlbum}"
                               FontSize="12"
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                              TextTrimming="CharacterEllipsis" />
+                              TextWrapping="{Binding RowTextWrapping}"
+                              TextTrimming="{Binding RowTextTrimming}"
+                              MaxLines="{Binding RowMaxLines}"
+                              ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
                         </StackPanel>
 
                         <FontIcon
@@ -373,7 +382,19 @@
                           TextWrapping="NoWrap" />
                     </ScrollViewer>
                     <TextBlock x:Name="TrackArtistText" Text="" FontSize="16" TextWrapping="Wrap" />
-                    <TextBlock x:Name="TrackAlbumText" Text="" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                    <ScrollViewer
+                        x:Name="TrackAlbumScroller"
+                        HorizontalScrollBarVisibility="Hidden"
+                        VerticalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Enabled"
+                        VerticalScrollMode="Disabled"
+                        ZoomMode="Disabled">
+                      <TextBlock
+                          x:Name="TrackAlbumText"
+                          Text=""
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                          TextWrapping="NoWrap" />
+                    </ScrollViewer>
                     <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
                       <FontIcon x:Name="TrackStatusIcon" Glyph="&#xE823;" FontSize="13" />
                       <TextBlock x:Name="TrackStatusText" Text="" FontSize="12" VerticalAlignment="Center" />
@@ -737,12 +758,21 @@
                           <Image Source="{Binding Artwork}" Stretch="UniformToFill" />
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                          <TextBlock
+                              Text="{Binding Title}"
+                              FontWeight="SemiBold"
+                              TextWrapping="{Binding RowTextWrapping}"
+                              TextTrimming="{Binding RowTextTrimming}"
+                              MaxLines="{Binding RowMaxLines}"
+                              ToolTipService.ToolTip="{Binding TitleToolTip}" />
                           <TextBlock
                               Text="{Binding ArtistAlbum}"
                               FontSize="12"
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                              TextTrimming="CharacterEllipsis" />
+                              TextWrapping="{Binding RowTextWrapping}"
+                              TextTrimming="{Binding RowTextTrimming}"
+                              MaxLines="{Binding RowMaxLines}"
+                              ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
                         </StackPanel>
                         <FontIcon
                             Grid.Column="2"
