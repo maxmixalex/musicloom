@@ -22,6 +22,19 @@ internal static class NeteaseClientRegression
         Equal(1, decoder.CallCount);
         Equal(123_456_789L, songId ?? -1);
 
+        IReadOnlyList<NeteaseMatchCandidate> candidates =
+            await client.MatchFileCandidatesAsync(
+                decoder,
+                "fixture.wav");
+
+        Equal(2, decoder.CallCount);
+        Equal(2, candidates.Count);
+        Equal(123_456_789L, candidates[0].TrackId);
+        Equal("First Song", candidates[0].Name);
+        Equal("Artist A;Artist B", candidates[0].Artist);
+        Equal("Album One", candidates[0].Album);
+        Equal(987_654_321L, candidates[1].TrackId);
+
         Uri requestUri = handler.RequestUri
             ?? throw new InvalidOperationException("No WEAPI request was captured.");
         Equal("/weapi/music/audio/match", requestUri.AbsolutePath);
@@ -98,7 +111,10 @@ internal static class NeteaseClientRegression
                 : null;
 
             const string json =
-                "{\"code\":200,\"data\":{\"result\":[{\"song\":{\"id\":123456789}}]}}";
+                "{\"code\":200,\"data\":{\"result\":[" +
+                "{\"score\":0.98,\"song\":{\"id\":123456789,\"name\":\"First Song\",\"artists\":[{\"name\":\"Artist A\"},{\"name\":\"Artist B\"}],\"album\":{\"name\":\"Album One\"}}}," +
+                "{\"song\":{\"id\":987654321,\"name\":\"Second Song\",\"ar\":[{\"name\":\"Artist C\"}],\"al\":{\"name\":\"Album Two\"}}}" +
+                "]}}";
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json"),
