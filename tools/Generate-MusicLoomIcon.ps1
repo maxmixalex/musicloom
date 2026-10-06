@@ -40,6 +40,15 @@ function New-IconPngBytes {
         [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
     $graphics.Clear([System.Drawing.Color]::Transparent)
 
+    $backPath = $null
+    $middlePath = $null
+    $frontPath = $null
+    $backBrush = $null
+    $middleBrush = $null
+    $frontBrush = $null
+    $bridgeBrush = $null
+    $pen = $null
+
     try {
         $scale = [single]$Size / 256.0
 
@@ -92,8 +101,6 @@ function New-IconPngBytes {
             [single](180 * $scale),
             [single](114 * $scale))
 
-        # Two small front-color bridges make the sharp look woven rather than
-        # simply crossed.
         $bridgeBrush =
             [System.Drawing.SolidBrush]::new(
                 [System.Drawing.Color]::FromArgb(
@@ -112,10 +119,17 @@ function New-IconPngBytes {
             [single](14 * $scale))
 
         $stream = [System.IO.MemoryStream]::new()
-        $bitmap.Save(
-            $stream,
-            [System.Drawing.Imaging.ImageFormat]::Png)
-        return $stream.ToArray()
+        try {
+            $bitmap.Save(
+                $stream,
+                [System.Drawing.Imaging.ImageFormat]::Png)
+
+            # Prevent PowerShell from enumerating byte[] into individual bytes.
+            Write-Output -NoEnumerate ([byte[]]$stream.ToArray())
+        }
+        finally {
+            $stream.Dispose()
+        }
     }
     finally {
         if ($pen) { $pen.Dispose() }
@@ -131,12 +145,11 @@ function New-IconPngBytes {
     }
 }
 
-$sizes = @(16, 20, 24, 32, 40, 48, 64, 128, 256)
-$images = @()
-
-foreach ($size in $sizes) {
-    $images += ,(New-IconPngBytes -Size $size)
-}
+# A single PNG-backed 256x256 ICO entry is natively supported by modern
+# Windows and the Win32 resource compiler. Windows generates smaller shell/
+# titlebar representations from it; keeping one entry avoids fragile hand-
+# assembled multi-entry offsets.
+[byte[]]$png = New-IconPngBytes -Size 256
 
 $directory = [System.IO.Path]::GetDirectoryName($OutputPath)
 if ($directory) {
@@ -152,33 +165,23 @@ $stream = [System.IO.File]::Open(
 $writer = [System.IO.BinaryWriter]::new($stream)
 
 try {
+    # ICONDIR
     $writer.Write([uint16]0)
     $writer.Write([uint16]1)
-    $writer.Write([uint16]$sizes.Count)
+    $writer.Write([uint16]1)
 
-    $offset = 6 + (16 * $sizes.Count)
+    # ICONDIRENTRY (0 width/height means 256)
+    $writer.Write([byte]0)
+    $writer.Write([byte]0)
+    $writer.Write([byte]0)
+    $writer.Write([byte]0)
+    $writer.Write([uint16]1)
+    $writer.Write([uint16]32)
+    $writer.Write([uint32]$png.Length)
+    $writer.Write([uint32]22)
 
-    for ($i = 0; $i -lt $sizes.Count; $i++) {
-        $size = $sizes[$i]
-        $bytes = $images[$i]
-
-        $writer.Write(
-            [byte]($(if ($size -eq 256) { 0 } else { $size })))
-        $writer.Write(
-            [byte]($(if ($size -eq 256) { 0 } else { $size })))
-        $writer.Write([byte]0)
-        $writer.Write([byte]0)
-        $writer.Write([uint16]1)
-        $writer.Write([uint16]32)
-        $writer.Write([uint32]$bytes.Length)
-        $writer.Write([uint32]$offset)
-
-        $offset += $bytes.Length
-    }
-
-    foreach ($bytes in $images) {
-        $writer.Write($bytes)
-    }
+    # PNG payload
+    $writer.Write([byte[]]$png)
 }
 finally {
     $writer.Dispose()
