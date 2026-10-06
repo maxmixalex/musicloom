@@ -4,6 +4,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Shapes;
 using MusicLoom.Audio.Windows;
 using MusicLoom.Core.Configuration;
 using MusicLoom.Core.Lyrics;
@@ -2757,18 +2759,61 @@ public sealed partial class MainWindow : Window
 
     private void CoverButton_PointerEntered(
         object sender,
-        PointerRoutedEventArgs e)
-    {
-        CoverScaleTransform.ScaleX = 1.035;
-        CoverScaleTransform.ScaleY = 1.035;
-    }
+        PointerRoutedEventArgs e) =>
+        AnimateCoverScale(1.045);
 
     private void CoverButton_PointerExited(
         object sender,
-        PointerRoutedEventArgs e)
+        PointerRoutedEventArgs e) =>
+        AnimateCoverScale(1.0);
+
+    private void AnimateCoverScale(
+        double target)
     {
-        CoverScaleTransform.ScaleX = 1;
-        CoverScaleTransform.ScaleY = 1;
+        CubicEase ease = new()
+        {
+            EasingMode =
+                EasingMode.EaseOut,
+        };
+
+        DoubleAnimation x = new()
+        {
+            To = target,
+            Duration =
+                new Duration(
+                    TimeSpan.FromMilliseconds(
+                        140)),
+            EasingFunction = ease,
+            EnableDependentAnimation = true,
+        };
+        DoubleAnimation y = new()
+        {
+            To = target,
+            Duration =
+                new Duration(
+                    TimeSpan.FromMilliseconds(
+                        140)),
+            EasingFunction = ease,
+            EnableDependentAnimation = true,
+        };
+
+        Storyboard.SetTarget(
+            x,
+            CoverScaleTransform);
+        Storyboard.SetTargetProperty(
+            x,
+            "ScaleX");
+        Storyboard.SetTarget(
+            y,
+            CoverScaleTransform);
+        Storyboard.SetTargetProperty(
+            y,
+            "ScaleY");
+
+        Storyboard storyboard = new();
+        storyboard.Children.Add(x);
+        storyboard.Children.Add(y);
+        storyboard.Begin();
     }
 
     private async void CoverButton_Click(
@@ -2788,7 +2833,14 @@ public sealed partial class MainWindow : Window
                     artwork,
                     decodePixelWidth: 0);
 
-            const double ViewportSize = 620;
+            const double ViewportSize = 600;
+
+            CompositeTransform imageTransform =
+                new()
+                {
+                    ScaleX = 1,
+                    ScaleY = 1,
+                };
 
             Image image = new()
             {
@@ -2799,39 +2851,63 @@ public sealed partial class MainWindow : Window
                     Microsoft.UI.Xaml.Media
                         .Stretch.Uniform,
                 HorizontalAlignment =
-                    HorizontalAlignment.Center,
+                    HorizontalAlignment.Left,
                 VerticalAlignment =
-                    VerticalAlignment.Center,
+                    VerticalAlignment.Top,
+                RenderTransform =
+                    imageTransform,
+                RenderTransformOrigin =
+                    new Windows.Foundation.Point(
+                        0,
+                        0),
             };
 
-            ScrollViewer viewer = new()
+            Grid viewport = new()
             {
-                Content = image,
                 Width = ViewportSize,
                 Height = ViewportSize,
-                ZoomMode = ZoomMode.Enabled,
-                MinZoomFactor = 0.25f,
-                MaxZoomFactor = 6f,
-                HorizontalScrollMode =
-                    ScrollMode.Enabled,
-                VerticalScrollMode =
-                    ScrollMode.Enabled,
-                HorizontalScrollBarVisibility =
-                    ScrollBarVisibility.Hidden,
-                VerticalScrollBarVisibility =
-                    ScrollBarVisibility.Hidden,
+                Background =
+                    Application.Current.Resources[
+                        "CardBackgroundFillColorSecondaryBrush"]
+                    as Microsoft.UI.Xaml.Media.Brush,
+                Clip =
+                    new RectangleGeometry
+                    {
+                        Rect =
+                            new Windows.Foundation.Rect(
+                                0,
+                                0,
+                                ViewportSize,
+                                ViewportSize),
+                    },
             };
+            viewport.Children.Add(image);
 
+            double scale = 1;
+            double translateX = 0;
+            double translateY = 0;
             bool dragging = false;
             Windows.Foundation.Point
                 lastPointer = default;
 
-            viewer.PointerWheelChanged +=
+            void ApplyTransform()
+            {
+                imageTransform.ScaleX =
+                    scale;
+                imageTransform.ScaleY =
+                    scale;
+                imageTransform.TranslateX =
+                    translateX;
+                imageTransform.TranslateY =
+                    translateY;
+            }
+
+            PointerEventHandler wheelHandler =
                 (_, args) =>
                 {
                     var point =
                         args.GetCurrentPoint(
-                            viewer);
+                            viewport);
                     int delta =
                         point.Properties
                             .MouseWheelDelta;
@@ -2841,56 +2917,51 @@ public sealed partial class MainWindow : Window
                         return;
                     }
 
-                    float current =
-                        viewer.ZoomFactor;
-                    float target =
+                    double oldScale =
+                        scale;
+                    double target =
                         Math.Clamp(
-                            current
+                            scale
                             * (delta > 0
-                                ? 1.16f
-                                : 1f / 1.16f),
-                            viewer.MinZoomFactor,
-                            viewer.MaxZoomFactor);
+                                ? 1.14
+                                : 1.0 / 1.14),
+                            0.25,
+                            6.0);
 
-                    Windows.Foundation.Point
-                        position =
-                            point.Position;
+                    if (Math.Abs(
+                            target - oldScale)
+                        < 0.0001)
+                    {
+                        args.Handled = true;
+                        return;
+                    }
 
-                    double contentX =
-                        (viewer.HorizontalOffset
-                            + position.X)
-                        / current;
-                    double contentY =
-                        (viewer.VerticalOffset
-                            + position.Y)
-                        / current;
+                    Windows.Foundation.Point p =
+                        point.Position;
 
-                    double horizontal =
-                        Math.Max(
-                            0,
-                            contentX * target
-                            - position.X);
-                    double vertical =
-                        Math.Max(
-                            0,
-                            contentY * target
-                            - position.Y);
+                    double factor =
+                        target / oldScale;
 
-                    viewer.ChangeView(
-                        horizontal,
-                        vertical,
-                        target,
-                        disableAnimation: true);
+                    translateX =
+                        p.X
+                        - (p.X - translateX)
+                        * factor;
+                    translateY =
+                        p.Y
+                        - (p.Y - translateY)
+                        * factor;
+                    scale = target;
 
+                    ApplyTransform();
                     args.Handled = true;
                 };
 
-            viewer.PointerPressed +=
+            PointerEventHandler pressedHandler =
                 (_, args) =>
                 {
                     var point =
                         args.GetCurrentPoint(
-                            viewer);
+                            viewport);
 
                     if (!point.Properties
                         .IsLeftButtonPressed)
@@ -2901,12 +2972,12 @@ public sealed partial class MainWindow : Window
                     dragging = true;
                     lastPointer =
                         point.Position;
-                    viewer.CapturePointer(
+                    viewport.CapturePointer(
                         args.Pointer);
                     args.Handled = true;
                 };
 
-            viewer.PointerMoved +=
+            PointerEventHandler movedHandler =
                 (_, args) =>
                 {
                     if (!dragging)
@@ -2917,29 +2988,18 @@ public sealed partial class MainWindow : Window
                     Windows.Foundation.Point
                         position =
                             args.GetCurrentPoint(
-                                viewer)
+                                viewport)
                                 .Position;
 
-                    double deltaX =
+                    translateX +=
                         position.X
                         - lastPointer.X;
-                    double deltaY =
+                    translateY +=
                         position.Y
                         - lastPointer.Y;
-
-                    viewer.ChangeView(
-                        Math.Max(
-                            0,
-                            viewer.HorizontalOffset
-                            - deltaX),
-                        Math.Max(
-                            0,
-                            viewer.VerticalOffset
-                            - deltaY),
-                        null,
-                        disableAnimation: true);
-
                     lastPointer = position;
+
+                    ApplyTransform();
                     args.Handled = true;
                 };
 
@@ -2952,44 +3012,120 @@ public sealed partial class MainWindow : Window
                 }
 
                 dragging = false;
-                viewer.ReleasePointerCapture(
+                viewport.ReleasePointerCapture(
                     args.Pointer);
                 args.Handled = true;
             }
 
-            viewer.PointerReleased +=
+            viewport.AddHandler(
+                UIElement.PointerWheelChangedEvent,
+                wheelHandler,
+                handledEventsToo: true);
+            viewport.AddHandler(
+                UIElement.PointerPressedEvent,
+                pressedHandler,
+                handledEventsToo: true);
+            viewport.AddHandler(
+                UIElement.PointerMovedEvent,
+                movedHandler,
+                handledEventsToo: true);
+            viewport.PointerReleased +=
                 (_, args) =>
                     EndDrag(args);
-            viewer.PointerCanceled +=
+            viewport.PointerCanceled +=
                 (_, args) =>
                     EndDrag(args);
+
+            string dialogTitle =
+                string.IsNullOrWhiteSpace(
+                    TrackAlbumText.Text)
+                    ? TrackTitleText.Text
+                    : TrackAlbumText.Text;
+
+            TextBlock titleText = new()
+            {
+                Text = dialogTitle,
+                FontSize = 18,
+                FontWeight =
+                    new Windows.UI.Text.FontWeight
+                    {
+                        Weight = 600,
+                    },
+                VerticalAlignment =
+                    VerticalAlignment.Center,
+            };
+
+            ScrollViewer titleScroller = new()
+            {
+                Content = titleText,
+                HorizontalScrollBarVisibility =
+                    ScrollBarVisibility.Hidden,
+                VerticalScrollBarVisibility =
+                    ScrollBarVisibility.Disabled,
+                HorizontalScrollMode =
+                    ScrollMode.Enabled,
+                VerticalScrollMode =
+                    ScrollMode.Disabled,
+                ZoomMode =
+                    ZoomMode.Disabled,
+            };
+
+            string longTextMode =
+                CurrentLongTextMode;
+
+            if (longTextMode
+                == LongTextModes.Wrap)
+            {
+                titleText.TextWrapping =
+                    TextWrapping.WrapWholeWords;
+                titleText.MaxLines = 2;
+                titleScroller.HorizontalScrollMode =
+                    ScrollMode.Disabled;
+            }
+            else if (longTextMode
+                == LongTextModes.Hover)
+            {
+                titleText.TextWrapping =
+                    TextWrapping.NoWrap;
+                titleText.TextTrimming =
+                    TextTrimming.CharacterEllipsis;
+                ToolTipService.SetToolTip(
+                    titleText,
+                    dialogTitle);
+                titleScroller.HorizontalScrollMode =
+                    ScrollMode.Disabled;
+            }
+            else
+            {
+                titleText.TextWrapping =
+                    TextWrapping.NoWrap;
+                titleText.TextTrimming =
+                    TextTrimming.None;
+            }
 
             ContentDialog dialog = new()
             {
                 XamlRoot =
                     ((FrameworkElement)Content)
                         .XamlRoot,
-                Title =
-                    string.IsNullOrWhiteSpace(
-                        TrackAlbumText.Text)
-                        ? TrackTitleText.Text
-                        : TrackAlbumText.Text,
             };
 
             Button closeButton = new()
             {
-                Width = 32,
-                Height = 32,
+                Width = 30,
+                Height = 30,
                 Padding = new Thickness(0),
                 HorizontalAlignment =
                     HorizontalAlignment.Right,
+                VerticalAlignment =
+                    VerticalAlignment.Center,
                 Background = null,
                 BorderThickness =
                     new Thickness(0),
                 Content = new FontIcon
                 {
                     Glyph = "\uE711",
-                    FontSize = 12,
+                    FontSize = 11,
                 },
             };
             ToolTipService.SetToolTip(
@@ -2999,40 +3135,144 @@ public sealed partial class MainWindow : Window
                 (_, _) =>
                     dialog.Hide();
 
-            Grid content = new()
+            Grid header = new()
             {
                 Width = ViewportSize,
-                RowSpacing = 6,
+                ColumnSpacing = 8,
             };
-            content.RowDefinitions.Add(
+            header.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        new GridLength(
+                            1,
+                            GridUnitType.Star),
+                });
+            header.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        GridLength.Auto,
+                });
+            header.Children.Add(
+                titleScroller);
+            Grid.SetColumn(
+                closeButton,
+                1);
+            header.Children.Add(
+                closeButton);
+
+            Grid dialogContent = new()
+            {
+                Width = ViewportSize,
+                RowSpacing = 10,
+            };
+            dialogContent.RowDefinitions.Add(
                 new RowDefinition
                 {
                     Height =
                         GridLength.Auto,
                 });
-            content.RowDefinitions.Add(
+            dialogContent.RowDefinitions.Add(
                 new RowDefinition
                 {
                     Height =
                         new GridLength(
                             ViewportSize),
                 });
-
+            dialogContent.Children.Add(
+                header);
             Grid.SetRow(
-                closeButton,
-                0);
-            content.Children.Add(
-                closeButton);
-
-            Grid.SetRow(
-                viewer,
+                viewport,
                 1);
-            content.Children.Add(
-                viewer);
+            dialogContent.Children.Add(
+                viewport);
 
-            dialog.Content = content;
+            dialog.Content =
+                dialogContent;
+
+            DispatcherTimer?
+                titleTimer = null;
+
+            if (longTextMode
+                == LongTextModes.AutoScroll)
+            {
+                dialog.Opened +=
+                    (_, _) =>
+                    {
+                        titleScroller.UpdateLayout();
+
+                        if (titleScroller
+                            .ScrollableWidth <= 1)
+                        {
+                            return;
+                        }
+
+                        double direction = 1;
+                        DateTimeOffset pauseUntil =
+                            DateTimeOffset.UtcNow
+                                .AddMilliseconds(
+                                    500);
+
+                        titleTimer =
+                            new DispatcherTimer
+                            {
+                                Interval =
+                                    TimeSpan
+                                        .FromMilliseconds(
+                                            16),
+                            };
+
+                        titleTimer.Tick +=
+                            (_, _) =>
+                            {
+                                if (DateTimeOffset.UtcNow
+                                    < pauseUntil)
+                                {
+                                    return;
+                                }
+
+                                double max =
+                                    titleScroller
+                                        .ScrollableWidth;
+                                double next =
+                                    titleScroller
+                                        .HorizontalOffset
+                                    + direction * 2.0;
+
+                                if (next >= max)
+                                {
+                                    next = max;
+                                    direction = -1;
+                                    pauseUntil =
+                                        DateTimeOffset.UtcNow
+                                            .AddMilliseconds(
+                                                550);
+                                }
+                                else if (next <= 0)
+                                {
+                                    next = 0;
+                                    direction = 1;
+                                    pauseUntil =
+                                        DateTimeOffset.UtcNow
+                                            .AddMilliseconds(
+                                                550);
+                                }
+
+                                titleScroller.ChangeView(
+                                    next,
+                                    null,
+                                    null,
+                                    disableAnimation: true);
+                            };
+
+                        titleTimer.Start();
+                    };
+            }
 
             await dialog.ShowAsync();
+
+            titleTimer?.Stop();
         }
         catch (Exception exception)
         {
