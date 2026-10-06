@@ -16,7 +16,6 @@ function New-RoundedRectPath {
 
     $path = [System.Drawing.Drawing2D.GraphicsPath]::new()
     $diameter = $Radius * 2
-
     $path.AddArc($X, $Y, $diameter, $diameter, 180, 90)
     $path.AddArc($X + $Width - $diameter, $Y, $diameter, $diameter, 270, 90)
     $path.AddArc($X + $Width - $diameter, $Y + $Height - $diameter, $diameter, $diameter, 0, 90)
@@ -34,121 +33,150 @@ function New-IconPngBytes {
         [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
 
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    $graphics.SmoothingMode =
-        [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-    $graphics.PixelOffsetMode =
-        [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
     $graphics.Clear([System.Drawing.Color]::Transparent)
 
-    $backPath = $null
-    $middlePath = $null
-    $frontPath = $null
-    $backBrush = $null
-    $middleBrush = $null
-    $frontBrush = $null
+    $backgroundPath = $null
+    $backgroundBrush = $null
+    $threadPen = $null
+    $whitePen = $null
+    $cyanPen = $null
     $bridgeBrush = $null
-    $pen = $null
+    $noteBrush = $null
+    $upperWave = $null
+    $lowerWave = $null
 
     try {
         $scale = [single]$Size / 256.0
+        $backgroundPath = New-RoundedRectPath -X (24 * $scale) -Y (24 * $scale) -Width (208 * $scale) -Height (208 * $scale) -Radius (55 * $scale)
 
-        $backPath = New-RoundedRectPath (30 * $scale) (75 * $scale) (150 * $scale) (150 * $scale) (30 * $scale)
-        $middlePath = New-RoundedRectPath (54 * $scale) (51 * $scale) (150 * $scale) (150 * $scale) (30 * $scale)
-        $frontPath = New-RoundedRectPath (78 * $scale) (27 * $scale) (150 * $scale) (150 * $scale) (30 * $scale)
+        $backgroundBrush = [System.Drawing.SolidBrush]::new(
+            [System.Drawing.Color]::FromArgb(255, 11, 92, 173))
+        $graphics.FillPath($backgroundBrush, $backgroundPath)
 
-        $backBrush = [System.Drawing.SolidBrush]::new(
-            [System.Drawing.Color]::FromArgb(255, 91, 200, 245))
-        $middleBrush = [System.Drawing.SolidBrush]::new(
-            [System.Drawing.Color]::FromArgb(255, 45, 155, 232))
-        $frontBrush = [System.Drawing.SolidBrush]::new(
-            [System.Drawing.Color]::FromArgb(255, 31, 92, 190))
+        $threadPen = [System.Drawing.Pen]::new(
+            [System.Drawing.Color]::FromArgb(184, 158, 220, 255),
+            [single](7 * $scale))
+        $threadPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $threadPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
 
-        $graphics.FillPath($backBrush, $backPath)
-        $graphics.FillPath($middleBrush, $middlePath)
-        $graphics.FillPath($frontBrush, $frontPath)
+        foreach ($x in @(80, 112, 144, 176)) {
+            $graphics.DrawLine(
+                $threadPen,
+                [single]($x * $scale),
+                [single](63 * $scale),
+                [single]($x * $scale),
+                [single](193 * $scale))
+        }
 
-        $white = [System.Drawing.Color]::FromArgb(255, 255, 255, 255)
-        $pen = [System.Drawing.Pen]::new(
-            $white,
-            [single](13 * $scale))
-        $pen.StartCap =
-            [System.Drawing.Drawing2D.LineCap]::Round
-        $pen.EndCap =
-            [System.Drawing.Drawing2D.LineCap]::Round
+        $upperWave = [System.Drawing.Drawing2D.GraphicsPath]::new()
+        $upperWave.StartFigure()
+        $upperWave.AddBezier(
+            [single](55 * $scale), [single](116 * $scale),
+            [single](75 * $scale), [single](96 * $scale),
+            [single](91 * $scale), [single](96 * $scale),
+            [single](107 * $scale), [single](116 * $scale))
+        $upperWave.AddBezier(
+            [single](107 * $scale), [single](116 * $scale),
+            [single](123 * $scale), [single](136 * $scale),
+            [single](139 * $scale), [single](136 * $scale),
+            [single](155 * $scale), [single](116 * $scale))
+        $upperWave.AddBezier(
+            [single](155 * $scale), [single](116 * $scale),
+            [single](171 * $scale), [single](96 * $scale),
+            [single](187 * $scale), [single](96 * $scale),
+            [single](204 * $scale), [single](116 * $scale))
 
-        $graphics.DrawLine(
-            $pen,
-            [single](121 * $scale),
-            [single](65 * $scale),
-            [single](108 * $scale),
-            [single](153 * $scale))
-        $graphics.DrawLine(
-            $pen,
-            [single](166 * $scale),
-            [single](59 * $scale),
-            [single](153 * $scale),
-            [single](147 * $scale))
-        $graphics.DrawLine(
-            $pen,
-            [single](101 * $scale),
-            [single](94 * $scale),
-            [single](185 * $scale),
-            [single](80 * $scale))
-        $graphics.DrawLine(
-            $pen,
-            [single](96 * $scale),
-            [single](128 * $scale),
-            [single](180 * $scale),
-            [single](114 * $scale))
+        $whitePen = [System.Drawing.Pen]::new(
+            [System.Drawing.Color]::White,
+            [single](16 * $scale))
+        $whitePen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $whitePen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $whitePen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+        $graphics.DrawPath($whitePen, $upperWave)
 
-        $bridgeBrush =
-            [System.Drawing.SolidBrush]::new(
-                [System.Drawing.Color]::FromArgb(
-                    255, 31, 92, 190))
+        $lowerWave = [System.Drawing.Drawing2D.GraphicsPath]::new()
+        $lowerWave.StartFigure()
+        $lowerWave.AddBezier(
+            [single](55 * $scale), [single](144 * $scale),
+            [single](75 * $scale), [single](164 * $scale),
+            [single](91 * $scale), [single](164 * $scale),
+            [single](107 * $scale), [single](144 * $scale))
+        $lowerWave.AddBezier(
+            [single](107 * $scale), [single](144 * $scale),
+            [single](123 * $scale), [single](124 * $scale),
+            [single](139 * $scale), [single](124 * $scale),
+            [single](155 * $scale), [single](144 * $scale))
+        $lowerWave.AddBezier(
+            [single](155 * $scale), [single](144 * $scale),
+            [single](171 * $scale), [single](164 * $scale),
+            [single](187 * $scale), [single](164 * $scale),
+            [single](204 * $scale), [single](144 * $scale))
+
+        $cyanPen = [System.Drawing.Pen]::new(
+            [System.Drawing.Color]::FromArgb(255, 72, 199, 232),
+            [single](12 * $scale))
+        $cyanPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $cyanPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $cyanPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+        $graphics.DrawPath($cyanPen, $lowerWave)
+
+        $bridgeBrush = [System.Drawing.SolidBrush]::new(
+            [System.Drawing.Color]::FromArgb(255, 11, 92, 173))
         $graphics.FillRectangle(
             $bridgeBrush,
-            [single](113 * $scale),
-            [single](91 * $scale),
-            [single](19 * $scale),
-            [single](14 * $scale))
+            [single](105 * $scale),
+            [single](103 * $scale),
+            [single](14 * $scale),
+            [single](24 * $scale))
         $graphics.FillRectangle(
             $bridgeBrush,
-            [single](149 * $scale),
-            [single](111 * $scale),
-            [single](19 * $scale),
-            [single](14 * $scale))
+            [single](137 * $scale),
+            [single](133 * $scale),
+            [single](14 * $scale),
+            [single](24 * $scale))
 
-        $stream = [System.IO.MemoryStream]::new()
+        $graphics.DrawLine(
+            $whitePen,
+            [single](194 * $scale),
+            [single](112 * $scale),
+            [single](194 * $scale),
+            [single](78 * $scale))
+
+        $noteBrush = [System.Drawing.SolidBrush]::new(
+            [System.Drawing.Color]::White)
+        $graphics.FillEllipse(
+            $noteBrush,
+            [single](177 * $scale),
+            [single](144 * $scale),
+            [single](35 * $scale),
+            [single](27 * $scale))
+
+        $memory = [System.IO.MemoryStream]::new()
         try {
-            $bitmap.Save(
-                $stream,
-                [System.Drawing.Imaging.ImageFormat]::Png)
-
-            # Prevent PowerShell from enumerating byte[] into individual bytes.
-            Write-Output -NoEnumerate ([byte[]]$stream.ToArray())
+            $bitmap.Save($memory, [System.Drawing.Imaging.ImageFormat]::Png)
+            Write-Output -NoEnumerate ([byte[]]$memory.ToArray())
         }
         finally {
-            $stream.Dispose()
+            $memory.Dispose()
         }
     }
     finally {
-        if ($pen) { $pen.Dispose() }
+        if ($backgroundPath) { $backgroundPath.Dispose() }
+        if ($backgroundBrush) { $backgroundBrush.Dispose() }
+        if ($threadPen) { $threadPen.Dispose() }
+        if ($whitePen) { $whitePen.Dispose() }
+        if ($cyanPen) { $cyanPen.Dispose() }
         if ($bridgeBrush) { $bridgeBrush.Dispose() }
-        if ($backBrush) { $backBrush.Dispose() }
-        if ($middleBrush) { $middleBrush.Dispose() }
-        if ($frontBrush) { $frontBrush.Dispose() }
-        if ($backPath) { $backPath.Dispose() }
-        if ($middlePath) { $middlePath.Dispose() }
-        if ($frontPath) { $frontPath.Dispose() }
+        if ($noteBrush) { $noteBrush.Dispose() }
+        if ($upperWave) { $upperWave.Dispose() }
+        if ($lowerWave) { $lowerWave.Dispose() }
         $graphics.Dispose()
         $bitmap.Dispose()
     }
 }
 
-# A single PNG-backed 256x256 ICO entry is natively supported by modern
-# Windows and the Win32 resource compiler. Windows generates smaller shell/
-# titlebar representations from it; keeping one entry avoids fragile hand-
-# assembled multi-entry offsets.
 [byte[]]$png = New-IconPngBytes -Size 256
 
 $directory = [System.IO.Path]::GetDirectoryName($OutputPath)
@@ -165,12 +193,10 @@ $stream = [System.IO.File]::Open(
 $writer = [System.IO.BinaryWriter]::new($stream)
 
 try {
-    # ICONDIR
     $writer.Write([uint16]0)
     $writer.Write([uint16]1)
     $writer.Write([uint16]1)
 
-    # ICONDIRENTRY (0 width/height means 256)
     $writer.Write([byte]0)
     $writer.Write([byte]0)
     $writer.Write([byte]0)
@@ -180,7 +206,6 @@ try {
     $writer.Write([uint32]$png.Length)
     $writer.Write([uint32]22)
 
-    # PNG payload
     $writer.Write([byte[]]$png)
 }
 finally {
