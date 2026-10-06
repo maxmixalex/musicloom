@@ -1462,6 +1462,22 @@ public sealed partial class MainWindow : Window
         RenderLyrics();
     }
 
+    private void LyricLineMenu_Opening(
+        object sender,
+        object e)
+    {
+        if (sender is MenuFlyout menu
+            && menu.Items.Count > 0
+            && menu.Items[0]
+                is MenuFlyoutItem item)
+        {
+            item.Text =
+                L(
+                    "Copy line",
+                    "复制此行");
+        }
+    }
+
     private void CopyLyricLineItem_Click(
         object sender,
         RoutedEventArgs e)
@@ -3641,6 +3657,21 @@ public sealed partial class MainWindow : Window
             L(
                 "Close details",
                 "关闭详情"));
+        ToolTipService.SetToolTip(
+            CoverHost,
+            L(
+                "Double-click to view artwork",
+                "双击查看大图"));
+        ToolTipService.SetToolTip(
+            PendingSummaryIcon,
+            L(
+                "Pending",
+                "待同步"));
+        ToolTipService.SetToolTip(
+            ErrorSummaryIcon,
+            L(
+                "Errors",
+                "错误"));
         LyricsTab.Header =
             L("Lyrics", "歌词");
         MatchTab.Header =
@@ -3781,10 +3812,6 @@ public sealed partial class MainWindow : Window
             L(
                 "Playlist path on phone",
                 "手机上的播放列表路径");
-        PlaylistBaseSettingDescription.Text =
-            L(
-                "Base path written into exported Salt Player playlists.",
-                "写入 Salt Player 导出播放列表的基础路径。");
 
         FetchLyricsSettingTitle.Text =
             L(
