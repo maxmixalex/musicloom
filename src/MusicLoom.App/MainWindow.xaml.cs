@@ -4762,6 +4762,7 @@ public sealed partial class MainWindow : Window
                     PendingCount: > 0,
                     ErrorCount: 0,
                 };
+
         CancelButton.Visibility =
             busy
                 ? Visibility.Visible
@@ -4769,14 +4770,15 @@ public sealed partial class MainWindow : Window
         CancelButton.IsEnabled =
             busy;
 
-        LibrarySearchBox.IsEnabled =
-            !busy;
-        LibraryFilterBox.IsEnabled =
-            !busy;
-        LibrarySortBox.IsEnabled =
-            !busy;
-        LibraryList.IsEnabled =
-            !busy;
+        // Browsing/searching remains usable while a background sync runs.
+        LibrarySearchBox.IsEnabled = true;
+        LibraryFilterBox.IsEnabled = true;
+        LibrarySortBox.IsEnabled = true;
+        LibraryList.IsEnabled = true;
+        PlaylistSearchBox.IsEnabled = true;
+        PlaylistSortBox.IsEnabled = true;
+        PlaylistTracksList.IsEnabled = true;
+
         OpenMatchDialogButton.IsEnabled =
             !busy
             && _selectedLibraryItem
@@ -4786,49 +4788,106 @@ public sealed partial class MainWindow : Window
             busy
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+        PlaylistProgressPanel.Visibility =
+            busy
+                ? Visibility.Visible
+                : Visibility.Collapsed;
 
         OperationProgressBar.Visibility =
+            busy
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        PlaylistOperationProgressBar.Visibility =
             busy
                 ? Visibility.Visible
                 : Visibility.Collapsed;
 
         if (busy)
         {
-            OperationProgressBar
-                .IsIndeterminate = true;
+            OperationProgressBar.IsIndeterminate =
+                true;
+            PlaylistOperationProgressBar.IsIndeterminate =
+                true;
         }
         else
         {
-            OperationProgressBar
-                .IsIndeterminate = false;
+            OperationProgressBar.IsIndeterminate =
+                false;
             OperationProgressBar.Value = 0;
+            PlaylistOperationProgressBar.IsIndeterminate =
+                false;
+            PlaylistOperationProgressBar.Value = 0;
         }
 
+        SetOperationStatus(
+            operationStatus);
+    }
+
+    private void SetOperationStatus(
+        string status)
+    {
         OperationStatusText.Text =
-            operationStatus;
+            status;
+        PlaylistOperationStatusText.Text =
+            status;
+    }
+
+    private void SetIndeterminateProgress()
+    {
+        LibraryProgressPanel.Visibility =
+            Visibility.Visible;
+        PlaylistProgressPanel.Visibility =
+            Visibility.Visible;
+
+        OperationProgressBar.Visibility =
+            Visibility.Visible;
+        PlaylistOperationProgressBar.Visibility =
+            Visibility.Visible;
+
+        OperationProgressBar.IsIndeterminate =
+            true;
+        PlaylistOperationProgressBar.IsIndeterminate =
+            true;
     }
 
     private void SetProgress(
         int processed,
         int total)
     {
+        LibraryProgressPanel.Visibility =
+            Visibility.Visible;
+        PlaylistProgressPanel.Visibility =
+            Visibility.Visible;
+
         OperationProgressBar.Visibility =
+            Visibility.Visible;
+        PlaylistOperationProgressBar.Visibility =
             Visibility.Visible;
 
         if (total <= 0)
         {
-            OperationProgressBar
-                .IsIndeterminate = true;
+            OperationProgressBar.IsIndeterminate =
+                true;
+            PlaylistOperationProgressBar.IsIndeterminate =
+                true;
             return;
         }
 
-        OperationProgressBar
-            .IsIndeterminate = false;
-        OperationProgressBar.Value =
+        double value =
             Math.Clamp(
                 processed * 100.0 / total,
                 0,
                 100);
+
+        OperationProgressBar.IsIndeterminate =
+            false;
+        OperationProgressBar.Value =
+            value;
+
+        PlaylistOperationProgressBar.IsIndeterminate =
+            false;
+        PlaylistOperationProgressBar.Value =
+            value;
     }
 
     private void ShowInfo(
