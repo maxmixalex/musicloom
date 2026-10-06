@@ -1024,7 +1024,8 @@ public sealed partial class MainWindow : Window
         }
 
         CancelButton.IsEnabled = false;
-        OperationStatusText.Text =
+        PlaylistCancelButton.IsEnabled = false;
+        SetOperationStatus(
             L(
                 "Cancelling…",
                 "正在取消……");
