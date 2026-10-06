@@ -498,20 +498,6 @@ public sealed partial class MainWindow : Window
             Visibility = Visibility.Collapsed,
         };
 
-        Button startButton = new()
-        {
-            Content =
-                L(
-                    "Start sync",
-                    "开始同步"),
-            Style =
-                (Style)Application.Current.Resources[
-                    "AccentButtonStyle"],
-            HorizontalAlignment =
-                HorizontalAlignment.Right,
-            IsEnabled = false,
-        };
-
         StackPanel panel = new()
         {
             Width = 650,
@@ -522,7 +508,6 @@ public sealed partial class MainWindow : Window
         panel.Children.Add(detailText);
         panel.Children.Add(progressBar);
         panel.Children.Add(errorsList);
-        panel.Children.Add(startButton);
 
         ContentDialog dialog = new()
         {
@@ -533,10 +518,17 @@ public sealed partial class MainWindow : Window
                 L(
                     "Sync library",
                     "同步音乐库"),
+            PrimaryButtonText =
+                L(
+                    "Start sync",
+                    "开始同步"),
             CloseButtonText =
                 L(
                     "Close",
                     "关闭"),
+            DefaultButton =
+                ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false,
             Content = panel,
         };
 
@@ -587,7 +579,12 @@ public sealed partial class MainWindow : Window
         async Task RunPreflightAsync()
         {
             operationRunning = true;
-            startButton.IsEnabled = false;
+            dialog.IsPrimaryButtonEnabled =
+                false;
+            dialog.CloseButtonText =
+                L(
+                    "Cancel",
+                    "取消");
             ShowErrors([]);
 
             SetStep(
@@ -743,7 +740,8 @@ public sealed partial class MainWindow : Window
 
                 progressBar.Visibility =
                     Visibility.Collapsed;
-                startButton.IsEnabled = true;
+                dialog.IsPrimaryButtonEnabled =
+                    true;
             }
             catch (OperationCanceledException)
             {
@@ -768,12 +766,17 @@ public sealed partial class MainWindow : Window
                     UserFacingErrors.Describe(
                         exception),
                     indeterminate: false);
+
                 progressBar.Visibility =
                     Visibility.Collapsed;
             }
             finally
             {
                 operationRunning = false;
+                dialog.CloseButtonText =
+                    L(
+                        "Close",
+                        "关闭");
             }
         }
 
@@ -788,7 +791,12 @@ public sealed partial class MainWindow : Window
             }
 
             operationRunning = true;
-            startButton.IsEnabled = false;
+            dialog.IsPrimaryButtonEnabled =
+                false;
+            dialog.CloseButtonText =
+                L(
+                    "Cancel",
+                    "取消");
             ShowErrors([]);
 
             SetStep(
@@ -833,6 +841,7 @@ public sealed partial class MainWindow : Window
                     {
                         progressBar.IsIndeterminate =
                             value.Total <= 0;
+
                         if (value.Total > 0)
                         {
                             progressBar.Value =
@@ -924,10 +933,10 @@ public sealed partial class MainWindow : Window
                         $"{Path.GetFileName(error.SourcePath)} · {FriendlyStage(error.Stage)} · {error.Message}");
                 }
 
-                if (summary.Errors.Count > 0)
+                if (errorRows.Length > 0)
                 {
                     errorsList.ScrollIntoView(
-                        errorRows.FirstOrDefault());
+                        errorRows[0]);
                 }
             }
             catch (OperationCanceledException)
@@ -943,6 +952,7 @@ public sealed partial class MainWindow : Window
                         "Completed work was checkpointed.",
                         "已完成的工作已经保存。"),
                     indeterminate: false);
+
                 progressBar.Visibility =
                     Visibility.Collapsed;
             }
@@ -962,22 +972,42 @@ public sealed partial class MainWindow : Window
                     UserFacingErrors.Describe(
                         exception),
                     indeterminate: false);
+
                 progressBar.Visibility =
                     Visibility.Collapsed;
             }
             finally
             {
                 operationRunning = false;
+                dialog.CloseButtonText =
+                    L(
+                        "Close",
+                        "关闭");
             }
         }
-
-        startButton.Click +=
-            async (_, _) =>
-                await RunSyncAsync();
 
         dialog.Opened +=
             async (_, _) =>
                 await RunPreflightAsync();
+
+        dialog.PrimaryButtonClick +=
+            async (_, args) =>
+            {
+                args.Cancel = true;
+
+                ContentDialogButtonClickDeferral
+                    deferral =
+                        args.GetDeferral();
+
+                try
+                {
+                    await RunSyncAsync();
+                }
+                finally
+                {
+                    deferral.Complete();
+                }
+            };
 
         dialog.Closing +=
             (_, args) =>
@@ -988,11 +1018,16 @@ public sealed partial class MainWindow : Window
                 }
 
                 args.Cancel = true;
-                cancellation.Cancel();
-                detailText.Text =
-                    L(
-                        "Cancelling…",
-                        "正在取消……");
+
+                if (!cancellation
+                    .IsCancellationRequested)
+                {
+                    cancellation.Cancel();
+                    detailText.Text =
+                        L(
+                            "Cancelling…",
+                            "正在取消……");
+                }
             };
 
         try
@@ -1001,7 +1036,8 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            if (!cancellation.IsCancellationRequested)
+            if (!cancellation
+                .IsCancellationRequested)
             {
                 await cancellation
                     .CancelAsync();
@@ -1026,73 +1062,6 @@ public sealed partial class MainWindow : Window
                         ErrorCount: 0,
                     };
             }
-        }
-    }
-
-    private async Task RefreshLibraryAfterSyncAsync(
-        MusicLoomSettings settings)
-    {
-        try
-        {
-            StateStore stateStore =
-                new(StatePath);
-            StateDocument state =
-                await stateStore.LoadAsync();
-
-            LibraryScanner scanner =
-                new(
-                    new AtlMetadataReader());
-
-            LibraryPlan freshPlan =
-                await Task.Run(
-                    async () =>
-                        await scanner.BuildPlanAsync(
-                            settings,
-                            state));
-
-            await stateStore.SaveAsync(
-                state);
-
-            _settings = settings;
-            _stateStore = stateStore;
-            _state = state;
-            _plan = freshPlan;
-
-            PopulateLibrary(
-                settings,
-                freshPlan);
-            UpdateLibrarySummary(
-                freshPlan);
-
-            await LibraryDatabase.SavePlanAsync(
-                DatabasePath,
-                settings.Path.SourceDirectory,
-                settings.Path.DestinationDirectory,
-                freshPlan);
-
-            PopulatePlaylists(
-                await Task.Run(
-                    () => BuildPlaylists(
-                        settings)));
-
-            OperationStatusText.Text =
-                L(
-                    $"{freshPlan.TotalCount:N0} tracks · {freshPlan.PendingTrackCount:N0} pending · {freshPlan.ErrorCount:N0} errors",
-                    $"{freshPlan.TotalCount:N0} 首歌曲 · {freshPlan.PendingTrackCount:N0} 首待同步 · {freshPlan.ErrorCount:N0} 个错误");
-        }
-        catch (Exception exception)
-        {
-            AppDiagnostics.LogException(
-                "Could not refresh the library after sync.",
-                exception);
-
-            ShowInfo(
-                InfoBarSeverity.Warning,
-                L(
-                    "Sync finished, but the library view could not refresh",
-                    "同步已完成，但无法刷新音乐库视图"),
-                UserFacingErrors.Describe(
-                    exception));
         }
     }
 
