@@ -406,9 +406,13 @@ public sealed class SyncExecutor
         FileInfo source = new(entry.SourcePath);
         TryGetState(state, entry.SourcePath, out TrackState? previous);
 
+        ulong quickHash = QuickFileHash.Compute(entry.SourcePath);
         bool sourceUnchanged =
             previous is not null
-            && StateStore.IsSourceVersionUnchanged(previous, source);
+            && StateStore.IsSourceVersionUnchanged(
+                previous,
+                source,
+                quickHash);
 
         bool sameDestination =
             previous?.DestinationPath is not null
@@ -442,7 +446,7 @@ public sealed class SyncExecutor
             SourcePath = entry.SourcePath,
             SourceSize = source.Length,
             SourceLastWriteUtcTicks = source.LastWriteTimeUtc.Ticks,
-            QuickHash = sourceUnchanged ? previous?.QuickHash ?? 0 : 0,
+            QuickHash = quickHash,
             RecipeVersion = canReuseEnrichment
                 ? previous?.RecipeVersion ?? string.Empty
                 : string.Empty,
@@ -491,7 +495,11 @@ public sealed class SyncExecutor
         }
 
         FileInfo source = new(entry.SourcePath);
-        if (!StateStore.IsSourceVersionUnchanged(previous, source)
+        ulong quickHash = QuickFileHash.Compute(entry.SourcePath);
+        if (!StateStore.IsSourceVersionUnchanged(
+                previous,
+                source,
+                quickHash)
             || previous.DestinationPath is null
             || entry.DestinationPath is null
             || !PathsEqual(
