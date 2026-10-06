@@ -79,6 +79,12 @@ public sealed record UiSettings
 
     [JsonPropertyName("accentColor")]
     public string AccentColor { get; init; } = "system";
+
+    [JsonPropertyName("theme")]
+    public string Theme { get; init; } = UiThemeModes.System;
+
+    [JsonPropertyName("autoScrollLongTitles")]
+    public bool AutoScrollLongTitles { get; init; } = true;
 }
 
 
@@ -94,4 +100,20 @@ public static class LyricsStorageModes
             StringComparison.OrdinalIgnoreCase)
             ? Sidecar
             : Embedded;
+}
+
+
+public static class UiThemeModes
+{
+    public const string System = "system";
+    public const string Light = "light";
+    public const string Dark = "dark";
+
+    public static string Normalize(string? value) =>
+        value?.ToLowerInvariant() switch
+        {
+            Light => Light,
+            Dark => Dark,
+            _ => System,
+        };
 }
