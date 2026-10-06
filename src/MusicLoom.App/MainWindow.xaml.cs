@@ -202,9 +202,10 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            AccentPreview.SetResourceReference(
-                Border.BackgroundProperty,
-                "AccentFillColorDefaultBrush");
+            AccentPreview.Background =
+                Application.Current.Resources[
+                    "AccentFillColorDefaultBrush"]
+                as Microsoft.UI.Xaml.Media.Brush;
         }
     }
 
@@ -3225,10 +3226,11 @@ public sealed partial class MainWindow : Window
                 "Sort by artist",
                 "按艺术家排序");
 
-        CloseDetailButton.ToolTip =
+        ToolTipService.SetToolTip(
+            CloseDetailButton,
             L(
                 "Close details",
-                "关闭详情");
+                "关闭详情"));
         LyricsTab.Header =
             L("Lyrics", "歌词");
         MatchTab.Header =
