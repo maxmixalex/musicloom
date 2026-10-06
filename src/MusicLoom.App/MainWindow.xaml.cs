@@ -2257,9 +2257,59 @@ public sealed partial class MainWindow : Window
             MusicLoomSettings settings,
             int generation)
     {
+        // Embedded artwork belongs to the track, not to the album folder.
+        // Load these individually so one song's embedded cover never leaks to
+        // neighboring tracks that happen to share Artist/Album.
+        foreach (LibraryDisplayItem item
+            in _allLibraryItems.Where(
+                static item =>
+                    item.Entry.Metadata
+                        ?.HasEmbeddedArt
+                    == true))
+        {
+            if (generation !=
+                _artworkGeneration)
+            {
+                return;
+            }
+
+            byte[]? embedded =
+                await Task.Run(
+                    () =>
+                        TryReadEmbeddedArtwork(
+                            item.Entry));
+
+            if (embedded is not
+                { Length: > 0 }
+                || generation !=
+                    _artworkGeneration)
+            {
+                continue;
+            }
+
+            try
+            {
+                item.Artwork =
+                    await CreateBitmapImageAsync(
+                        embedded);
+            }
+            catch
+            {
+                // Corrupt embedded artwork is optional; continue with the
+                // remaining library rather than blocking browsing.
+            }
+        }
+
+        // Tracks without embedded art may safely share the same album-folder
+        // cover. Group those for efficient I/O.
         IGrouping<string, LibraryDisplayItem>[]
             groups =
                 _allLibraryItems
+                    .Where(
+                        static item =>
+                            item.Entry.Metadata
+                                ?.HasEmbeddedArt
+                            != true)
                     .GroupBy(
                         ArtworkKey,
                         StringComparer
@@ -2287,8 +2337,10 @@ public sealed partial class MainWindow : Window
                             in groupItems)
                         {
                             byte[]? candidateBytes =
-                                TryReadArtworkBytes(
+                                TryReadExternalArtwork(
                                     settings,
+                                    candidate.Entry)
+                                ?? TryReadEmbeddedArtwork(
                                     candidate.Entry);
 
                             if (candidateBytes is
