@@ -75,7 +75,11 @@ public static class SyncRecipe
         bool overrideExisting =
             lyricsEnabled && settings.Organizer.Lyrics.OverrideExisting;
 
+        string storage =
+            LyricsStorageModes.Normalize(
+                settings.Organizer.Lyrics.StorageMode);
+
         return FormattableString.Invariant(
-            $"{CurrentVersion};lyrics={(lyricsEnabled ? 1 : 0)};override={(overrideExisting ? 1 : 0)}");
+            $"{CurrentVersion};lyrics={(lyricsEnabled ? 1 : 0)};override={(overrideExisting ? 1 : 0)};storage={storage}");
     }
 }
