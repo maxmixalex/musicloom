@@ -1,41 +1,64 @@
+using System.Buffers;
+using System.IO.Hashing;
+
 namespace MusicLoom.Core.State;
 
 public static class QuickFileHash
 {
     private const int BlockSize = 32 * 1024;
-    private const ulong OffsetBasis = 14695981039346656037UL;
-    private const ulong Prime = 1099511628211UL;
+    private const int MaximumProbeSize = BlockSize * 2;
 
     public static ulong Compute(string path)
     {
-        using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read, BlockSize, FileOptions.SequentialScan);
-        long length = stream.Length;
-        Span<byte> buffer = stackalloc byte[BlockSize];
-        ulong hash = OffsetBasis;
-
-        int firstRead = stream.Read(buffer);
-        hash = Append(hash, buffer[..firstRead]);
-
-        if (length > BlockSize)
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(MaximumProbeSize);
+        try
         {
-            stream.Seek(Math.Max(0, length - BlockSize), SeekOrigin.Begin);
-            int lastRead = stream.Read(buffer);
-            hash = Append(hash, buffer[..lastRead]);
-        }
+            using FileStream stream = new(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                BlockSize,
+                FileOptions.RandomAccess);
 
-        hash ^= (ulong)length;
-        hash *= Prime;
-        return hash;
+            long length = stream.Length;
+            int firstRead = ReadBlock(stream, buffer.AsSpan(0, BlockSize));
+
+            int total = firstRead;
+            if (length > BlockSize)
+            {
+                stream.Seek(
+                    Math.Max(0, length - BlockSize),
+                    SeekOrigin.Begin);
+                total += ReadBlock(
+                    stream,
+                    buffer.AsSpan(BlockSize, BlockSize));
+            }
+
+            return XxHash3.HashToUInt64(buffer.AsSpan(0, total));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
-    private static ulong Append(ulong hash, ReadOnlySpan<byte> data)
+    private static int ReadBlock(
+        Stream stream,
+        Span<byte> destination)
     {
-        foreach (byte value in data)
+        int total = 0;
+        while (total < destination.Length)
         {
-            hash ^= value;
-            hash *= Prime;
+            int read = stream.Read(destination[total..]);
+            if (read == 0)
+            {
+                break;
+            }
+
+            total += read;
         }
 
-        return hash;
+        return total;
     }
 }
