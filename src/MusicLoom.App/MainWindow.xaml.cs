@@ -1541,16 +1541,8 @@ public sealed partial class MainWindow : Window
     private void ResetTrackDetails()
     {
         StopTitleAutoScroll();
-        TrackTitleScroller.ChangeView(
-            0,
-            null,
-            null,
-            disableAnimation: true);
-        TrackAlbumScroller.ChangeView(
-            0,
-            null,
-            null,
-            disableAnimation: true);
+        TrackTitleTranslateTransform.X = 0;
+        TrackAlbumTranslateTransform.X = 0;
 
         _currentLyricsRaw = null;
         _currentArtworkBytes = null;
