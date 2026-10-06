@@ -88,23 +88,31 @@ public sealed class LibraryScanner
                         quickHash);
             }
 
-            TrackMetadata? cachedMetadata = trackState is
-                { MetadataCaptured: true, TitleCaptured: true }
-                ? new TrackMetadata(
-                    trackState.Artist,
-                    trackState.AlbumArtist,
-                    trackState.Album,
-                    trackState.HasEmbeddedArt,
-                    trackState.Title)
-                : null;
+            bool metadataCacheCurrent =
+                trackState is
+                {
+                    MetadataCaptured: true,
+                    TitleCaptured: true,
+                }
+                && trackState.MetadataSchemaVersion
+                    >= TrackMetadata.CurrentSchemaVersion;
 
-            // State files from earlier MusicLoom versions did not cache TITLE.
-            // Refresh that cache once without turning an otherwise up-to-date
-            // track into sync work; scanning may update the internal state
-            // cache but never writes the source library.
+            TrackMetadata? cachedMetadata =
+                metadataCacheCurrent
+                    ? new TrackMetadata(
+                        trackState!.Artist,
+                        trackState.AlbumArtist,
+                        trackState.Album,
+                        trackState.HasEmbeddedArt,
+                        trackState.Title)
+                    : null;
+
+            // Refresh old cache formats once on a warm scan. v2 is important
+            // because it preserves multi-value artist boundaries as ';'.
             if (trackState is
-                    { MetadataCaptured: true, TitleCaptured: false }
-                && sourceVersionUnchanged)
+                    { MetadataCaptured: true }
+                && sourceVersionUnchanged
+                && !metadataCacheCurrent)
             {
                 try
                 {
@@ -115,6 +123,8 @@ public sealed class LibraryScanner
 
                     trackState = trackState with
                     {
+                        MetadataSchemaVersion =
+                            TrackMetadata.CurrentSchemaVersion,
                         TitleCaptured = true,
                         Title = refreshed.Title,
                         Artist = refreshed.Artist,
@@ -127,11 +137,8 @@ public sealed class LibraryScanner
                 }
                 catch
                 {
-                    trackState = trackState with
-                    {
-                        TitleCaptured = true,
-                    };
-                    state.Tracks[sourcePath] = trackState;
+                    // Keep the previous metadata usable for this scan, but do
+                    // not mark the schema migrated so a later scan can retry.
                     cachedMetadata = new TrackMetadata(
                         trackState.Artist,
                         trackState.AlbumArtist,
