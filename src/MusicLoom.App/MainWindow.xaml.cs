@@ -2669,7 +2669,7 @@ public sealed partial class MainWindow : Window
     private void CoverButton_PointerEntered(
         object sender,
         PointerRoutedEventArgs e) =>
-        AnimateCoverScale(1.045);
+        AnimateCoverScale(1.07);
 
     private void CoverButton_PointerExited(
         object sender,
@@ -2691,7 +2691,7 @@ public sealed partial class MainWindow : Window
             Duration =
                 new Duration(
                     TimeSpan.FromMilliseconds(
-                        140)),
+                        180)),
             EasingFunction = ease,
             EnableDependentAnimation = true,
         };
@@ -2701,7 +2701,7 @@ public sealed partial class MainWindow : Window
             Duration =
                 new Duration(
                     TimeSpan.FromMilliseconds(
-                        140)),
+                        180)),
             EasingFunction = ease,
             EnableDependentAnimation = true,
         };
