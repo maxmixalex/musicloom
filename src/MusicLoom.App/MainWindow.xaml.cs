@@ -3947,6 +3947,31 @@ public sealed partial class MainWindow : Window
                     "刷新音乐库即可开始。");
         }
 
+        foreach (LibraryDisplayItem item
+            in _allLibraryItems)
+        {
+            item.StatusText =
+                StatusLabel(item.Kind);
+        }
+
+        if (_selectedLibraryItem
+            is LibraryDisplayItem selected)
+        {
+            TrackStatusText.Text =
+                selected.StatusText;
+            CurrentMatchText.Text =
+                GetCachedMatchText(
+                    selected.Entry.SourcePath);
+        }
+        else
+        {
+            CurrentMatchText.Text =
+                L(
+                    "No NetEase match cached.",
+                    "尚未缓存网易云匹配。");
+        }
+
+        UpdateLibraryEmptyState();
         RenderLyrics();
         RefreshActivityList();
         ApplyLibraryFilter();
