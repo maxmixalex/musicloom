@@ -110,6 +110,15 @@ jobs:
             throw "Clean single-file release unexpectedly contains subdirectories."
           }
 
+          $exePath = (Resolve-Path "artifacts/app-win-x64/MusicLoom.exe").Path
+          Add-Type -AssemblyName System.Drawing.Common -ErrorAction SilentlyContinue
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exePath)
+          if ($null -eq $icon -or $icon.Width -le 0 -or $icon.Height -le 0) {
+            throw "Published MusicLoom.exe does not expose an application icon."
+          }
+          Write-Host "Embedded EXE icon: $($icon.Width)x$($icon.Height)"
+          $icon.Dispose()
+
           Get-ChildItem "artifacts/app-win-x64" |
             Select-Object Name, Length |
             Format-Table -AutoSize
