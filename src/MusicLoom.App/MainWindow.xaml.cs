@@ -526,6 +526,32 @@ public sealed partial class MainWindow : Window
             Progress<ScanProgress>
                 progress = new(value =>
                 {
+                    if (value.Stage == "ancillary")
+                    {
+                        OperationProgressBar.Visibility =
+                            Visibility.Visible;
+                        OperationProgressBar.IsIndeterminate =
+                            true;
+                        OperationStatusText.Text =
+                            L(
+                                "Organizing covers and playlists…",
+                                "正在整理封面和播放列表……");
+                        return;
+                    }
+
+                    if (value.Stage == "complete")
+                    {
+                        OperationProgressBar.Visibility =
+                            Visibility.Visible;
+                        OperationProgressBar.IsIndeterminate =
+                            true;
+                        OperationStatusText.Text =
+                            L(
+                                "Building library view…",
+                                "正在构建音乐库视图……");
+                        return;
+                    }
+
                     string current =
                         string.IsNullOrWhiteSpace(
                             value.CurrentPath)
@@ -536,8 +562,8 @@ public sealed partial class MainWindow : Window
 
                     OperationStatusText.Text =
                         L(
-                            $"Scanning {value.Processed:N0}/{value.Total:N0}{current}",
-                            $"正在扫描 {value.Processed:N0}/{value.Total:N0}{current}");
+                            $"Reading tracks {value.Processed:N0}/{value.Total:N0}{current}",
+                            $"正在读取歌曲 {value.Processed:N0}/{value.Total:N0}{current}");
 
                     SetProgress(
                         value.Processed,
@@ -561,6 +587,14 @@ public sealed partial class MainWindow : Window
             _state = state;
             _stateStore = stateStore;
             _plan = plan;
+
+            OperationStatusText.Text =
+                L(
+                    "Building library view…",
+                    "正在构建音乐库视图……");
+            OperationProgressBar.IsIndeterminate =
+                true;
+            await Task.Yield();
 
             PopulateLibrary(
                 settings,
@@ -711,9 +745,8 @@ public sealed partial class MainWindow : Window
                     artist,
                     album,
                     relative,
-                    $"{title}\n" +
-                    $"{artist} · {album}\n" +
-                    $"{status} · {relative}"));
+                    status,
+                    $"{artist} · {album}"));
         }
 
         LibraryListPanel.Visibility =
@@ -730,8 +763,8 @@ public sealed partial class MainWindow : Window
 
         SyncButton.Content =
             L(
-                $"Sync pending ({plan.PendingCount:N0})",
-                $"同步待处理 ({plan.PendingCount:N0})");
+                "Sync pending",
+                "同步待处理");
 
         ScanButton.Content =
             L(
@@ -754,7 +787,9 @@ public sealed partial class MainWindow : Window
         TracksValue.Text =
             plan.TotalCount.ToString("N0");
         PendingValue.Text =
-            plan.PendingCount.ToString("N0");
+            plan.PendingTrackCount.ToString("N0");
+        AncillaryValue.Text =
+            plan.AncillaryPendingCount.ToString("N0");
         ErrorsValue.Text =
             plan.ErrorCount.ToString("N0");
         LastScanValue.Text =
@@ -894,12 +929,8 @@ public sealed partial class MainWindow : Window
         LibraryDisplayItem[] visible =
             items.ToArray();
 
-        LibraryList.Items.Clear();
-        foreach (LibraryDisplayItem item
-            in visible)
-        {
-            LibraryList.Items.Add(item);
-        }
+        LibraryList.ItemsSource =
+            visible;
 
         LibraryVisibleCountText.Text =
             L(
@@ -940,16 +971,10 @@ public sealed partial class MainWindow : Window
         TrackStatusText.Text =
             StatusLabel(item.Kind);
         TrackSourcePathText.Text =
-            L("Source: ", "源文件：")
-            + item.Entry.SourcePath;
+            item.Entry.SourcePath;
         TrackDestinationPathText.Text =
             item.Entry.DestinationPath
-                is string destination
-                ? L(
-                    "Destination: ",
-                    "目标文件：")
-                    + destination
-                : string.Empty;
+                ?? string.Empty;
 
         FindMatchesButton.IsEnabled =
             !_busy
@@ -1001,7 +1026,8 @@ public sealed partial class MainWindow : Window
                     ? L(
                         "No lyrics found in the current local output.",
                         "当前本地文件中没有找到歌词。")
-                    : payload.Lyrics;
+                    : FormatLyricsForDisplay(
+                        payload.Lyrics);
 
             LyricsSourceText.Text =
                 payload.LyricsSource;
@@ -1335,7 +1361,8 @@ public sealed partial class MainWindow : Window
                     ? L(
                         "This candidate has no lyrics.",
                         "这个候选没有歌词。")
-                    : lyrics.ToString();
+                    : FormatLyricsForDisplay(
+                        lyrics.ToString());
         }
         catch (Exception exception)
         {
@@ -2259,8 +2286,8 @@ public sealed partial class MainWindow : Window
                 "音乐库");
         LibrarySubtitleText.Text =
             L(
-                "Browse your library, inspect lyrics and artwork, then sync only what is pending.",
-                "浏览歌曲、封面和歌词，只同步真正待处理的内容。");
+                "Browse, inspect and sync your local collection.",
+                "浏览、检查并同步你的本地音乐收藏。");
 
         ScanButton.Content =
             _plan is null
@@ -2272,13 +2299,9 @@ public sealed partial class MainWindow : Window
                     "刷新音乐库");
 
         SyncButton.Content =
-            _plan is null
-                ? L(
-                    "Sync pending",
-                    "同步待处理")
-                : L(
-                    $"Sync pending ({_plan.PendingCount:N0})",
-                    $"同步待处理 ({_plan.PendingCount:N0})");
+            L(
+                "Sync pending",
+                "同步待处理");
 
         CancelButton.Content =
             L("Cancel", "取消");
@@ -2290,7 +2313,9 @@ public sealed partial class MainWindow : Window
         TracksLabelText.Text =
             L("Tracks", "歌曲");
         PendingLabelText.Text =
-            L("Pending", "待处理");
+            L("Pending tracks", "待处理歌曲");
+        AncillaryLabelText.Text =
+            L("Extra updates", "附加更新");
         ErrorsLabelText.Text =
             L("Errors", "错误");
         LastScanLabelText.Text =
@@ -2320,14 +2345,26 @@ public sealed partial class MainWindow : Window
                 "Errors",
                 "错误");
 
-        LyricsHeadingText.Text =
+        LyricsTab.Header =
             L(
-                "Current lyrics",
-                "当前歌词");
-        MatchHeadingText.Text =
+                "Lyrics",
+                "歌词");
+        MatchTab.Header =
             L(
                 "NetEase match",
                 "网易云匹配");
+        FileTab.Header =
+            L(
+                "File",
+                "文件");
+        SourcePathHeadingText.Text =
+            L(
+                "Source",
+                "源文件");
+        DestinationPathHeadingText.Text =
+            L(
+                "Destination",
+                "目标文件");
         FindMatchesButton.Content =
             L(
                 "Find matches",
@@ -2360,8 +2397,13 @@ public sealed partial class MainWindow : Window
                 "设置");
         SettingsSubtitleText.Text =
             L(
-                "Set up the library once. These settings are saved outside the app folder.",
-                "只需设置一次音乐库。配置会保存在程序目录之外。");
+                "Configure the library once; MusicLoom stores settings outside the app folder.",
+                "只需配置一次音乐库；MusicLoom 会把设置保存在程序目录之外。");
+
+        LibrarySettingsHeadingText.Text =
+            L(
+                "Library",
+                "音乐库");
 
         SourcePathBox.Header =
             L(
@@ -2425,8 +2467,8 @@ public sealed partial class MainWindow : Window
 
         RefreshSettingsHeadingText.Text =
             L(
-                "Refresh",
-                "刷新");
+                "Interface",
+                "界面");
         LyricsRefreshHoursBox.Header =
             L(
                 "Lyrics cache lifetime (hours)",
@@ -2482,6 +2524,37 @@ public sealed partial class MainWindow : Window
                 : "en-US";
     }
 
+    private static string FormatLyricsForDisplay(
+        string rawLyrics)
+    {
+        if (string.IsNullOrWhiteSpace(rawLyrics))
+        {
+            return string.Empty;
+        }
+
+        LrcDocument document =
+            LrcDocument.Parse(rawLyrics);
+
+        if (document.Lines.Count == 0)
+        {
+            return rawLyrics.Trim();
+        }
+
+        string[] lines =
+            document.Lines
+                .Select(static line =>
+                    line.Text.Trim())
+                .Where(static line =>
+                    line.Length > 0)
+                .ToArray();
+
+        return lines.Length == 0
+            ? rawLyrics.Trim()
+            : string.Join(
+                Environment.NewLine,
+                lines);
+    }
+
     private static string MakeRelative(
         string root,
         string path)
@@ -2510,15 +2583,13 @@ public sealed partial class MainWindow : Window
         string Artist,
         string Album,
         string RelativePath,
-        string DisplayText)
+        string StatusText,
+        string ArtistAlbum)
     {
         public string SearchText =>
             $"{Title}\n{Artist}\n{Album}\n" +
             $"{RelativePath}\n{Entry.SourcePath}\n" +
             $"{Entry.DestinationPath}\n{Entry.Detail}";
-
-        public override string ToString() =>
-            DisplayText;
     }
 
     private sealed record TrackDetailPayload(
