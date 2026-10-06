@@ -4638,6 +4638,10 @@ public sealed partial class MainWindow : Window
                 L(
                     "Writing playlist",
                     "写入播放列表"),
+            "cleanup-old-destination" =>
+                L(
+                    "Cleaning old destination",
+                    "清理旧目标路径"),
             "complete" =>
                 L(
                     "Complete",
