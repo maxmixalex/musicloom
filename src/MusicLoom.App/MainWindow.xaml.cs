@@ -2795,21 +2795,49 @@ public sealed partial class MainWindow : Window
             double scale = 1;
             double translateX = 0;
             double translateY = 0;
+            double targetScale = 1;
+            double targetTranslateX = 0;
+            double targetTranslateY = 0;
             bool dragging = false;
             Windows.Foundation.Point
                 lastPointer = default;
 
-            void ApplyTransform()
-            {
-                imageTransform.ScaleX =
-                    scale;
-                imageTransform.ScaleY =
-                    scale;
-                imageTransform.TranslateX =
-                    translateX;
-                imageTransform.TranslateY =
-                    translateY;
-            }
+            DispatcherTimer motionTimer =
+                new()
+                {
+                    Interval =
+                        TimeSpan.FromMilliseconds(
+                            16),
+                };
+
+            motionTimer.Tick +=
+                (_, _) =>
+                {
+                    const double Ease = 0.24;
+
+                    scale +=
+                        (targetScale - scale)
+                        * Ease;
+                    translateX +=
+                        (targetTranslateX
+                            - translateX)
+                        * Ease;
+                    translateY +=
+                        (targetTranslateY
+                            - translateY)
+                        * Ease;
+
+                    imageTransform.ScaleX =
+                        scale;
+                    imageTransform.ScaleY =
+                        scale;
+                    imageTransform.TranslateX =
+                        translateX;
+                    imageTransform.TranslateY =
+                        translateY;
+                };
+
+            motionTimer.Start();
 
             PointerEventHandler wheelHandler =
                 (_, args) =>
@@ -2827,10 +2855,10 @@ public sealed partial class MainWindow : Window
                     }
 
                     double oldScale =
-                        scale;
-                    double target =
+                        targetScale;
+                    double nextScale =
                         Math.Clamp(
-                            scale
+                            targetScale
                             * (delta > 0
                                 ? 1.14
                                 : 1.0 / 1.14),
@@ -2838,7 +2866,7 @@ public sealed partial class MainWindow : Window
                             6.0);
 
                     if (Math.Abs(
-                            target - oldScale)
+                            nextScale - oldScale)
                         < 0.0001)
                     {
                         args.Handled = true;
@@ -2849,19 +2877,19 @@ public sealed partial class MainWindow : Window
                         point.Position;
 
                     double factor =
-                        target / oldScale;
+                        nextScale / oldScale;
 
-                    translateX =
+                    targetTranslateX =
                         p.X
-                        - (p.X - translateX)
+                        - (p.X - targetTranslateX)
                         * factor;
-                    translateY =
+                    targetTranslateY =
                         p.Y
-                        - (p.Y - translateY)
+                        - (p.Y - targetTranslateY)
                         * factor;
-                    scale = target;
+                    targetScale =
+                        nextScale;
 
-                    ApplyTransform();
                     args.Handled = true;
                 };
 
@@ -2900,15 +2928,13 @@ public sealed partial class MainWindow : Window
                                 viewport)
                                 .Position;
 
-                    translateX +=
+                    targetTranslateX +=
                         position.X
                         - lastPointer.X;
-                    translateY +=
+                    targetTranslateY +=
                         position.Y
                         - lastPointer.Y;
                     lastPointer = position;
-
-                    ApplyTransform();
                     args.Handled = true;
                 };
 
@@ -3028,9 +3054,16 @@ public sealed partial class MainWindow : Window
                     HorizontalAlignment.Right,
                 VerticalAlignment =
                     VerticalAlignment.Center,
-                Background = null,
+                Background =
+                    Application.Current.Resources[
+                        "CardBackgroundFillColorDefaultBrush"]
+                    as Microsoft.UI.Xaml.Media.Brush,
                 BorderThickness =
                     new Thickness(0),
+                Foreground =
+                    Application.Current.Resources[
+                        "TextFillColorPrimaryBrush"]
+                    as Microsoft.UI.Xaml.Media.Brush,
                 Content = new FontIcon
                 {
                     Glyph = "\uE711",
@@ -3103,6 +3136,11 @@ public sealed partial class MainWindow : Window
             DispatcherTimer?
                 titleTimer = null;
 
+            TranslateTransform
+                dialogTitleTransform = new();
+            titleText.RenderTransform =
+                dialogTitleTransform;
+
             if (longTextMode
                 == LongTextModes.AutoScroll)
             {
@@ -3110,18 +3148,28 @@ public sealed partial class MainWindow : Window
                     (_, _) =>
                     {
                         titleScroller.UpdateLayout();
+                        titleText.Measure(
+                            new Windows.Foundation.Size(
+                                double.PositiveInfinity,
+                                double.PositiveInfinity));
 
-                        if (titleScroller
-                            .ScrollableWidth <= 1)
+                        double max =
+                            Math.Max(
+                                0,
+                                titleText.DesiredSize.Width
+                                - titleScroller.ViewportWidth);
+
+                        if (max <= 1)
                         {
                             return;
                         }
 
+                        double offset = 0;
                         double direction = 1;
                         DateTimeOffset pauseUntil =
                             DateTimeOffset.UtcNow
                                 .AddMilliseconds(
-                                    500);
+                                    420);
 
                         titleTimer =
                             new DispatcherTimer
@@ -3141,13 +3189,9 @@ public sealed partial class MainWindow : Window
                                     return;
                                 }
 
-                                double max =
-                                    titleScroller
-                                        .ScrollableWidth;
                                 double next =
-                                    titleScroller
-                                        .HorizontalOffset
-                                    + direction * 2.0;
+                                    offset
+                                    + direction * 2.4;
 
                                 if (next >= max)
                                 {
@@ -3156,7 +3200,7 @@ public sealed partial class MainWindow : Window
                                     pauseUntil =
                                         DateTimeOffset.UtcNow
                                             .AddMilliseconds(
-                                                550);
+                                                450);
                                 }
                                 else if (next <= 0)
                                 {
@@ -3165,14 +3209,12 @@ public sealed partial class MainWindow : Window
                                     pauseUntil =
                                         DateTimeOffset.UtcNow
                                             .AddMilliseconds(
-                                                550);
+                                                450);
                                 }
 
-                                titleScroller.ChangeView(
-                                    next,
-                                    null,
-                                    null,
-                                    disableAnimation: true);
+                                offset = next;
+                                dialogTitleTransform.X =
+                                    -offset;
                             };
 
                         titleTimer.Start();
@@ -3182,6 +3224,7 @@ public sealed partial class MainWindow : Window
             await dialog.ShowAsync();
 
             titleTimer?.Stop();
+            motionTimer.Stop();
         }
         catch (Exception exception)
         {
