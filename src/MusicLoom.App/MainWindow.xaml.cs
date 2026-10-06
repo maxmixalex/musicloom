@@ -678,6 +678,26 @@ public sealed partial class MainWindow : Window
             foreach (TrackSyncError error
                 in summary.Errors)
             {
+                LibraryDisplayItem? errorItem =
+                    _allLibraryItems
+                        .FirstOrDefault(
+                            item =>
+                                string.Equals(
+                                    item.Entry.SourcePath,
+                                    error.SourcePath,
+                                    StringComparison.OrdinalIgnoreCase));
+
+                errorItem?.SetStatus(
+                    "error",
+                    StatusLabel(
+                        "error"));
+            }
+
+            RefreshLiveSyncCounters();
+
+            foreach (TrackSyncError error
+                in summary.Errors)
+            {
                 AppDiagnostics.Log(
                     $"Track error [{error.Stage}] {error.SourcePath}: {error.Message}");
             }
@@ -708,6 +728,7 @@ public sealed partial class MainWindow : Window
 
             await RefreshLibraryAfterSyncAsync(
                 settings,
+                summary.Errors,
                 cancellation.Token);
         }
         catch (OperationCanceledException)
@@ -833,6 +854,7 @@ public sealed partial class MainWindow : Window
 
     private async Task RefreshLibraryAfterSyncAsync(
         MusicLoomSettings settings,
+        IReadOnlyList<TrackSyncError> syncErrors,
         CancellationToken cancellationToken)
     {
         try
@@ -926,6 +948,31 @@ public sealed partial class MainWindow : Window
 
             UpdateLibrarySummary(
                 freshPlan);
+
+            foreach (TrackSyncError error
+                in syncErrors)
+            {
+                LibraryDisplayItem? errorItem =
+                    _allLibraryItems
+                        .FirstOrDefault(
+                            item =>
+                                string.Equals(
+                                    item.Entry.SourcePath,
+                                    error.SourcePath,
+                                    StringComparison.OrdinalIgnoreCase));
+
+                errorItem?.SetStatus(
+                    "error",
+                    StatusLabel(
+                        "error"));
+            }
+
+            if (syncErrors.Count > 0)
+            {
+                ErrorCountText.Text =
+                    syncErrors.Count
+                        .ToString("N0");
+            }
 
             await LibraryDatabase.SavePlanAsync(
                 DatabasePath,
@@ -1693,12 +1740,7 @@ public sealed partial class MainWindow : Window
                 : HorizontalAlignment.Stretch;
 
         text.Width =
-            normalized
-                == LongTextModes.AutoScroll
-                ? double.NaN
-                : Math.Max(
-                    0,
-                    viewport.ActualWidth);
+            double.NaN;
 
         text.TextWrapping =
             wrap
