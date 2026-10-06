@@ -1884,67 +1884,37 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            if (entry.DestinationPath
-                is string destination)
+            // Embedded artwork is track-specific and therefore wins over a
+            // generic Cover.* file in the album folder.
+            if (entry.Metadata?.HasEmbeddedArt
+                == true)
             {
-                string? directory =
-                    Path.GetDirectoryName(
-                        destination);
+                byte[]? embedded =
+                    TryReadEmbeddedArtwork(
+                        entry);
 
-                if (!string.IsNullOrWhiteSpace(
-                        directory)
-                    && Directory.Exists(
-                        directory))
+                if (embedded is
+                    { Length: > 0 })
                 {
-                    string? existing =
-                        Directory
-                            .EnumerateFiles(
-                                directory,
-                                "Cover.*",
-                                SearchOption.TopDirectoryOnly)
-                            .FirstOrDefault();
-
-                    if (existing is not null)
-                    {
-                        return File.ReadAllBytes(
-                            existing);
-                    }
+                    return embedded;
                 }
             }
 
-            if (entry.Metadata is not null)
+            byte[]? external =
+                TryReadExternalArtwork(
+                    settings,
+                    entry);
+
+            if (external is
+                { Length: > 0 })
             {
-                string? sourceDirectory =
-                    Path.GetDirectoryName(
-                        entry.SourcePath);
-
-                if (!string.IsNullOrWhiteSpace(
-                        sourceDirectory))
-                {
-                    string? cover =
-                        AlbumArtLocator.Find(
-                            sourceDirectory,
-                            entry.Metadata,
-                            onlyExplicit: false);
-
-                    if (cover is not null)
-                    {
-                        return File.ReadAllBytes(
-                            cover);
-                    }
-                }
+                return external;
             }
 
-            string inspectPath =
-                entry.DestinationPath
-                    is string path
-                && File.Exists(path)
-                    ? path
-                    : entry.SourcePath;
-
-            return AtlTrackInspector
-                .Read(inspectPath)
-                .Artwork;
+            // Metadata can be stale/missing for legacy cache entries. Try the
+            // actual file as a final embedded-art fallback.
+            return TryReadEmbeddedArtwork(
+                entry);
         }
         catch
         {
@@ -1953,12 +1923,117 @@ public sealed partial class MainWindow : Window
     }
 
     private static byte[]?
+        TryReadEmbeddedArtwork(
+            PlanEntry entry)
+    {
+        foreach (string path
+            in CandidateAudioPaths(entry))
+        {
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            try
+            {
+                byte[]? artwork =
+                    AtlTrackInspector
+                        .Read(path)
+                        .Artwork;
+
+                if (artwork is
+                    { Length: > 0 })
+                {
+                    return artwork;
+                }
+            }
+            catch
+            {
+                // Keep trying another candidate path.
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string>
+        CandidateAudioPaths(
+            PlanEntry entry)
+    {
+        // Source first: destination may have been materialized before an
+        // embedded-art tag was corrected.
+        yield return entry.SourcePath;
+
+        if (entry.DestinationPath
+            is string destination
+            && !string.Equals(
+                destination,
+                entry.SourcePath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            yield return destination;
+        }
+    }
+
+    private static byte[]?
         TryReadExternalArtwork(
             MusicLoomSettings settings,
-            PlanEntry entry) =>
-        TryReadArtworkBytes(
-            settings,
-            entry);
+            PlanEntry entry)
+    {
+        if (entry.DestinationPath
+            is string destination)
+        {
+            string? directory =
+                Path.GetDirectoryName(
+                    destination);
+
+            if (!string.IsNullOrWhiteSpace(
+                    directory)
+                && Directory.Exists(
+                    directory))
+            {
+                string? existing =
+                    Directory
+                        .EnumerateFiles(
+                            directory,
+                            "Cover.*",
+                            SearchOption.TopDirectoryOnly)
+                        .FirstOrDefault();
+
+                if (existing is not null)
+                {
+                    return File.ReadAllBytes(
+                        existing);
+                }
+            }
+        }
+
+        if (entry.Metadata is null)
+        {
+            return null;
+        }
+
+        string? sourceDirectory =
+            Path.GetDirectoryName(
+                entry.SourcePath);
+
+        if (string.IsNullOrWhiteSpace(
+                sourceDirectory))
+        {
+            return null;
+        }
+
+        string? cover =
+            AlbumArtLocator.Find(
+                sourceDirectory,
+                entry.Metadata,
+                onlyExplicit: false);
+
+        return cover is null
+            ? null
+            : File.ReadAllBytes(
+                cover);
+    }
 
     private static string? FindExistingSidecar(
         PlanEntry entry)
@@ -2013,9 +2088,25 @@ public sealed partial class MainWindow : Window
         return bitmap;
     }
 
-    private async void CoverButton_DoubleTapped(
+    private void CoverButton_PointerEntered(
         object sender,
-        DoubleTappedRoutedEventArgs e)
+        PointerRoutedEventArgs e)
+    {
+        CoverScaleTransform.ScaleX = 1.035;
+        CoverScaleTransform.ScaleY = 1.035;
+    }
+
+    private void CoverButton_PointerExited(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        CoverScaleTransform.ScaleX = 1;
+        CoverScaleTransform.ScaleY = 1;
+    }
+
+    private async void CoverButton_Click(
+        object sender,
+        RoutedEventArgs e)
     {
         if (_currentArtworkBytes
             is not { Length: > 0 } artwork)
@@ -2030,38 +2121,249 @@ public sealed partial class MainWindow : Window
                     artwork,
                     decodePixelWidth: 0);
 
+            const double ViewportSize = 620;
+
             Image image = new()
             {
                 Source = bitmap,
-                Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
+                Width = ViewportSize,
+                Height = ViewportSize,
+                Stretch =
+                    Microsoft.UI.Xaml.Media
+                        .Stretch.Uniform,
+                HorizontalAlignment =
+                    HorizontalAlignment.Center,
+                VerticalAlignment =
+                    VerticalAlignment.Center,
             };
 
             ScrollViewer viewer = new()
             {
                 Content = image,
-                Width = 760,
-                Height = 640,
+                Width = ViewportSize,
+                Height = ViewportSize,
                 ZoomMode = ZoomMode.Enabled,
                 MinZoomFactor = 0.25f,
                 MaxZoomFactor = 6f,
-                HorizontalScrollMode = ScrollMode.Enabled,
-                VerticalScrollMode = ScrollMode.Enabled,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollMode =
+                    ScrollMode.Enabled,
+                VerticalScrollMode =
+                    ScrollMode.Enabled,
+                HorizontalScrollBarVisibility =
+                    ScrollBarVisibility.Hidden,
+                VerticalScrollBarVisibility =
+                    ScrollBarVisibility.Hidden,
             };
+
+            bool dragging = false;
+            Windows.Foundation.Point
+                lastPointer = default;
+
+            viewer.PointerWheelChanged +=
+                (_, args) =>
+                {
+                    PointerPoint point =
+                        args.GetCurrentPoint(
+                            viewer);
+                    int delta =
+                        point.Properties
+                            .MouseWheelDelta;
+
+                    if (delta == 0)
+                    {
+                        return;
+                    }
+
+                    float current =
+                        viewer.ZoomFactor;
+                    float target =
+                        Math.Clamp(
+                            current
+                            * (delta > 0
+                                ? 1.16f
+                                : 1f / 1.16f),
+                            viewer.MinZoomFactor,
+                            viewer.MaxZoomFactor);
+
+                    Windows.Foundation.Point
+                        position =
+                            point.Position;
+
+                    double contentX =
+                        (viewer.HorizontalOffset
+                            + position.X)
+                        / current;
+                    double contentY =
+                        (viewer.VerticalOffset
+                            + position.Y)
+                        / current;
+
+                    double horizontal =
+                        Math.Max(
+                            0,
+                            contentX * target
+                            - position.X);
+                    double vertical =
+                        Math.Max(
+                            0,
+                            contentY * target
+                            - position.Y);
+
+                    viewer.ChangeView(
+                        horizontal,
+                        vertical,
+                        target,
+                        disableAnimation: true);
+
+                    args.Handled = true;
+                };
+
+            viewer.PointerPressed +=
+                (_, args) =>
+                {
+                    PointerPoint point =
+                        args.GetCurrentPoint(
+                            viewer);
+
+                    if (!point.Properties
+                        .IsLeftButtonPressed)
+                    {
+                        return;
+                    }
+
+                    dragging = true;
+                    lastPointer =
+                        point.Position;
+                    viewer.CapturePointer(
+                        args.Pointer);
+                    args.Handled = true;
+                };
+
+            viewer.PointerMoved +=
+                (_, args) =>
+                {
+                    if (!dragging)
+                    {
+                        return;
+                    }
+
+                    Windows.Foundation.Point
+                        position =
+                            args.GetCurrentPoint(
+                                viewer)
+                                .Position;
+
+                    double deltaX =
+                        position.X
+                        - lastPointer.X;
+                    double deltaY =
+                        position.Y
+                        - lastPointer.Y;
+
+                    viewer.ChangeView(
+                        Math.Max(
+                            0,
+                            viewer.HorizontalOffset
+                            - deltaX),
+                        Math.Max(
+                            0,
+                            viewer.VerticalOffset
+                            - deltaY),
+                        null,
+                        disableAnimation: true);
+
+                    lastPointer = position;
+                    args.Handled = true;
+                };
+
+            void EndDrag(
+                PointerRoutedEventArgs args)
+            {
+                if (!dragging)
+                {
+                    return;
+                }
+
+                dragging = false;
+                viewer.ReleasePointerCapture(
+                    args.Pointer);
+                args.Handled = true;
+            }
+
+            viewer.PointerReleased +=
+                (_, args) =>
+                    EndDrag(args);
+            viewer.PointerCanceled +=
+                (_, args) =>
+                    EndDrag(args);
 
             ContentDialog dialog = new()
             {
                 XamlRoot =
                     ((FrameworkElement)Content)
                         .XamlRoot,
-                Title = TrackTitleText.Text,
-                CloseButtonText =
-                    L("Close", "关闭"),
-                Content = viewer,
+                Title =
+                    string.IsNullOrWhiteSpace(
+                        TrackAlbumText.Text)
+                        ? TrackTitleText.Text
+                        : TrackAlbumText.Text,
             };
+
+            Button closeButton = new()
+            {
+                Width = 32,
+                Height = 32,
+                Padding = new Thickness(0),
+                HorizontalAlignment =
+                    HorizontalAlignment.Right,
+                Background = null,
+                BorderThickness =
+                    new Thickness(0),
+                Content = new FontIcon
+                {
+                    Glyph = "\uE711",
+                    FontSize = 12,
+                },
+            };
+            ToolTipService.SetToolTip(
+                closeButton,
+                L("Close", "关闭"));
+            closeButton.Click +=
+                (_, _) =>
+                    dialog.Hide();
+
+            Grid content = new()
+            {
+                Width = ViewportSize,
+                RowSpacing = 6,
+            };
+            content.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height =
+                        GridLength.Auto,
+                });
+            content.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height =
+                        new GridLength(
+                            ViewportSize),
+                });
+
+            Grid.SetRow(
+                closeButton,
+                0);
+            content.Children.Add(
+                closeButton);
+
+            Grid.SetRow(
+                viewer,
+                1);
+            content.Children.Add(
+                viewer);
+
+            dialog.Content = content;
 
             await dialog.ShowAsync();
         }
