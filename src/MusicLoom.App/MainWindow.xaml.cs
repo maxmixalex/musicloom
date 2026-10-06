@@ -67,6 +67,9 @@ public sealed partial class MainWindow : Window
         DetectSystemLanguage();
     private string _accentColor = "system";
     private string? _currentLyricsRaw;
+    private DispatcherTimer? _titleScrollTimer;
+    private double _titleScrollDirection = 1;
+    private DateTimeOffset _titleScrollPauseUntil;
     private byte[]? _currentArtworkBytes;
     private bool _showTranslations = true;
 
@@ -346,6 +349,17 @@ public sealed partial class MainWindow : Window
     private void ApplyAppearance(
         MusicLoomSettings settings)
     {
+        Navigation.RequestedTheme =
+            UiThemeModes.Normalize(
+                settings.Ui.Theme) switch
+            {
+                UiThemeModes.Light =>
+                    ElementTheme.Light,
+                UiThemeModes.Dark =>
+                    ElementTheme.Dark,
+                _ => ElementTheme.Default,
+            };
+
         AppearanceManager.Apply(
             this,
             settings.Ui);
@@ -1196,6 +1210,13 @@ public sealed partial class MainWindow : Window
 
     private void ResetTrackDetails()
     {
+        StopTitleAutoScroll();
+        TrackTitleScroller.ChangeView(
+            0,
+            null,
+            null,
+            disableAnimation: true);
+
         _currentLyricsRaw = null;
         _currentArtworkBytes = null;
 
@@ -1231,6 +1252,122 @@ public sealed partial class MainWindow : Window
         TrackDestinationModifiedText.Text = string.Empty;
     }
 
+    private void ConfigureTitleAutoScroll()
+    {
+        StopTitleAutoScroll();
+
+        TrackTitleScroller.ChangeView(
+            0,
+            null,
+            null,
+            disableAnimation: true);
+
+        if (_settings?.Ui.AutoScrollLongTitles
+            != true)
+        {
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(
+            () =>
+            {
+                TrackTitleScroller.UpdateLayout();
+
+                if (TrackTitleScroller.ScrollableWidth
+                    <= 1)
+                {
+                    return;
+                }
+
+                _titleScrollDirection = 1;
+                _titleScrollPauseUntil =
+                    DateTimeOffset.UtcNow
+                        .AddSeconds(1.2);
+
+                DispatcherTimer timer = new()
+                {
+                    Interval =
+                        TimeSpan.FromMilliseconds(
+                            24),
+                };
+
+                timer.Tick +=
+                    TitleScrollTimer_Tick;
+
+                _titleScrollTimer = timer;
+                timer.Start();
+            });
+    }
+
+    private void StopTitleAutoScroll()
+    {
+        if (_titleScrollTimer is null)
+        {
+            return;
+        }
+
+        _titleScrollTimer.Stop();
+        _titleScrollTimer.Tick -=
+            TitleScrollTimer_Tick;
+        _titleScrollTimer = null;
+    }
+
+    private void TitleScrollTimer_Tick(
+        object? sender,
+        object e)
+    {
+        if (_settings?.Ui.AutoScrollLongTitles
+                != true
+            || DetailPane.Visibility
+                != Visibility.Visible)
+        {
+            StopTitleAutoScroll();
+            return;
+        }
+
+        if (DateTimeOffset.UtcNow
+            < _titleScrollPauseUntil)
+        {
+            return;
+        }
+
+        double max =
+            TrackTitleScroller.ScrollableWidth;
+
+        if (max <= 1)
+        {
+            StopTitleAutoScroll();
+            return;
+        }
+
+        double next =
+            TrackTitleScroller.HorizontalOffset
+            + _titleScrollDirection * 0.9;
+
+        if (next >= max)
+        {
+            next = max;
+            _titleScrollDirection = -1;
+            _titleScrollPauseUntil =
+                DateTimeOffset.UtcNow
+                    .AddSeconds(1.1);
+        }
+        else if (next <= 0)
+        {
+            next = 0;
+            _titleScrollDirection = 1;
+            _titleScrollPauseUntil =
+                DateTimeOffset.UtcNow
+                    .AddSeconds(1.1);
+        }
+
+        TrackTitleScroller.ChangeView(
+            next,
+            null,
+            null,
+            disableAnimation: true);
+    }
+
     private async Task ShowTrackDetailsAsync(
         LibraryDisplayItem item)
     {
@@ -1239,6 +1376,7 @@ public sealed partial class MainWindow : Window
 
         TrackTitleText.Text =
             item.Title;
+        ConfigureTitleAutoScroll();
         TrackArtistText.Text =
             item.Artist;
         TrackAlbumText.Text =
@@ -1875,7 +2013,7 @@ public sealed partial class MainWindow : Window
         return bitmap;
     }
 
-    private async void CoverHost_DoubleTapped(
+    private async void CoverButton_DoubleTapped(
         object sender,
         DoubleTappedRoutedEventArgs e)
     {
@@ -3040,6 +3178,11 @@ public sealed partial class MainWindow : Window
             ApplyAppearance(settings);
             ApplyLanguage();
 
+            if (_selectedLibraryItem is not null)
+            {
+                ConfigureTitleAutoScroll();
+            }
+
             if (planChanged
                 && _plan is not null)
             {
@@ -3105,6 +3248,12 @@ public sealed partial class MainWindow : Window
                 ?.Tag?.ToString()
             ?? LyricsStorageModes.Embedded;
 
+        string theme =
+            (ThemeBox.SelectedItem
+                as ComboBoxItem)
+                ?.Tag?.ToString()
+            ?? UiThemeModes.System;
+
         return new MusicLoomSettings
         {
             Verbose = true,
@@ -3160,6 +3309,11 @@ public sealed partial class MainWindow : Window
                         _accentColor)
                         ? "system"
                         : _accentColor,
+                Theme =
+                    UiThemeModes.Normalize(
+                        theme),
+                AutoScrollLongTitles =
+                    AutoScrollTitleToggle.IsOn,
             },
         };
     }
@@ -3222,6 +3376,19 @@ public sealed partial class MainWindow : Window
             AcrylicToggle.IsOn =
                 settings.Ui
                     .AcrylicEnabled;
+
+            ThemeBox.SelectedIndex =
+                UiThemeModes.Normalize(
+                    settings.Ui.Theme) switch
+                {
+                    UiThemeModes.Light => 1,
+                    UiThemeModes.Dark => 2,
+                    _ => 0,
+                };
+
+            AutoScrollTitleToggle.IsOn =
+                settings.Ui.AutoScrollLongTitles;
+
             _accentColor =
                 string.IsNullOrWhiteSpace(
                     settings.Ui.AccentColor)
@@ -3686,7 +3853,7 @@ public sealed partial class MainWindow : Window
                 "Close details",
                 "关闭详情"));
         ToolTipService.SetToolTip(
-            CoverHost,
+            CoverButton,
             L(
                 "Double-click to view artwork",
                 "双击查看大图"));
@@ -3881,6 +4048,27 @@ public sealed partial class MainWindow : Window
             L(
                 "How long a result stays fresh before MusicLoom checks again.",
                 "在 MusicLoom 再次检查前，结果保持有效的时间。");
+
+        ThemeSettingTitle.Text =
+            L(
+                "Theme",
+                "主题");
+        ThemeSystemItem.Content =
+            L(
+                "Use system setting",
+                "跟随系统");
+        ThemeLightItem.Content =
+            L(
+                "Light",
+                "浅色");
+        ThemeDarkItem.Content =
+            L(
+                "Dark",
+                "深色");
+        AutoScrollTitleSettingTitle.Text =
+            L(
+                "Auto-scroll long track titles",
+                "自动滚动过长歌曲名");
 
         AcrylicSettingTitle.Text =
             L(
