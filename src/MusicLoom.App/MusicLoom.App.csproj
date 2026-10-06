@@ -18,6 +18,7 @@
     <PublishTrimmed>false</PublishTrimmed>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <SatelliteResourceLanguages>en-US;zh-CN</SatelliteResourceLanguages>
     <DebugSymbols>false</DebugSymbols>
@@ -27,6 +28,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.250402" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
     <ProjectReference Include="../MusicLoom.Core/MusicLoom.Core.csproj" />
     <ProjectReference Include="../MusicLoom.Audio.Windows/MusicLoom.Audio.Windows.csproj" />
     <ProjectReference Include="../MusicLoom.Metadata/MusicLoom.Metadata.csproj" />
