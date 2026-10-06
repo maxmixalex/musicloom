@@ -7,6 +7,7 @@
     <AssemblyName>MusicLoom</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\MusicLoom.ico</ApplicationIcon>
+    <ApplicationIcon>Assets\MusicLoom.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
@@ -32,10 +33,7 @@
     <ProjectReference Include="../MusicLoom.Metadata/MusicLoom.Metadata.csproj" />
     <ProjectReference Include="../MusicLoom.Tagging/MusicLoom.Tagging.csproj" />
     <ProjectReference Include="../MusicLoom.Netease/MusicLoom.Netease.csproj" />
-    <Content Update="Assets/MusicLoom.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
+    <Content Remove="Assets/MusicLoom.ico" />
   </ItemGroup>
   <Target Name="CopyWinUiResourcesForNativeAot"
           AfterTargets="Publish"
