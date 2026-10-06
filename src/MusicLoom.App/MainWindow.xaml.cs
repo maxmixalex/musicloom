@@ -1384,15 +1384,21 @@ public sealed partial class MainWindow : Window
                     settings.Path.SourceDirectory,
                     entry.SourcePath);
 
-            _allLibraryItems.Add(
-                new LibraryDisplayItem(
+            LibraryDisplayItem displayItem =
+                new(
                     entry,
                     kind,
                     title,
                     artist,
                     album,
                     relative,
-                    StatusLabel(kind)));
+                    StatusLabel(kind));
+
+            displayItem.ApplyLongTextMode(
+                CurrentLongTextMode);
+
+            _allLibraryItems.Add(
+                displayItem);
         }
 
         LibraryEmptyPanel.Visibility =
@@ -4219,6 +4225,13 @@ public sealed partial class MainWindow : Window
             ApplyAppearance(settings);
             ApplyLanguage();
 
+            foreach (LibraryDisplayItem item
+                in _allLibraryItems)
+            {
+                item.ApplyLongTextMode(
+                    CurrentLongTextMode);
+            }
+
             if (_selectedLibraryItem is not null)
             {
                 ConfigureTitleAutoScroll();
@@ -4295,6 +4308,12 @@ public sealed partial class MainWindow : Window
                 ?.Tag?.ToString()
             ?? UiThemeModes.System;
 
+        string longTextMode =
+            (LongTextModeBox.SelectedItem
+                as ComboBoxItem)
+                ?.Tag?.ToString()
+            ?? LongTextModes.AutoScroll;
+
         return new MusicLoomSettings
         {
             Verbose = true,
@@ -4354,7 +4373,15 @@ public sealed partial class MainWindow : Window
                     UiThemeModes.Normalize(
                         theme),
                 AutoScrollLongTitles =
-                    AutoScrollTitleToggle.IsOn,
+                    LongTextModes.Normalize(
+                        longTextMode)
+                    == LongTextModes.AutoScroll,
+                LongTextMode =
+                    LongTextModes.Normalize(
+                        longTextMode),
+                LyricsDisplayMode =
+                    LyricsDisplayModes.Normalize(
+                        _lyricsDisplayMode),
             },
         };
     }
@@ -4427,8 +4454,22 @@ public sealed partial class MainWindow : Window
                     _ => 0,
                 };
 
-            AutoScrollTitleToggle.IsOn =
-                settings.Ui.AutoScrollLongTitles;
+            string longTextMode =
+                LongTextModes.Normalize(
+                    settings.Ui.LongTextMode,
+                    settings.Ui.AutoScrollLongTitles);
+
+            LongTextModeBox.SelectedIndex =
+                longTextMode switch
+                {
+                    LongTextModes.Hover => 1,
+                    LongTextModes.Wrap => 2,
+                    _ => 0,
+                };
+
+            _lyricsDisplayMode =
+                LyricsDisplayModes.Normalize(
+                    settings.Ui.LyricsDisplayMode);
 
             _accentColor =
                 string.IsNullOrWhiteSpace(
@@ -4900,8 +4941,8 @@ public sealed partial class MainWindow : Window
         ToolTipService.SetToolTip(
             CoverButton,
             L(
-                "Double-click to view artwork",
-                "双击查看大图"));
+                "Open artwork",
+                "查看封面"));
         ToolTipService.SetToolTip(
             PendingSummaryIcon,
             L(
@@ -5110,10 +5151,35 @@ public sealed partial class MainWindow : Window
             L(
                 "Dark",
                 "深色");
-        AutoScrollTitleSettingTitle.Text =
+        LongTextSettingTitle.Text =
             L(
-                "Auto-scroll long track titles",
-                "自动滚动过长歌曲名");
+                "Long text display",
+                "过长文本显示");
+        LongTextAutoScrollItem.Content =
+            L(
+                "Auto-scroll",
+                "自动滚动");
+        LongTextHoverItem.Content =
+            L(
+                "Show on hover",
+                "悬停显示");
+        LongTextWrapItem.Content =
+            L(
+                "Wrap",
+                "换行显示");
+
+        LyricsOriginalOnlyItem.Text =
+            L(
+                "Original only",
+                "仅原文");
+        LyricsPreferTranslationItem.Text =
+            L(
+                "Prefer translation",
+                "优先翻译");
+        LyricsPreferOriginalItem.Text =
+            L(
+                "Prefer original",
+                "优先原文");
 
         AcrylicSettingTitle.Text =
             L(
