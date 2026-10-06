@@ -112,6 +112,7 @@ internal static class AncillaryPlanningRegression
                 SourceSize = source.Length,
                 SourceLastWriteUtcTicks =
                     source.LastWriteTimeUtc.Ticks,
+                QuickHash = QuickFileHash.Compute(sourcePath),
                 DestinationPath = destinationPath,
                 RecipeVersion = SyncRecipe.For(settings),
                 MetadataCaptured = true,
