@@ -10,6 +10,7 @@ internal static class ParityRegression
     {
         DetectSameStatContentChangeAsync().GetAwaiter().GetResult();
         PreserveUnreadableMetadataAsync().GetAwaiter().GetResult();
+        SettingsSaveRoundTripAsync().GetAwaiter().GetResult();
         LyricRefreshTtl();
     }
 
@@ -131,6 +132,59 @@ internal static class ParityRegression
                     .ApplyAsync(settings, plan);
             Equal(1, summary.CopiedTracks);
             True(File.Exists(Path.Combine(destinationRoot, "broken.mp3")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static async Task SettingsSaveRoundTripAsync()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "musicloom-settings-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            string path = Path.Combine(root, "config.json");
+            MusicLoomSettings expected = new()
+            {
+                Path = new PathSettings
+                {
+                    SourceDirectory = "source",
+                    DestinationDirectory = "destination",
+                },
+                Organizer = new OrganizerSettings
+                {
+                    Lyrics = new LyricsSettings
+                    {
+                        Enabled = true,
+                        OverrideExisting = true,
+                        RefreshIntervalHours = 12,
+                    },
+                },
+                Ui = new UiSettings
+                {
+                    Language = "zh-CN",
+                },
+            };
+
+            await SettingsLoader.SaveAsync(path, expected);
+            True(File.Exists(path));
+            True(!Directory.EnumerateFiles(
+                root,
+                "config.json.tmp.*").Any());
+
+            MusicLoomSettings actual =
+                await SettingsLoader.LoadAsync(path);
+
+            Equal(expected.Path.SourceDirectory, actual.Path.SourceDirectory);
+            Equal(expected.Path.DestinationDirectory, actual.Path.DestinationDirectory);
+            Equal(expected.Organizer.Lyrics.RefreshIntervalHours,
+                actual.Organizer.Lyrics.RefreshIntervalHours);
+            Equal(expected.Ui.Language, actual.Ui.Language);
         }
         finally
         {
