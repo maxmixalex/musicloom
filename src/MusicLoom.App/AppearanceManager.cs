@@ -50,12 +50,12 @@ internal static class AppearanceManager
                 settings.AccentColor,
                 out Color accent))
         {
-            Color light1 = Blend(accent, Colors.White, 0.20);
-            Color light2 = Blend(accent, Colors.White, 0.38);
-            Color light3 = Blend(accent, Colors.White, 0.58);
-            Color dark1 = Blend(accent, Colors.Black, 0.16);
-            Color dark2 = Blend(accent, Colors.Black, 0.30);
-            Color dark3 = Blend(accent, Colors.Black, 0.46);
+            Color light1 = Blend(accent, Color.FromArgb(255, 255, 255, 255), 0.20);
+            Color light2 = Blend(accent, Color.FromArgb(255, 255, 255, 255), 0.38);
+            Color light3 = Blend(accent, Color.FromArgb(255, 255, 255, 255), 0.58);
+            Color dark1 = Blend(accent, Color.FromArgb(255, 0, 0, 0), 0.16);
+            Color dark2 = Blend(accent, Color.FromArgb(255, 0, 0, 0), 0.30);
+            Color dark3 = Blend(accent, Color.FromArgb(255, 0, 0, 0), 0.46);
 
             resources["SystemAccentColor"] = accent;
             resources["SystemAccentColorLight1"] = light1;
