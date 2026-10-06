@@ -1021,6 +1021,42 @@ public sealed partial class MainWindow : Window
         ResetTrackDetails();
     }
 
+    private void ResetTrackDetails()
+    {
+        _currentLyricsRaw = null;
+
+        TrackTitleText.Text = string.Empty;
+        TrackArtistText.Text = string.Empty;
+        TrackAlbumText.Text = string.Empty;
+        TrackStatusText.Text = string.Empty;
+        TrackStatusIcon.Glyph = "\uE823";
+        TrackStatusIcon.Foreground =
+            new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                Color.FromArgb(255, 202, 116, 0));
+
+        CoverImage.Source = null;
+        CoverPlaceholderText.Visibility =
+            Visibility.Visible;
+
+        LyricsSourceText.Text = string.Empty;
+        LyricsList.ItemsSource =
+            Array.Empty<LyricDisplayLine>();
+
+        CurrentMatchText.Text =
+            L(
+                "No NetEase match cached.",
+                "尚未缓存网易云匹配。");
+
+        TrackSourcePathText.Text = string.Empty;
+        TrackDestinationPathText.Text = string.Empty;
+        TrackFormatText.Text = string.Empty;
+        TrackSizeText.Text = string.Empty;
+        TrackModifiedText.Text = string.Empty;
+        TrackCreatedText.Text = string.Empty;
+        TrackDestinationSizeText.Text = string.Empty;
+        TrackDestinationModifiedText.Text = string.Empty;
+    }
+
     private async Task ShowTrackDetailsAsync(
         LibraryDisplayItem item)
     {
@@ -2069,18 +2105,12 @@ public sealed partial class MainWindow : Window
         RightTappedRoutedEventArgs e)
     {
         if (e.OriginalSource
-                is DependencyObject source
-            && LibraryList
-                    .ContainerFromElement(
-                        source)
-                is ListViewItem container
-            && container.Content
+                is FrameworkElement element
+            && element.DataContext
                 is LibraryDisplayItem item)
         {
-            LibraryList.SelectedItem =
-                item;
-            _contextLibraryItem =
-                item;
+            LibraryList.SelectedItem = item;
+            _contextLibraryItem = item;
         }
         else
         {
