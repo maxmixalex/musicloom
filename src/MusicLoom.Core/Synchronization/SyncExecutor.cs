@@ -484,6 +484,7 @@ public sealed class SyncExecutor
                 ? previous?.LyricsFingerprint
                 : null,
             MetadataCaptured = true,
+            TitleCaptured = true,
             Title = metadata.Title,
             Artist = metadata.Artist,
             AlbumArtist = metadata.AlbumArtist,
