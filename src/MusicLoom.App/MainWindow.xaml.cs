@@ -44,7 +44,6 @@ public sealed partial class MainWindow : Window
     private LibraryDisplayItem?
         _selectedLibraryItem;
     private bool _busy;
-    private bool _initializing = true;
     private int _detailRequestId;
     private string _uiLanguage =
         DetectSystemLanguage();
@@ -141,7 +140,6 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            _initializing = false;
             UpdateLibraryEmptyState();
         }
     }
