@@ -4,7 +4,8 @@ public sealed record TrackMetadata(
     string? Artist,
     string? AlbumArtist,
     string? Album,
-    bool HasEmbeddedArt);
+    bool HasEmbeddedArt,
+    string? Title = null);
 
 public interface ITrackMetadataReader
 {
