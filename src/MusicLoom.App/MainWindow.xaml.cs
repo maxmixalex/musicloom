@@ -1636,14 +1636,32 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void LyricsList_RightTapped(
+        object sender,
+        RightTappedRoutedEventArgs e)
+    {
+        if (e.OriginalSource
+                is FrameworkElement element
+            && element.DataContext
+                is LyricDisplayLine line)
+        {
+            LyricsList.SelectedItem =
+                line;
+        }
+    }
+
     private void CopyLyricLineItem_Click(
         object sender,
         RoutedEventArgs e)
     {
-        if (sender is not MenuFlyoutItem
-            {
-                Tag: LyricDisplayLine line,
-            })
+        LyricDisplayLine? line =
+            (sender as MenuFlyoutItem)
+                ?.Tag
+                as LyricDisplayLine
+            ?? LyricsList.SelectedItem
+                as LyricDisplayLine;
+
+        if (line is null)
         {
             return;
         }
@@ -2162,7 +2180,7 @@ public sealed partial class MainWindow : Window
             viewer.PointerWheelChanged +=
                 (_, args) =>
                 {
-                    PointerPoint point =
+                    var point =
                         args.GetCurrentPoint(
                             viewer);
                     int delta =
