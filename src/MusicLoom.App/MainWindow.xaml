@@ -601,9 +601,21 @@
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="24" />
                       </Grid.ColumnDefinitions>
                       <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Grid.Column="1" Text="{Binding CountText}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <TextBlock
+                          Grid.Column="1"
+                          Text="{Binding CountText}"
+                          VerticalAlignment="Center"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <FontIcon
+                          Grid.Column="2"
+                          Glyph="{Binding StatusGlyph}"
+                          Foreground="{Binding StatusBrush}"
+                          FontSize="13"
+                          VerticalAlignment="Center"
+                          HorizontalAlignment="Center" />
                     </Grid>
                   </DataTemplate>
                 </ListView.ItemTemplate>
