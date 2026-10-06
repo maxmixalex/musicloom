@@ -933,7 +933,7 @@
                       <TextBlock x:Name="LyricsStorageSettingTitle" Text="Lyrics storage" FontWeight="SemiBold" />
                       <TextBlock x:Name="LyricsStorageSettingDescription" Text="Choose embedded tags or sidecar .lrc files." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <ComboBox x:Name="LyricsStorageModeBox" Grid.Column="1" Width="280" HorizontalAlignment="Right" SelectionChanged="SettingsControl_Changed">
+                    <ComboBox x:Name="LyricsStorageModeBox" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem x:Name="LyricsStorageEmbeddedItem" Content="Embedded in audio file" Tag="embedded" />
                       <ComboBoxItem x:Name="LyricsStorageSidecarItem" Content="Sidecar .lrc file" Tag="sidecar" />
                     </ComboBox>
@@ -950,8 +950,7 @@
                     <NumberBox
                         x:Name="LyricsRefreshHoursBox"
                         Grid.Column="1"
-                        Width="280"
-                        HorizontalAlignment="Right"
+                        HorizontalAlignment="Stretch"
                         Minimum="1"
                         Maximum="87600"
                         Value="24"
@@ -978,8 +977,7 @@
                     <ComboBox
                         x:Name="ThemeBox"
                         Grid.Column="1"
-                        Width="280"
-                        HorizontalAlignment="Right"
+                        HorizontalAlignment="Stretch"
                         SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem x:Name="ThemeSystemItem" Content="Use system setting" Tag="system" />
                       <ComboBoxItem x:Name="ThemeLightItem" Content="Light" Tag="light" />
@@ -1002,8 +1000,7 @@
                     <ComboBox
                         x:Name="LongTextModeBox"
                         Grid.Column="1"
-                        Width="280"
-                        HorizontalAlignment="Right"
+                        HorizontalAlignment="Stretch"
                         SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem x:Name="LongTextAutoScrollItem" Content="Auto-scroll" Tag="autoScroll" />
                       <ComboBoxItem x:Name="LongTextHoverItem" Content="Show on hover" Tag="hover" />
@@ -1035,8 +1032,7 @@
                     <StackPanel
                         x:Name="AccentControlRail"
                         Grid.Column="1"
-                        Width="280"
-                        HorizontalAlignment="Right"
+                        HorizontalAlignment="Stretch"
                         Orientation="Horizontal"
                         Spacing="8">
                       <Border x:Name="AccentPreview" Width="28" Height="28" CornerRadius="14" Background="{ThemeResource AccentFillColorDefaultBrush}" />
@@ -1053,7 +1049,7 @@
                       <TextBlock x:Name="LanguageSettingTitle" Text="Interface language" FontWeight="SemiBold" />
                       <TextBlock x:Name="LanguageSettingDescription" Visibility="Collapsed" />
                     </StackPanel>
-                    <ComboBox x:Name="LanguageBox" Grid.Column="1" Width="280" HorizontalAlignment="Right" SelectionChanged="SettingsControl_Changed">
+                    <ComboBox x:Name="LanguageBox" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem Content="English" Tag="en-US" />
                       <ComboBoxItem Content="简体中文" Tag="zh-CN" />
                     </ComboBox>
