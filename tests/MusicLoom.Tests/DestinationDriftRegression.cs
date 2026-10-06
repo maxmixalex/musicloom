@@ -88,7 +88,6 @@ internal static class DestinationDriftRegression
                     destination.LastWriteTimeUtc.Ticks,
                 RecipeVersion = SyncRecipe.For(settings),
                 MetadataCaptured = true,
-            TitleCaptured = true,
                 TitleCaptured = true,
                 Artist = metadata.Artist,
                 AlbumArtist = metadata.AlbumArtist,
