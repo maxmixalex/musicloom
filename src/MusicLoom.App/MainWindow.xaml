@@ -1035,7 +1035,13 @@
                       <TextBlock x:Name="AccentSettingTitle" Text="Accent color" FontWeight="SemiBold" />
                       <TextBlock x:Name="AccentSettingDescription" Text="Customize MusicLoom's primary accent or follow Windows." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Width="280" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                    <StackPanel
+                        x:Name="AccentControlRail"
+                        Grid.Column="1"
+                        Width="280"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal"
+                        Spacing="8">
                       <Border x:Name="AccentPreview" Width="28" Height="28" CornerRadius="14" Background="{ThemeResource AccentFillColorDefaultBrush}" />
                       <Button x:Name="ChooseAccentButton" Content="Choose…" Click="ChooseAccentButton_Click" />
                       <Button x:Name="ResetAccentButton" Content="Use system" Click="ResetAccentButton_Click" />
