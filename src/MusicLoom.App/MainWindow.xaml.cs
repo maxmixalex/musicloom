@@ -4890,6 +4890,8 @@ public sealed partial class MainWindow : Window
                 : Visibility.Collapsed;
         CancelButton.IsEnabled =
             busy;
+        PlaylistCancelButton.IsEnabled =
+            busy;
 
         // Browsing/searching remains usable while a background sync runs.
         LibrarySearchBox.IsEnabled = true;
@@ -5152,6 +5154,8 @@ public sealed partial class MainWindow : Window
                 "Sync pending",
                 "同步待处理");
         CancelButtonText.Text =
+            L("Cancel", "取消");
+        PlaylistCancelButtonText.Text =
             L("Cancel", "取消");
 
         if (OperationStatusText.Text
