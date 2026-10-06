@@ -8,10 +8,26 @@ namespace MusicLoom.App;
 internal static class AppearanceManager
 {
     private static bool _capturedDefaults;
-    private static object? _systemAccentColor;
-    private static object? _accentDefaultBrush;
-    private static object? _accentSecondaryBrush;
-    private static object? _accentTertiaryBrush;
+    private static readonly Dictionary<string, object?>
+        Defaults = new(StringComparer.Ordinal);
+
+    private static readonly string[] AccentKeys =
+    [
+        "SystemAccentColor",
+        "SystemAccentColorLight1",
+        "SystemAccentColorLight2",
+        "SystemAccentColorLight3",
+        "SystemAccentColorDark1",
+        "SystemAccentColorDark2",
+        "SystemAccentColorDark3",
+        "AccentFillColorDefaultBrush",
+        "AccentFillColorSecondaryBrush",
+        "AccentFillColorTertiaryBrush",
+        "AccentTextFillColorPrimaryBrush",
+        "AccentTextFillColorSecondaryBrush",
+        "AccentTextFillColorTertiaryBrush",
+        "ProgressBarForegroundThemeBrush",
+    ];
 
     public static void Apply(
         Window window,
@@ -34,35 +50,46 @@ internal static class AppearanceManager
                 settings.AccentColor,
                 out Color accent))
         {
-            resources["SystemAccentColor"] =
-                accent;
+            Color light1 = Blend(accent, Colors.White, 0.20);
+            Color light2 = Blend(accent, Colors.White, 0.38);
+            Color light3 = Blend(accent, Colors.White, 0.58);
+            Color dark1 = Blend(accent, Colors.Black, 0.16);
+            Color dark2 = Blend(accent, Colors.Black, 0.30);
+            Color dark3 = Blend(accent, Colors.Black, 0.46);
+
+            resources["SystemAccentColor"] = accent;
+            resources["SystemAccentColorLight1"] = light1;
+            resources["SystemAccentColorLight2"] = light2;
+            resources["SystemAccentColorLight3"] = light3;
+            resources["SystemAccentColorDark1"] = dark1;
+            resources["SystemAccentColorDark2"] = dark2;
+            resources["SystemAccentColorDark3"] = dark3;
+
             resources["AccentFillColorDefaultBrush"] =
                 new SolidColorBrush(accent);
             resources["AccentFillColorSecondaryBrush"] =
-                new SolidColorBrush(
-                    WithAlpha(accent, 230));
+                new SolidColorBrush(WithAlpha(accent, 230));
             resources["AccentFillColorTertiaryBrush"] =
-                new SolidColorBrush(
-                    WithAlpha(accent, 205));
+                new SolidColorBrush(WithAlpha(accent, 205));
+            resources["AccentTextFillColorPrimaryBrush"] =
+                new SolidColorBrush(accent);
+            resources["AccentTextFillColorSecondaryBrush"] =
+                new SolidColorBrush(dark1);
+            resources["AccentTextFillColorTertiaryBrush"] =
+                new SolidColorBrush(dark2);
+            resources["ProgressBarForegroundThemeBrush"] =
+                new SolidColorBrush(accent);
         }
         else
         {
-            Restore(
-                resources,
-                "SystemAccentColor",
-                _systemAccentColor);
-            Restore(
-                resources,
-                "AccentFillColorDefaultBrush",
-                _accentDefaultBrush);
-            Restore(
-                resources,
-                "AccentFillColorSecondaryBrush",
-                _accentSecondaryBrush);
-            Restore(
-                resources,
-                "AccentFillColorTertiaryBrush",
-                _accentTertiaryBrush);
+            foreach ((string key, object? value)
+                in Defaults)
+            {
+                if (value is not null)
+                {
+                    resources[key] = value;
+                }
+            }
         }
     }
 
@@ -115,31 +142,34 @@ internal static class AppearanceManager
             return;
         }
 
-        resources.TryGetValue(
-            "SystemAccentColor",
-            out _systemAccentColor);
-        resources.TryGetValue(
-            "AccentFillColorDefaultBrush",
-            out _accentDefaultBrush);
-        resources.TryGetValue(
-            "AccentFillColorSecondaryBrush",
-            out _accentSecondaryBrush);
-        resources.TryGetValue(
-            "AccentFillColorTertiaryBrush",
-            out _accentTertiaryBrush);
+        foreach (string key in AccentKeys)
+        {
+            resources.TryGetValue(
+                key,
+                out object? value);
+            Defaults[key] = value;
+        }
 
         _capturedDefaults = true;
     }
 
-    private static void Restore(
-        ResourceDictionary resources,
-        string key,
-        object? value)
+    private static Color Blend(
+        Color first,
+        Color second,
+        double amount)
     {
-        if (value is not null)
-        {
-            resources[key] = value;
-        }
+        amount =
+            Math.Clamp(amount, 0, 1);
+
+        byte Mix(byte a, byte b) =>
+            (byte)Math.Round(
+                a + (b - a) * amount);
+
+        return Color.FromArgb(
+            255,
+            Mix(first.R, second.R),
+            Mix(first.G, second.G),
+            Mix(first.B, second.B));
     }
 
     private static Color WithAlpha(
