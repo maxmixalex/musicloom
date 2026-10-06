@@ -4979,6 +4979,10 @@ public sealed partial class MainWindow : Window
                 L(
                     "Error",
                     "错误"),
+            "syncing" =>
+                L(
+                    "Syncing",
+                    "同步中"),
             _ =>
                 L(
                     "Pending",
