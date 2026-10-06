@@ -7,6 +7,12 @@ namespace MusicLoom.App;
 
 internal static class AppearanceManager
 {
+    private static bool _capturedDefaults;
+    private static object? _systemAccentColor;
+    private static object? _accentDefaultBrush;
+    private static object? _accentSecondaryBrush;
+    private static object? _accentTertiaryBrush;
+
     public static void Apply(
         Window window,
         UiSettings settings)
@@ -19,20 +25,44 @@ internal static class AppearanceManager
                 ? new DesktopAcrylicBackdrop()
                 : new MicaBackdrop();
 
+        ResourceDictionary resources =
+            Application.Current.Resources;
+
+        CaptureDefaults(resources);
+
         if (TryParseColor(
                 settings.AccentColor,
                 out Color accent))
         {
-            ResourceDictionary resources =
-                Application.Current.Resources;
-
-            resources["SystemAccentColor"] = accent;
+            resources["SystemAccentColor"] =
+                accent;
             resources["AccentFillColorDefaultBrush"] =
                 new SolidColorBrush(accent);
             resources["AccentFillColorSecondaryBrush"] =
-                new SolidColorBrush(WithAlpha(accent, 230));
+                new SolidColorBrush(
+                    WithAlpha(accent, 230));
             resources["AccentFillColorTertiaryBrush"] =
-                new SolidColorBrush(WithAlpha(accent, 205));
+                new SolidColorBrush(
+                    WithAlpha(accent, 205));
+        }
+        else
+        {
+            Restore(
+                resources,
+                "SystemAccentColor",
+                _systemAccentColor);
+            Restore(
+                resources,
+                "AccentFillColorDefaultBrush",
+                _accentDefaultBrush);
+            Restore(
+                resources,
+                "AccentFillColorSecondaryBrush",
+                _accentSecondaryBrush);
+            Restore(
+                resources,
+                "AccentFillColorTertiaryBrush",
+                _accentTertiaryBrush);
         }
     }
 
@@ -76,6 +106,41 @@ internal static class AppearanceManager
 
     public static string ToHex(Color color) =>
         $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+
+    private static void CaptureDefaults(
+        ResourceDictionary resources)
+    {
+        if (_capturedDefaults)
+        {
+            return;
+        }
+
+        resources.TryGetValue(
+            "SystemAccentColor",
+            out _systemAccentColor);
+        resources.TryGetValue(
+            "AccentFillColorDefaultBrush",
+            out _accentDefaultBrush);
+        resources.TryGetValue(
+            "AccentFillColorSecondaryBrush",
+            out _accentSecondaryBrush);
+        resources.TryGetValue(
+            "AccentFillColorTertiaryBrush",
+            out _accentTertiaryBrush);
+
+        _capturedDefaults = true;
+    }
+
+    private static void Restore(
+        ResourceDictionary resources,
+        string key,
+        object? value)
+    {
+        if (value is not null)
+        {
+            resources[key] = value;
+        }
+    }
 
     private static Color WithAlpha(
         Color color,
