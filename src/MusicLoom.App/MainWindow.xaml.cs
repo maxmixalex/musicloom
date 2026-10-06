@@ -3581,7 +3581,7 @@ public sealed partial class MainWindow : Window
                     LyricDisplayLine[] lines =
                         BuildLyricLines(
                             lyrics?.ToString(),
-                            showTranslation: true);
+                            LyricsDisplayModes.PreferOriginal);
 
                     lyricsPreview.Text =
                         lines.Length == 0
