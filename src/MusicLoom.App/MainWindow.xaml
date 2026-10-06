@@ -270,7 +270,7 @@
                 Grid.Column="1"
                 Width="6"
                 HorizontalAlignment="Stretch"
-                ResizeDirection="Column"
+                ResizeDirection="Columns"
                 ResizeBehavior="PreviousAndNext"
                 Visibility="Collapsed" />
 
