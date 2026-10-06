@@ -3,9 +3,9 @@ using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Media.Animation;
-using Microsoft.UI.Xaml.Shapes;
 using MusicLoom.Audio.Windows;
 using MusicLoom.Core.Configuration;
 using MusicLoom.Core.Lyrics;
@@ -1064,6 +1064,73 @@ public sealed partial class MainWindow : Window
                         ErrorCount: 0,
                     };
             }
+        }
+    }
+
+    private async Task RefreshLibraryAfterSyncAsync(
+        MusicLoomSettings settings)
+    {
+        try
+        {
+            StateStore stateStore =
+                new(StatePath);
+            StateDocument state =
+                await stateStore.LoadAsync();
+
+            LibraryScanner scanner =
+                new(
+                    new AtlMetadataReader());
+
+            LibraryPlan freshPlan =
+                await Task.Run(
+                    async () =>
+                        await scanner.BuildPlanAsync(
+                            settings,
+                            state));
+
+            await stateStore.SaveAsync(
+                state);
+
+            _settings = settings;
+            _stateStore = stateStore;
+            _state = state;
+            _plan = freshPlan;
+
+            PopulateLibrary(
+                settings,
+                freshPlan);
+            UpdateLibrarySummary(
+                freshPlan);
+
+            await LibraryDatabase.SavePlanAsync(
+                DatabasePath,
+                settings.Path.SourceDirectory,
+                settings.Path.DestinationDirectory,
+                freshPlan);
+
+            PopulatePlaylists(
+                await Task.Run(
+                    () => BuildPlaylists(
+                        settings)));
+
+            OperationStatusText.Text =
+                L(
+                    $"{freshPlan.TotalCount:N0} tracks · {freshPlan.PendingTrackCount:N0} pending · {freshPlan.ErrorCount:N0} errors",
+                    $"{freshPlan.TotalCount:N0} 首歌曲 · {freshPlan.PendingTrackCount:N0} 首待同步 · {freshPlan.ErrorCount:N0} 个错误");
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Could not refresh the library after sync.",
+                exception);
+
+            ShowInfo(
+                InfoBarSeverity.Warning,
+                L(
+                    "Sync finished, but the library view could not refresh",
+                    "同步已完成，但无法刷新音乐库视图"),
+                UserFacingErrors.Describe(
+                    exception));
         }
     }
 
