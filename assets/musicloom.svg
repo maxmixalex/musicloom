@@ -1,17 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
   <title id="title">MusicLoom</title>
-  <desc id="desc">A layered blue tile with a woven musical sharp mark.</desc>
-  <rect x="120" y="290" width="490" height="570" rx="110" fill="#5bc8f5" fill-opacity=".48"/>
-  <rect x="235" y="205" width="490" height="570" rx="110" fill="#2d9be8" fill-opacity=".72"/>
-  <rect x="350" y="120" width="490" height="570" rx="110" fill="#1c5cbe"/>
-  <g fill="none" stroke="#fff" stroke-width="42" stroke-linecap="round">
-    <path d="M500 245 470 565"/>
-    <path d="M650 225 620 545"/>
-    <path d="M435 350 695 305"/>
-    <path d="M425 465 685 420"/>
+  <desc id="desc">A woven musical waveform crossing loom threads.</desc>
+  <rect x="96" y="96" width="832" height="832" rx="220" fill="#0B5CAD"/>
+  <g fill="none" stroke="#9EDCFF" stroke-width="28" stroke-linecap="round" opacity=".72">
+    <path d="M320 250v524"/>
+    <path d="M448 250v524"/>
+    <path d="M576 250v524"/>
+    <path d="M704 250v524"/>
   </g>
-  <g fill="#1c5cbe">
-    <rect x="608" y="293" width="54" height="44" rx="15"/>
-    <rect x="453" y="433" width="54" height="44" rx="15"/>
+  <path
+      d="M220 462 C290 392 354 392 420 462 S552 532 620 462 S752 392 820 462"
+      fill="none"
+      stroke="#FFFFFF"
+      stroke-width="64"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
+  <path
+      d="M220 574 C290 644 354 644 420 574 S552 504 620 574 S752 644 820 574"
+      fill="none"
+      stroke="#48C7E8"
+      stroke-width="48"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
+  <g fill="#0B5CAD">
+    <rect x="420" y="414" width="56" height="92" rx="22"/>
+    <rect x="548" y="526" width="56" height="92" rx="22"/>
   </g>
+  <path d="M778 452v-136" stroke="#FFFFFF" stroke-width="46" stroke-linecap="round"/>
+  <ellipse cx="778" cy="596" rx="72" ry="54" transform="rotate(-18 778 596)" fill="#FFFFFF"/>
 </svg>

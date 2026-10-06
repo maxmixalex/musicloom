@@ -29,6 +29,63 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Verify Settings right rail
+        shell: pwsh
+        run: |
+          $xaml = Get-Content "src/MusicLoom.App/MainWindow.xaml" -Raw
+
+          $fixedControls = @(
+            "LyricsStorageModeBox",
+            "LyricsRefreshHoursBox",
+            "ThemeBox",
+            "LongTextModeBox",
+            "LanguageBox",
+            "AccentControlRail"
+          )
+
+          foreach ($name in $fixedControls) {
+            $pattern =
+              'x:Name="' + [regex]::Escape($name) +
+              '"(?:(?!>).)*Width="280"(?:(?!>).)*HorizontalAlignment="Right"'
+            if (-not [regex]::IsMatch($xaml, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
+              throw "Settings control '$name' is not on the 280px right-aligned rail."
+            }
+          }
+
+          $toggleControls = @(
+            "LyricsEnabledToggle",
+            "LyricsOverrideToggle",
+            "AcrylicToggle"
+          )
+
+          foreach ($name in $toggleControls) {
+            $pattern =
+              '<Grid\s+Grid.Column="1"\s+Width="280"\s+HorizontalAlignment="Right">\s*' +
+              '<ToggleSwitch\s+x:Name="' + [regex]::Escape($name) + '"'
+            if (-not [regex]::IsMatch($xaml, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
+              throw "Settings toggle '$name' is not hosted on the 280px right-aligned rail."
+            }
+          }
+
+          $pathRows = @(
+            "SourcePathBox",
+            "DestinationPathBox",
+            "PlaylistSourcePathBox"
+          )
+
+          foreach ($name in $pathRows) {
+            $pattern =
+              '<Grid.ColumnDefinitions><ColumnDefinition Width="190" /><ColumnDefinition Width="\*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>' +
+              '(?:(?!</Grid>).)*x:Name="' + [regex]::Escape($name) + '"'
+            if (-not [regex]::IsMatch($xaml, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
+              throw "Library path '$name' no longer uses the shared path-row geometry."
+            }
+          }
+
+          if ($xaml -notmatch 'x:Name="PlaylistBaseBox"[^>]*Grid.Column="1"[^>]*Grid.ColumnSpan="3"[^>]*HorizontalAlignment="Stretch"') {
+            throw "PlaylistBaseBox must span the same remaining width as path input plus action columns."
+          }
+
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v5
         with:

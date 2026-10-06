@@ -255,12 +255,21 @@
                         </Border>
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                          <TextBlock
+                              Text="{Binding Title}"
+                              FontWeight="SemiBold"
+                              TextWrapping="{Binding RowTextWrapping}"
+                              TextTrimming="{Binding RowTextTrimming}"
+                              MaxLines="{Binding RowMaxLines}"
+                              ToolTipService.ToolTip="{Binding TitleToolTip}" />
                           <TextBlock
                               Text="{Binding ArtistAlbum}"
                               FontSize="12"
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                              TextTrimming="CharacterEllipsis" />
+                              TextWrapping="{Binding RowTextWrapping}"
+                              TextTrimming="{Binding RowTextTrimming}"
+                              MaxLines="{Binding RowMaxLines}"
+                              ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
                         </StackPanel>
 
                         <FontIcon
@@ -373,7 +382,19 @@
                           TextWrapping="NoWrap" />
                     </ScrollViewer>
                     <TextBlock x:Name="TrackArtistText" Text="" FontSize="16" TextWrapping="Wrap" />
-                    <TextBlock x:Name="TrackAlbumText" Text="" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                    <ScrollViewer
+                        x:Name="TrackAlbumScroller"
+                        HorizontalScrollBarVisibility="Hidden"
+                        VerticalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Enabled"
+                        VerticalScrollMode="Disabled"
+                        ZoomMode="Disabled">
+                      <TextBlock
+                          x:Name="TrackAlbumText"
+                          Text=""
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                          TextWrapping="NoWrap" />
+                    </ScrollViewer>
                     <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
                       <FontIcon x:Name="TrackStatusIcon" Glyph="&#xE823;" FontSize="13" />
                       <TextBlock x:Name="TrackStatusText" Text="" FontSize="12" VerticalAlignment="Center" />
@@ -421,17 +442,50 @@
                             VerticalAlignment="Center"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             TextWrapping="Wrap" />
-                        <Button
-                            x:Name="TranslationButton"
+                        <DropDownButton
+                            x:Name="LyricsModeButton"
                             Grid.Column="1"
-                            Width="36"
+                            Width="42"
                             Height="36"
                             Padding="0"
                             Visibility="Collapsed"
-                            Click="TranslationButton_Click"
-                            ToolTipService.ToolTip="Show translation">
-                          <FontIcon Glyph="&#xE8C1;" FontSize="16" />
-                        </Button>
+                            ToolTipService.ToolTip="Lyrics display">
+                          <FontIcon
+                              x:Name="LyricsModeIcon"
+                              Glyph="&#xE8C1;"
+                              FontSize="16" />
+                          <DropDownButton.Flyout>
+                            <MenuFlyout>
+                              <MenuFlyoutItem
+                                  x:Name="LyricsOriginalOnlyItem"
+                                  Text="Original only"
+                                  Tag="originalOnly"
+                                  Click="LyricsModeItem_Click">
+                                <MenuFlyoutItem.Icon>
+                                  <FontIcon Glyph="&#xE8A5;" />
+                                </MenuFlyoutItem.Icon>
+                              </MenuFlyoutItem>
+                              <MenuFlyoutItem
+                                  x:Name="LyricsPreferTranslationItem"
+                                  Text="Prefer translation"
+                                  Tag="preferTranslation"
+                                  Click="LyricsModeItem_Click">
+                                <MenuFlyoutItem.Icon>
+                                  <FontIcon Glyph="&#xE8C1;" />
+                                </MenuFlyoutItem.Icon>
+                              </MenuFlyoutItem>
+                              <MenuFlyoutItem
+                                  x:Name="LyricsPreferOriginalItem"
+                                  Text="Prefer original"
+                                  Tag="preferOriginal"
+                                  Click="LyricsModeItem_Click">
+                                <MenuFlyoutItem.Icon>
+                                  <FontIcon Glyph="&#xE8D2;" />
+                                </MenuFlyoutItem.Icon>
+                              </MenuFlyoutItem>
+                            </MenuFlyout>
+                          </DropDownButton.Flyout>
+                        </DropDownButton>
                       </Grid>
 
                       <ListView
@@ -478,19 +532,19 @@
                                 </MenuFlyout>
                               </StackPanel.ContextFlyout>
                               <TextBlock
-                                  Text="{Binding Original}"
+                                  Text="{Binding PrimaryText}"
                                   FontSize="16"
                                   LineHeight="23"
                                   TextWrapping="WrapWholeWords"
-                                  IsTextSelectionEnabled="True" />
+                                  IsTextSelectionEnabled="False" />
                               <TextBlock
-                                  Text="{Binding Translation}"
-                                  Visibility="{Binding TranslationVisibility}"
+                                  Text="{Binding SecondaryText}"
+                                  Visibility="{Binding SecondaryVisibility}"
                                   FontSize="13"
                                   LineHeight="20"
                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                   TextWrapping="WrapWholeWords"
-                                  IsTextSelectionEnabled="True" />
+                                  IsTextSelectionEnabled="False" />
                             </StackPanel>
                           </DataTemplate>
                         </ListView.ItemTemplate>
@@ -704,12 +758,21 @@
                           <Image Source="{Binding Artwork}" Stretch="UniformToFill" />
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                          <TextBlock
+                              Text="{Binding Title}"
+                              FontWeight="SemiBold"
+                              TextWrapping="{Binding RowTextWrapping}"
+                              TextTrimming="{Binding RowTextTrimming}"
+                              MaxLines="{Binding RowMaxLines}"
+                              ToolTipService.ToolTip="{Binding TitleToolTip}" />
                           <TextBlock
                               Text="{Binding ArtistAlbum}"
                               FontSize="12"
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                              TextTrimming="CharacterEllipsis" />
+                              TextWrapping="{Binding RowTextWrapping}"
+                              TextTrimming="{Binding RowTextTrimming}"
+                              MaxLines="{Binding RowMaxLines}"
+                              ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
                         </StackPanel>
                         <FontIcon
                             Grid.Column="2"
@@ -842,34 +905,38 @@
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="280" /></Grid.ColumnDefinitions>
                     <StackPanel Spacing="2">
                       <TextBlock x:Name="FetchLyricsSettingTitle" Text="Fetch lyrics from NetEase" FontWeight="SemiBold" />
                       <TextBlock x:Name="FetchLyricsSettingDescription" Text="Recognize tracks and cache synchronized lyrics." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <ToggleSwitch x:Name="LyricsEnabledToggle" Grid.Column="1" HorizontalAlignment="Right" Toggled="SettingsControl_Changed" />
+                    <Grid Grid.Column="1" Width="280" HorizontalAlignment="Right">
+                      <ToggleSwitch x:Name="LyricsEnabledToggle" HorizontalAlignment="Right" Toggled="SettingsControl_Changed" />
+                    </Grid>
                   </Grid>
                 </Border>
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="280" /></Grid.ColumnDefinitions>
                     <StackPanel Spacing="2">
                       <TextBlock x:Name="OverwriteLyricsSettingTitle" Text="Overwrite existing lyrics" FontWeight="SemiBold" />
                       <TextBlock x:Name="OverwriteLyricsSettingDescription" Text="Replace lyrics already present in the destination." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <ToggleSwitch x:Name="LyricsOverrideToggle" Grid.Column="1" HorizontalAlignment="Right" Toggled="SettingsControl_Changed" />
+                    <Grid Grid.Column="1" Width="280" HorizontalAlignment="Right">
+                      <ToggleSwitch x:Name="LyricsOverrideToggle" HorizontalAlignment="Right" Toggled="SettingsControl_Changed" />
+                    </Grid>
                   </Grid>
                 </Border>
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid ColumnSpacing="14">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="240" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="280" /></Grid.ColumnDefinitions>
                     <StackPanel Spacing="2">
                       <TextBlock x:Name="LyricsStorageSettingTitle" Text="Lyrics storage" FontWeight="SemiBold" />
                       <TextBlock x:Name="LyricsStorageSettingDescription" Text="Choose embedded tags or sidecar .lrc files." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <ComboBox x:Name="LyricsStorageModeBox" Grid.Column="1" Width="240" HorizontalAlignment="Right" SelectionChanged="SettingsControl_Changed">
+                    <ComboBox x:Name="LyricsStorageModeBox" Grid.Column="1" Width="280" HorizontalAlignment="Right" SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem x:Name="LyricsStorageEmbeddedItem" Content="Embedded in audio file" Tag="embedded" />
                       <ComboBoxItem x:Name="LyricsStorageSidecarItem" Content="Sidecar .lrc file" Tag="sidecar" />
                     </ComboBox>
@@ -878,7 +945,7 @@
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid ColumnSpacing="14">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="180" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="280" /></Grid.ColumnDefinitions>
                     <StackPanel Spacing="2">
                       <TextBlock x:Name="LyricsCacheSettingTitle" Text="Lyrics cache lifetime" FontWeight="SemiBold" />
                       <TextBlock x:Name="LyricsCacheSettingDescription" Text="How long a result stays fresh before MusicLoom checks again." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -886,7 +953,7 @@
                     <NumberBox
                         x:Name="LyricsRefreshHoursBox"
                         Grid.Column="1"
-                        Width="240"
+                        Width="280"
                         HorizontalAlignment="Right"
                         Minimum="1"
                         Maximum="87600"
@@ -914,7 +981,7 @@
                     <ComboBox
                         x:Name="ThemeBox"
                         Grid.Column="1"
-                        Width="240"
+                        Width="280"
                         HorizontalAlignment="Right"
                         SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem x:Name="ThemeSystemItem" Content="Use system setting" Tag="system" />
@@ -925,43 +992,56 @@
                 </Border>
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                  <Grid>
+                  <Grid ColumnSpacing="14">
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="280" />
                     </Grid.ColumnDefinitions>
                     <TextBlock
-                        x:Name="AutoScrollTitleSettingTitle"
-                        Text="Auto-scroll long track titles"
+                        x:Name="LongTextSettingTitle"
+                        Text="Long text display"
                         FontWeight="SemiBold"
                         VerticalAlignment="Center" />
-                    <ToggleSwitch
-                        x:Name="AutoScrollTitleToggle"
+                    <ComboBox
+                        x:Name="LongTextModeBox"
                         Grid.Column="1"
+                        Width="280"
                         HorizontalAlignment="Right"
-                        Toggled="SettingsControl_Changed" />
+                        SelectionChanged="SettingsControl_Changed">
+                      <ComboBoxItem x:Name="LongTextAutoScrollItem" Content="Auto-scroll" Tag="autoScroll" />
+                      <ComboBoxItem x:Name="LongTextHoverItem" Content="Show on hover" Tag="hover" />
+                      <ComboBoxItem x:Name="LongTextWrapItem" Content="Wrap" Tag="wrap" />
+                    </ComboBox>
                   </Grid>
                 </Border>
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="280" /></Grid.ColumnDefinitions>
                     <StackPanel Spacing="2">
                       <TextBlock x:Name="AcrylicSettingTitle" Text="Acrylic backdrop" FontWeight="SemiBold" />
                       <TextBlock x:Name="AcrylicSettingDescription" Text="Use desktop acrylic instead of the default Mica backdrop." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <ToggleSwitch x:Name="AcrylicToggle" Grid.Column="1" HorizontalAlignment="Right" Toggled="SettingsControl_Changed" />
+                    <Grid Grid.Column="1" Width="280" HorizontalAlignment="Right">
+                      <ToggleSwitch x:Name="AcrylicToggle" HorizontalAlignment="Right" Toggled="SettingsControl_Changed" />
+                    </Grid>
                   </Grid>
                 </Border>
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid ColumnSpacing="14">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="280" /></Grid.ColumnDefinitions>
                     <StackPanel Spacing="2">
                       <TextBlock x:Name="AccentSettingTitle" Text="Accent color" FontWeight="SemiBold" />
                       <TextBlock x:Name="AccentSettingDescription" Text="Customize MusicLoom's primary accent or follow Windows." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Width="240" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                    <StackPanel
+                        x:Name="AccentControlRail"
+                        Grid.Column="1"
+                        Width="280"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal"
+                        Spacing="8">
                       <Border x:Name="AccentPreview" Width="28" Height="28" CornerRadius="14" Background="{ThemeResource AccentFillColorDefaultBrush}" />
                       <Button x:Name="ChooseAccentButton" Content="Choose…" Click="ChooseAccentButton_Click" />
                       <Button x:Name="ResetAccentButton" Content="Use system" Click="ResetAccentButton_Click" />
@@ -971,12 +1051,12 @@
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid ColumnSpacing="14">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="280" /></Grid.ColumnDefinitions>
                     <StackPanel Spacing="2">
                       <TextBlock x:Name="LanguageSettingTitle" Text="Interface language" FontWeight="SemiBold" />
                       <TextBlock x:Name="LanguageSettingDescription" Visibility="Collapsed" />
                     </StackPanel>
-                    <ComboBox x:Name="LanguageBox" Grid.Column="1" Width="240" HorizontalAlignment="Right" SelectionChanged="SettingsControl_Changed">
+                    <ComboBox x:Name="LanguageBox" Grid.Column="1" Width="280" HorizontalAlignment="Right" SelectionChanged="SettingsControl_Changed">
                       <ComboBoxItem Content="English" Tag="en-US" />
                       <ComboBoxItem Content="简体中文" Tag="zh-CN" />
                     </ComboBox>

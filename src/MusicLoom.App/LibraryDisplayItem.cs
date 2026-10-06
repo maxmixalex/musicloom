@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using MusicLoom.Core.Configuration;
 using MusicLoom.Core.Scanning;
 using Windows.UI;
 
@@ -10,6 +12,13 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
 {
     private ImageSource? _artwork;
     private string _statusText;
+    private TextWrapping _rowTextWrapping =
+        TextWrapping.NoWrap;
+    private TextTrimming _rowTextTrimming =
+        TextTrimming.CharacterEllipsis;
+    private int _rowMaxLines = 1;
+    private string? _titleToolTip;
+    private string? _subtitleToolTip;
 
     public LibraryDisplayItem(
         PlanEntry entry,
@@ -27,6 +36,9 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
         Album = album;
         RelativePath = relativePath;
         _statusText = statusText;
+
+        ApplyLongTextMode(
+            LongTextModes.Hover);
     }
 
     public PlanEntry Entry { get; }
@@ -35,6 +47,7 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
     public string Artist { get; }
     public string Album { get; }
     public string RelativePath { get; }
+
     public string StatusText
     {
         get => _statusText;
@@ -62,11 +75,35 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
         $"{Title}\n{Artist}\n{Album}\n{RelativePath}\n" +
         $"{Entry.SourcePath}\n{Entry.DestinationPath}\n{Entry.Detail}";
 
+    public TextWrapping RowTextWrapping =>
+        _rowTextWrapping;
+
+    public TextTrimming RowTextTrimming =>
+        _rowTextTrimming;
+
+    public int RowMaxLines =>
+        _rowMaxLines;
+
+    public string? TitleToolTip =>
+        _titleToolTip;
+
+    public string? SubtitleToolTip =>
+        _subtitleToolTip;
+
     public Brush StatusBrush => Kind switch
     {
-        "synced" => new SolidColorBrush(Color.FromArgb(255, 16, 124, 65)),
-        "error" => new SolidColorBrush(Color.FromArgb(255, 196, 43, 28)),
-        _ => new SolidColorBrush(Color.FromArgb(255, 202, 116, 0)),
+        "synced" =>
+            new SolidColorBrush(
+                Color.FromArgb(
+                    255, 16, 124, 65)),
+        "error" =>
+            new SolidColorBrush(
+                Color.FromArgb(
+                    255, 196, 43, 28)),
+        _ =>
+            new SolidColorBrush(
+                Color.FromArgb(
+                    255, 202, 116, 0)),
     };
 
     public string StatusGlyph => Kind switch
@@ -81,7 +118,9 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
         get => _artwork;
         set
         {
-            if (ReferenceEquals(_artwork, value))
+            if (ReferenceEquals(
+                    _artwork,
+                    value))
             {
                 return;
             }
@@ -91,11 +130,57 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
         }
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
+    public void ApplyLongTextMode(
+        string mode)
+    {
+        string normalized =
+            LongTextModes.Normalize(
+                mode);
+
+        if (normalized
+            == LongTextModes.Wrap)
+        {
+            _rowTextWrapping =
+                TextWrapping.WrapWholeWords;
+            _rowTextTrimming =
+                TextTrimming.None;
+            _rowMaxLines = 2;
+            _titleToolTip = null;
+            _subtitleToolTip = null;
+        }
+        else
+        {
+            // Running a marquee in every virtualized list row would waste
+            // resources and look noisy. The selected track receives the real
+            // auto-scroll treatment in the detail pane; rows remain compact.
+            _rowTextWrapping =
+                TextWrapping.NoWrap;
+            _rowTextTrimming =
+                TextTrimming.CharacterEllipsis;
+            _rowMaxLines = 1;
+            _titleToolTip = Title;
+            _subtitleToolTip = ArtistAlbum;
+        }
+
+        OnPropertyChanged(
+            nameof(RowTextWrapping));
+        OnPropertyChanged(
+            nameof(RowTextTrimming));
+        OnPropertyChanged(
+            nameof(RowMaxLines));
+        OnPropertyChanged(
+            nameof(TitleToolTip));
+        OnPropertyChanged(
+            nameof(SubtitleToolTip));
+    }
+
+    public event PropertyChangedEventHandler?
+        PropertyChanged;
 
     private void OnPropertyChanged(
         [CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(
             this,
-            new PropertyChangedEventArgs(propertyName));
+            new PropertyChangedEventArgs(
+                propertyName));
 }

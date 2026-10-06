@@ -174,6 +174,12 @@ internal static class ParityRegression
                 Ui = new UiSettings
                 {
                     Language = "zh-CN",
+                    Theme = UiThemeModes.Dark,
+                    LongTextMode = LongTextModes.Wrap,
+                    LyricsDisplayMode =
+                        LyricsDisplayModes.PreferTranslation,
+                    AccentColor = "#336699",
+                    AcrylicEnabled = true,
                 },
             };
 
@@ -193,6 +199,15 @@ internal static class ParityRegression
             Equal(expected.Organizer.Lyrics.StorageMode,
                 actual.Organizer.Lyrics.StorageMode);
             Equal(expected.Ui.Language, actual.Ui.Language);
+            Equal(expected.Ui.Theme, actual.Ui.Theme);
+            Equal(
+                LongTextModes.Normalize(expected.Ui.LongTextMode),
+                LongTextModes.Normalize(actual.Ui.LongTextMode));
+            Equal(
+                expected.Ui.LyricsDisplayMode,
+                actual.Ui.LyricsDisplayMode);
+            Equal(expected.Ui.AccentColor, actual.Ui.AccentColor);
+            Equal(expected.Ui.AcrylicEnabled, actual.Ui.AcrylicEnabled);
         }
         finally
         {

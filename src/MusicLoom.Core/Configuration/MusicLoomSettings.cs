@@ -83,8 +83,16 @@ public sealed record UiSettings
     [JsonPropertyName("theme")]
     public string Theme { get; init; } = UiThemeModes.System;
 
+    // Kept for one-version migration from v3.
     [JsonPropertyName("autoScrollLongTitles")]
     public bool AutoScrollLongTitles { get; init; } = true;
+
+    [JsonPropertyName("longTextMode")]
+    public string? LongTextMode { get; init; }
+
+    [JsonPropertyName("lyricsDisplayMode")]
+    public string LyricsDisplayMode { get; init; } =
+        LyricsDisplayModes.PreferOriginal;
 }
 
 
@@ -115,5 +123,41 @@ public static class UiThemeModes
             Light => Light,
             Dark => Dark,
             _ => System,
+        };
+}
+
+
+public static class LongTextModes
+{
+    public const string AutoScroll = "autoScroll";
+    public const string Hover = "hover";
+    public const string Wrap = "wrap";
+
+    public static string Normalize(
+        string? value,
+        bool legacyAutoScroll = true) =>
+        value switch
+        {
+            AutoScroll => AutoScroll,
+            Hover => Hover,
+            Wrap => Wrap,
+            _ => legacyAutoScroll
+                ? AutoScroll
+                : Hover,
+        };
+}
+
+public static class LyricsDisplayModes
+{
+    public const string OriginalOnly = "originalOnly";
+    public const string PreferTranslation = "preferTranslation";
+    public const string PreferOriginal = "preferOriginal";
+
+    public static string Normalize(string? value) =>
+        value switch
+        {
+            OriginalOnly => OriginalOnly,
+            PreferTranslation => PreferTranslation,
+            _ => PreferOriginal,
         };
 }
