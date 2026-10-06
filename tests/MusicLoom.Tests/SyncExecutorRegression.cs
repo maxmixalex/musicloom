@@ -17,7 +17,8 @@ internal static class SyncExecutorRegression
     {
         await LyricsDisabledUsesZeroNetworkAsync();
         await ExistingLyricsUsesZeroNetworkAsync();
-        await UnsupportedLyricsUsesZeroNetworkAsync();
+        await OverrideExistingSkipsProbeAsync();
+        await UnsupportedLyricsUsesZeroProbeAsync();
         await NoMatchIsNonFatalAsync();
         await LyricsWritePersistsEnrichmentStateAsync();
         await RetryableFailureKeepsWarmMetadataAndAvoidsRecopyAsync();
@@ -83,31 +84,66 @@ internal static class SyncExecutorRegression
             state.RecipeVersion);
     }
 
-    private static async Task UnsupportedLyricsUsesZeroNetworkAsync()
+    private static async Task OverrideExistingSkipsProbeAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: true);
+
+        FakeRecognizer recognizer = new(
+            TrackRecognitionResult.Matched(42));
+        FakeLyricsProvider lyricsProvider = new(
+            LyricsLookupResult.Found(
+                LrcDocument.Parse("[00:01.000]hello")));
+        FakeLyricsWriter writer = new(
+            LyricsProbeStatus.Present);
+
+        SyncExecutionSummary summary =
+            await fixture.ExecuteAsync(
+                recognizer,
+                lyricsProvider,
+                writer);
+
+        Equal(0, summary.Errors.Count);
+        Equal(0, writer.ProbeCalls);
+        Equal(1, writer.WriteCalls);
+        Equal(1, recognizer.CallCount);
+        Equal(1, lyricsProvider.CallCount);
+    }
+
+    private static async Task UnsupportedLyricsUsesZeroProbeAsync()
     {
         await using Fixture fixture = await Fixture.CreateAsync(
             lyricsEnabled: true,
             overrideExisting: true,
             extension: ".wma");
 
-        FakeRecognizer recognizer = new(TrackRecognitionResult.Matched(42));
+        FakeRecognizer recognizer =
+            new(TrackRecognitionResult.Matched(42));
         FakeLyricsProvider lyricsProvider = new(
-            LyricsLookupResult.Found(LrcDocument.Parse("[00:01.000]hello")));
-        FakeLyricsWriter writer = new(LyricsProbeStatus.UnsupportedFormat);
+            LyricsLookupResult.Found(
+                LrcDocument.Parse("[00:01.000]hello")));
+        FakeLyricsWriter writer = new(
+            LyricsProbeStatus.UnsupportedFormat,
+            LyricsWriteStatus.UnsupportedFormat);
 
-        SyncExecutionSummary summary = await fixture.ExecuteAsync(
-            recognizer,
-            lyricsProvider,
-            writer);
+        SyncExecutionSummary summary =
+            await fixture.ExecuteAsync(
+                recognizer,
+                lyricsProvider,
+                writer);
 
         Equal(1, summary.UnsupportedLyrics);
-        Equal(0, recognizer.CallCount);
-        Equal(0, lyricsProvider.CallCount);
-        Equal(1, writer.ProbeCalls);
-        Equal(0, writer.WriteCalls);
+        Equal(1, recognizer.CallCount);
+        Equal(1, lyricsProvider.CallCount);
+        Equal(0, writer.ProbeCalls);
+        Equal(1, writer.WriteCalls);
 
-        TrackState state = await fixture.LoadTrackStateAsync();
-        Equal(LyricsState.Unsupported, state.Lyrics);
+        TrackState state =
+            await fixture.LoadTrackStateAsync();
+        Equal(
+            LyricsState.Unsupported,
+            state.Lyrics);
         Equal(
             SyncRecipe.For(fixture.Settings),
             state.RecipeVersion);
@@ -168,6 +204,7 @@ internal static class SyncExecutorRegression
         Equal(0, summary.Errors.Count);
         Equal(1, recognizer.CallCount);
         Equal(1, lyricsProvider.CallCount);
+        Equal(0, writer.ProbeCalls);
         Equal(1, writer.WriteCalls);
 
         TrackState state = await fixture.LoadTrackStateAsync();
