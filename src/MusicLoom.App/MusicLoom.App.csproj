@@ -32,7 +32,7 @@
     <ProjectReference Include="../MusicLoom.Metadata/MusicLoom.Metadata.csproj" />
     <ProjectReference Include="../MusicLoom.Tagging/MusicLoom.Tagging.csproj" />
     <ProjectReference Include="../MusicLoom.Netease/MusicLoom.Netease.csproj" />
-    <Content Include="Assets/MusicLoom.ico">
+    <Content Update="Assets/MusicLoom.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
