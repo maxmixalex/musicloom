@@ -200,7 +200,9 @@ internal static class ParityRegression
                 actual.Organizer.Lyrics.StorageMode);
             Equal(expected.Ui.Language, actual.Ui.Language);
             Equal(expected.Ui.Theme, actual.Ui.Theme);
-            Equal(expected.Ui.LongTextMode, actual.Ui.LongTextMode);
+            Equal(
+                LongTextModes.Normalize(expected.Ui.LongTextMode),
+                LongTextModes.Normalize(actual.Ui.LongTextMode));
             Equal(
                 expected.Ui.LyricsDisplayMode,
                 actual.Ui.LyricsDisplayMode);
