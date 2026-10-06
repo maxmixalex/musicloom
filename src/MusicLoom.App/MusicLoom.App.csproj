@@ -4,6 +4,7 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>MusicLoom.App</RootNamespace>
+    <AssemblyName>MusicLoom</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
@@ -14,6 +15,12 @@
     <SelfContained>true</SelfContained>
     <PublishAot>false</PublishAot>
     <PublishTrimmed>false</PublishTrimmed>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <SatelliteResourceLanguages>en-US;zh-CN</SatelliteResourceLanguages>
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>None</DebugType>
     <OptimizationPreference>Speed</OptimizationPreference>
   </PropertyGroup>
   <ItemGroup>
@@ -26,7 +33,7 @@
   </ItemGroup>
   <Target Name="CopyWinUiResourcesForNativeAot"
           AfterTargets="Publish"
-          Condition="'$(WindowsPackageType)' == 'None'">
+          Condition="'$(WindowsPackageType)' == 'None' and '$(PublishSingleFile)' != 'true'">
     <ItemGroup>
       <_MusicLoomWinUiResource Include="$(OutputPath)**\*.xbf" />
       <_MusicLoomWinUiResource Include="$(OutputPath)$(AssemblyName).pri" />
@@ -53,22 +60,4 @@
     </ItemGroup>
   </Target>
 
-  <ItemGroup>
-    <Content Include="../../config.example.json" Link="config.example.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="../../LICENSE" Link="LICENSE">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="../../THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="../../docs/sat-01.md" Link="SAT-0.1.md">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-  </ItemGroup>
 </Project>
