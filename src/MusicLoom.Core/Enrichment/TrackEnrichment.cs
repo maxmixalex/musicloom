@@ -10,10 +10,22 @@ public enum TrackRecognitionStatus
 
 public sealed record TrackRecognitionResult(
     TrackRecognitionStatus Status,
-    long? TrackId = null)
+    long? TrackId = null,
+    string? TrackName = null,
+    string? Artist = null,
+    string? Album = null)
 {
-    public static TrackRecognitionResult Matched(long trackId) =>
-        new(TrackRecognitionStatus.Matched, trackId);
+    public static TrackRecognitionResult Matched(
+        long trackId,
+        string? trackName = null,
+        string? artist = null,
+        string? album = null) =>
+        new(
+            TrackRecognitionStatus.Matched,
+            trackId,
+            trackName,
+            artist,
+            album);
 
     public static TrackRecognitionResult NoMatch() =>
         new(TrackRecognitionStatus.NoMatch);
