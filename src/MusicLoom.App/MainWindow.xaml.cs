@@ -3619,6 +3619,14 @@ public sealed partial class MainWindow : Window
         CancelButtonText.Text =
             L("Cancel", "取消");
 
+        if (OperationStatusText.Text
+            is "Ready."
+            or "就绪。")
+        {
+            OperationStatusText.Text =
+                L("Ready.", "就绪。");
+        }
+
         LibrarySearchBox.PlaceholderText =
             L(
                 "Search title, artist, album or path",
