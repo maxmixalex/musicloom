@@ -156,40 +156,53 @@ public sealed class SyncExecutor
                     continue;
                 }
 
-                stage = "inspect-lyrics";
-                progress?.Report(new SyncExecutionProgress(
-                    index,
-                    work.Length,
-                    entry.SourcePath,
-                    stage));
-
-                LyricsProbeResult probe = await _lyricsWriter.ProbeAsync(
-                    entry.DestinationPath,
-                    cancellationToken);
-
-                if (probe.Status == LyricsProbeStatus.UnsupportedFormat)
+                if (!settings.Organizer.Lyrics.OverrideExisting)
                 {
-                    partial = partial with
-                    {
-                        Lyrics = LyricsState.Unsupported,
-                        LyricsCheckedAt = DateTimeOffset.UtcNow,
-                    };
-                    unsupportedLyrics++;
-                    await CompleteAsync(entry, partial, expectedRecipe, index + 1);
-                    continue;
-                }
+                    stage = "inspect-lyrics";
+                    progress?.Report(new SyncExecutionProgress(
+                        index,
+                        work.Length,
+                        entry.SourcePath,
+                        stage));
 
-                if (probe.Status == LyricsProbeStatus.Present
-                    && !settings.Organizer.Lyrics.OverrideExisting)
-                {
-                    partial = partial with
+                    LyricsProbeResult probe =
+                        await _lyricsWriter.ProbeAsync(
+                            entry.DestinationPath,
+                            cancellationToken);
+
+                    if (probe.Status
+                        == LyricsProbeStatus.UnsupportedFormat)
                     {
-                        Lyrics = LyricsState.Existing,
-                        LyricsCheckedAt = DateTimeOffset.UtcNow,
-                    };
-                    existingLyrics++;
-                    await CompleteAsync(entry, partial, expectedRecipe, index + 1);
-                    continue;
+                        partial = partial with
+                        {
+                            Lyrics = LyricsState.Unsupported,
+                            LyricsCheckedAt = DateTimeOffset.UtcNow,
+                        };
+                        unsupportedLyrics++;
+                        await CompleteAsync(
+                            entry,
+                            partial,
+                            expectedRecipe,
+                            index + 1);
+                        continue;
+                    }
+
+                    if (probe.Status
+                        == LyricsProbeStatus.Present)
+                    {
+                        partial = partial with
+                        {
+                            Lyrics = LyricsState.Existing,
+                            LyricsCheckedAt = DateTimeOffset.UtcNow,
+                        };
+                        existingLyrics++;
+                        await CompleteAsync(
+                            entry,
+                            partial,
+                            expectedRecipe,
+                            index + 1);
+                        continue;
+                    }
                 }
 
                 long? songId = partial.NeteaseSongId;
