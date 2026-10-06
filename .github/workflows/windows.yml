@@ -117,6 +117,16 @@ jobs:
             throw "Published MusicLoom.exe does not expose an application icon."
           }
           Write-Host "Embedded EXE icon: $($icon.Width)x$($icon.Height)"
+
+          $bitmap = $icon.ToBitmap()
+          $sampleX = [Math]::Min($bitmap.Width - 1, [Math]::Floor($bitmap.Width * 0.75))
+          $sampleY = [Math]::Min($bitmap.Height - 1, [Math]::Floor($bitmap.Height * 0.25))
+          $sample = $bitmap.GetPixel($sampleX, $sampleY)
+          Write-Host "MusicLoom icon sample: R=$($sample.R) G=$($sample.G) B=$($sample.B)"
+          if ($sample.B -lt 120 -or $sample.B -lt ($sample.R + 35)) {
+            throw "Published MusicLoom.exe appears to expose a generic/unexpected icon instead of the MusicLoom blue mark."
+          }
+          $bitmap.Dispose()
           $icon.Dispose()
 
           Get-ChildItem "artifacts/app-win-x64" |
@@ -204,6 +214,16 @@ jobs:
           if (-not $buildOk -or -not $publishOk) {
             throw "WinUI launch smoke test failed."
           }
+
+          $runtimeIcon = Join-Path $env:LOCALAPPDATA "MusicLoom\MusicLoom.ico"
+          if (-not (Test-Path $runtimeIcon)) {
+            throw "MusicLoom did not materialize its AppWindow icon at runtime."
+          }
+          $runtimeIconInfo = Get-Item $runtimeIcon
+          if ($runtimeIconInfo.Length -lt 1024) {
+            throw "Runtime AppWindow icon is unexpectedly small or invalid."
+          }
+          Write-Host "Runtime AppWindow icon materialized: $($runtimeIconInfo.FullName) ($($runtimeIconInfo.Length) bytes)"
 
       - name: Upload Windows CLI
         uses: actions/upload-artifact@v6
