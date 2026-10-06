@@ -17,5 +17,8 @@
     "level": "INFO",
     "fmt": "{levelname} [{name}] {message}",
     "datefmt": "%Y-%m-%d %H:%M:%S"
+  },
+  "ui": {
+    "language": "en-US"
   }
 }
