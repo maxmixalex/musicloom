@@ -51,6 +51,9 @@ public sealed record LyricsSettings
 
     [JsonPropertyName("refreshIntervalHours")]
     public double RefreshIntervalHours { get; init; } = 24;
+
+    [JsonPropertyName("storageMode")]
+    public string StorageMode { get; init; } = LyricsStorageModes.Embedded;
 }
 
 public sealed record LoggingSettings
@@ -70,4 +73,19 @@ public sealed record UiSettings
 {
     [JsonPropertyName("language")]
     public string Language { get; init; } = "system";
+}
+
+
+public static class LyricsStorageModes
+{
+    public const string Embedded = "embedded";
+    public const string Sidecar = "sidecar";
+
+    public static string Normalize(string? value) =>
+        string.Equals(
+            value,
+            Sidecar,
+            StringComparison.OrdinalIgnoreCase)
+            ? Sidecar
+            : Embedded;
 }
