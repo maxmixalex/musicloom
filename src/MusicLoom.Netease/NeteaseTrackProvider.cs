@@ -33,6 +33,15 @@ public sealed class NeteaseTrackProvider :
             : TrackRecognitionResult.NoMatch();
     }
 
+    public Task<IReadOnlyList<NeteaseMatchCandidate>>
+        FindCandidatesAsync(
+            string audioFilePath,
+            CancellationToken cancellationToken = default) =>
+        _client.MatchFileCandidatesAsync(
+            _decoder,
+            audioFilePath,
+            cancellationToken);
+
     public async Task<LyricsLookupResult> GetLyricsAsync(
         long trackId,
         CancellationToken cancellationToken = default)

@@ -10,7 +10,8 @@
     "lyrics": {
       "enabled": true,
       "overrideExisting": true,
-      "refreshIntervalHours": 24
+      "refreshIntervalHours": 24,
+      "storageMode": "embedded"
     }
   },
   "logging": {

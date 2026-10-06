@@ -128,6 +128,20 @@ static void Layout()
     string destination = LibraryLayout.GetDestinationPath(file, "dest");
     string normalized = destination.Replace('\\', '/');
     True(normalized.EndsWith("Album Artist/Album Name/track.mp3", StringComparison.Ordinal));
+
+    MusicFile multiArtist = file with
+    {
+        AlbumArtist = "Artist A;Artist B",
+        Album = "Album",
+    };
+    string multiDestination =
+        LibraryLayout.GetDestinationPath(
+            multiArtist,
+            "dest")
+        .Replace('\\', '/');
+    True(multiDestination.EndsWith(
+        "Artist A;Artist B/Album/track.mp3",
+        StringComparison.Ordinal));
 }
 
 static void PlaylistParsing()

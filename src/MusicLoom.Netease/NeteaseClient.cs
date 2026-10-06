@@ -29,6 +29,21 @@ public sealed class NeteaseClient : IDisposable
         string fingerprint,
         CancellationToken cancellationToken = default)
     {
+        IReadOnlyList<NeteaseMatchCandidate> candidates =
+            await MatchFingerprintCandidatesAsync(
+                fingerprint,
+                cancellationToken);
+
+        return candidates.Count > 0
+            ? candidates[0].TrackId
+            : null;
+    }
+
+    public async Task<IReadOnlyList<NeteaseMatchCandidate>>
+        MatchFingerprintCandidatesAsync(
+            string fingerprint,
+            CancellationToken cancellationToken = default)
+    {
         string json = BuildMatchPayload(fingerprint);
         using JsonDocument document = await PostWeApiAsync(
             "/weapi/music/audio/match",
@@ -36,28 +51,50 @@ public sealed class NeteaseClient : IDisposable
             cancellationToken);
 
         JsonElement root = document.RootElement;
-        if (!root.TryGetProperty("code", out JsonElement code) || code.GetInt32() != 200)
-        {
-            return null;
-        }
-
-        if (!root.TryGetProperty("data", out JsonElement data)
+        if (!root.TryGetProperty("code", out JsonElement code)
+            || code.GetInt32() != 200
+            || !root.TryGetProperty("data", out JsonElement data)
             || !data.TryGetProperty("result", out JsonElement result)
-            || result.ValueKind != JsonValueKind.Array
-            || result.GetArrayLength() == 0)
+            || result.ValueKind != JsonValueKind.Array)
         {
-            return null;
+            return Array.Empty<NeteaseMatchCandidate>();
         }
 
-        JsonElement first = result[0];
-        if (!first.TryGetProperty("song", out JsonElement song)
-            || !song.TryGetProperty("id", out JsonElement id)
-            || !id.TryGetInt64(out long songId))
+        List<NeteaseMatchCandidate> candidates = [];
+        foreach (JsonElement item in result.EnumerateArray())
         {
-            return null;
+            if (!item.TryGetProperty(
+                    "song",
+                    out JsonElement song)
+                || !song.TryGetProperty(
+                    "id",
+                    out JsonElement id)
+                || !id.TryGetInt64(out long songId))
+            {
+                continue;
+            }
+
+            string name =
+                ReadString(song, "name")
+                ?? $"#{songId}";
+            string artist =
+                ReadArtists(song);
+            string album =
+                ReadAlbum(song);
+            double? score =
+                ReadDouble(item, "score")
+                ?? ReadDouble(item, "confidence");
+
+            candidates.Add(
+                new NeteaseMatchCandidate(
+                    songId,
+                    name,
+                    artist,
+                    album,
+                    score));
         }
 
-        return songId;
+        return candidates;
     }
 
     public async Task<LrcDocument?> GetLyricsAsync(
@@ -96,8 +133,23 @@ public sealed class NeteaseClient : IDisposable
         ReadOnlyMemory<float> samples,
         CancellationToken cancellationToken = default)
     {
-        FingerprintResult fingerprint = NeteaseFingerprint.Generate(samples.Span);
-        return MatchFingerprintAsync(fingerprint.Encoded, cancellationToken);
+        FingerprintResult fingerprint =
+            NeteaseFingerprint.Generate(samples.Span);
+        return MatchFingerprintAsync(
+            fingerprint.Encoded,
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<NeteaseMatchCandidate>>
+        MatchSampleCandidatesAsync(
+            ReadOnlyMemory<float> samples,
+            CancellationToken cancellationToken = default)
+    {
+        FingerprintResult fingerprint =
+            NeteaseFingerprint.Generate(samples.Span);
+        return MatchFingerprintCandidatesAsync(
+            fingerprint.Encoded,
+            cancellationToken);
     }
 
     public async Task<long?> MatchFileAsync(
@@ -105,15 +157,36 @@ public sealed class NeteaseClient : IDisposable
         string audioFilePath,
         CancellationToken cancellationToken = default)
     {
+        IReadOnlyList<NeteaseMatchCandidate> candidates =
+            await MatchFileCandidatesAsync(
+                decoder,
+                audioFilePath,
+                cancellationToken);
+
+        return candidates.Count > 0
+            ? candidates[0].TrackId
+            : null;
+    }
+
+    public async Task<IReadOnlyList<NeteaseMatchCandidate>>
+        MatchFileCandidatesAsync(
+            IFingerprintPcmDecoder decoder,
+            string audioFilePath,
+            CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(decoder);
 
-        float[]? samples = await decoder.DecodeAsync(audioFilePath, cancellationToken);
+        float[]? samples = await decoder.DecodeAsync(
+            audioFilePath,
+            cancellationToken);
         if (samples is null)
         {
-            return null;
+            return Array.Empty<NeteaseMatchCandidate>();
         }
 
-        return await MatchSamplesAsync(samples, cancellationToken);
+        return await MatchSampleCandidatesAsync(
+            samples,
+            cancellationToken);
     }
 
     public void Dispose()
@@ -190,6 +263,69 @@ public sealed class NeteaseClient : IDisposable
         }
 
         return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static string? ReadString(
+        JsonElement element,
+        string propertyName)
+    {
+        return element.TryGetProperty(
+                    propertyName,
+                    out JsonElement property)
+            && property.ValueKind == JsonValueKind.String
+                ? property.GetString()
+                : null;
+    }
+
+    private static double? ReadDouble(
+        JsonElement element,
+        string propertyName)
+    {
+        return element.TryGetProperty(
+                    propertyName,
+                    out JsonElement property)
+            && property.TryGetDouble(out double value)
+                ? value
+                : null;
+    }
+
+    private static string ReadArtists(JsonElement song)
+    {
+        JsonElement artists;
+        if (!(song.TryGetProperty("artists", out artists)
+            || song.TryGetProperty("ar", out artists))
+            || artists.ValueKind != JsonValueKind.Array)
+        {
+            return string.Empty;
+        }
+
+        return string.Join(
+            ";",
+            artists
+                .EnumerateArray()
+                .Select(static artist =>
+                    artist.TryGetProperty(
+                            "name",
+                            out JsonElement name)
+                        && name.ValueKind == JsonValueKind.String
+                            ? name.GetString()
+                            : null)
+                .Where(static name =>
+                    !string.IsNullOrWhiteSpace(name)));
+    }
+
+    private static string ReadAlbum(JsonElement song)
+    {
+        JsonElement album;
+        if (!(song.TryGetProperty("album", out album)
+            || song.TryGetProperty("al", out album))
+            || album.ValueKind != JsonValueKind.Object)
+        {
+            return string.Empty;
+        }
+
+        return ReadString(album, "name")
+            ?? string.Empty;
     }
 
     private static string? ReadNestedString(JsonElement root, string objectName, string propertyName)
