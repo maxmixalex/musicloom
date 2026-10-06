@@ -189,6 +189,97 @@ public sealed class NeteaseClient : IDisposable
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<NeteaseMatchCandidate>>
+        SearchSongsAsync(
+            string title,
+            string? artist = null,
+            string? album = null,
+            int limit = 30,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+
+        string query = string.Join(
+            ' ',
+            new[] { artist, title, album }
+                .Where(static part =>
+                    !string.IsNullOrWhiteSpace(part))
+                .Select(static part => part!.Trim()));
+
+        using FormUrlEncodedContent form = new(
+            new Dictionary<string, string>
+            {
+                ["s"] = query,
+                ["type"] = "1",
+                ["limit"] = Math.Clamp(limit, 1, 100)
+                    .ToString(
+                        System.Globalization.CultureInfo.InvariantCulture),
+                ["offset"] = "0",
+                ["total"] = "true",
+            });
+
+        using HttpRequestMessage request = new(
+            HttpMethod.Post,
+            Host + "/api/cloudsearch/pc");
+        request.Content = form;
+        request.Headers.Referrer = new Uri(Host);
+        request.Headers.UserAgent.ParseAdd(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/MusicLoom");
+        request.Headers.TryAddWithoutValidation(
+            "Cookie",
+            _cookieHeader);
+        request.Headers.Accept.Add(JsonMediaType);
+
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        await using Stream responseStream =
+            await response.Content.ReadAsStreamAsync(
+                cancellationToken);
+        using JsonDocument document =
+            await JsonDocument.ParseAsync(
+                responseStream,
+                cancellationToken: cancellationToken);
+
+        JsonElement root = document.RootElement;
+        if (!root.TryGetProperty(
+                "result",
+                out JsonElement result)
+            || !result.TryGetProperty(
+                "songs",
+                out JsonElement songs)
+            || songs.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<NeteaseMatchCandidate>();
+        }
+
+        List<NeteaseMatchCandidate> candidates = [];
+        foreach (JsonElement song in songs.EnumerateArray())
+        {
+            if (!song.TryGetProperty(
+                    "id",
+                    out JsonElement id)
+                || !id.TryGetInt64(out long songId))
+            {
+                continue;
+            }
+
+            candidates.Add(
+                new NeteaseMatchCandidate(
+                    songId,
+                    ReadString(song, "name") ?? $"#{songId}",
+                    ReadArtists(song),
+                    ReadAlbum(song),
+                    Score: null));
+        }
+
+        return candidates;
+    }
+
     public void Dispose()
     {
         if (_ownsClient)

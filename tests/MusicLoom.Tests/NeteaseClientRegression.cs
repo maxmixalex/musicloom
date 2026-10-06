@@ -58,6 +58,29 @@ internal static class NeteaseClientRegression
                 throw new InvalidOperationException($"Cookie is missing '{part}'.");
             }
         }
+
+        IReadOnlyList<NeteaseMatchCandidate> search =
+            await client.SearchSongsAsync(
+                "Search Song",
+                "Search Artist",
+                "Search Album");
+
+        Equal(1, search.Count);
+        Equal(246_810_121L, search[0].TrackId);
+        Equal("Search Song", search[0].Name);
+        Equal("Search Artist", search[0].Artist);
+        Equal("Search Album", search[0].Album);
+        Equal(
+            "/api/cloudsearch/pc",
+            handler.RequestUri?.AbsolutePath ?? string.Empty);
+        if (handler.Body is null
+            || !handler.Body.Contains(
+                "Search+Artist+Search+Song+Search+Album",
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "NetEase text search did not send the expected query.");
+        }
     }
 
     private static void Equal<T>(T expected, T actual)
@@ -110,11 +133,14 @@ internal static class NeteaseClientRegression
                 ? string.Join("; ", values)
                 : null;
 
-            const string json =
-                "{\"code\":200,\"data\":{\"result\":[" +
-                "{\"score\":0.98,\"song\":{\"id\":123456789,\"name\":\"First Song\",\"artists\":[{\"name\":\"Artist A\"},{\"name\":\"Artist B\"}],\"album\":{\"name\":\"Album One\"}}}," +
-                "{\"song\":{\"id\":987654321,\"name\":\"Second Song\",\"ar\":[{\"name\":\"Artist C\"}],\"al\":{\"name\":\"Album Two\"}}}" +
-                "]}}";
+            string json =
+                request.RequestUri?.AbsolutePath
+                    == "/api/cloudsearch/pc"
+                    ? "{\"code\":200,\"result\":{\"songs\":[{\"id\":246810121,\"name\":\"Search Song\",\"ar\":[{\"name\":\"Search Artist\"}],\"al\":{\"name\":\"Search Album\"}}]}}"
+                    : "{\"code\":200,\"data\":{\"result\":[" +
+                      "{\"score\":0.98,\"song\":{\"id\":123456789,\"name\":\"First Song\",\"artists\":[{\"name\":\"Artist A\"},{\"name\":\"Artist B\"}],\"album\":{\"name\":\"Album One\"}}}," +
+                      "{\"song\":{\"id\":987654321,\"name\":\"Second Song\",\"ar\":[{\"name\":\"Artist C\"}],\"al\":{\"name\":\"Album Two\"}}}" +
+                      "]}}";
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json"),

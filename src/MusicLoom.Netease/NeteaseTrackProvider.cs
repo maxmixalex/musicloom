@@ -23,14 +23,23 @@ public sealed class NeteaseTrackProvider :
         string audioFilePath,
         CancellationToken cancellationToken = default)
     {
-        long? songId = await _client.MatchFileAsync(
-            _decoder,
-            audioFilePath,
-            cancellationToken);
+        IReadOnlyList<NeteaseMatchCandidate> candidates =
+            await _client.MatchFileCandidatesAsync(
+                _decoder,
+                audioFilePath,
+                cancellationToken);
 
-        return songId is long id
-            ? TrackRecognitionResult.Matched(id)
-            : TrackRecognitionResult.NoMatch();
+        if (candidates.Count == 0)
+        {
+            return TrackRecognitionResult.NoMatch();
+        }
+
+        NeteaseMatchCandidate first = candidates[0];
+        return TrackRecognitionResult.Matched(
+            first.TrackId,
+            first.Name,
+            first.Artist,
+            first.Album);
     }
 
     public Task<IReadOnlyList<NeteaseMatchCandidate>>

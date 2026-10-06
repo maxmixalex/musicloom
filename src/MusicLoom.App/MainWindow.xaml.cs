@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using MusicLoom.Audio.Windows;
 using MusicLoom.Core.Configuration;
@@ -13,8 +14,10 @@ using MusicLoom.Core.Synchronization;
 using MusicLoom.Metadata;
 using MusicLoom.Netease;
 using MusicLoom.Tagging;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
+using Windows.UI;
 
 namespace MusicLoom.App;
 
@@ -32,6 +35,8 @@ public sealed partial class MainWindow : Window
 
     private readonly List<LibraryDisplayItem>
         _allLibraryItems = [];
+    private readonly List<PlaylistDisplayItem>
+        _playlists = [];
     private readonly List<string>
         _activityItems = [];
 
@@ -39,14 +44,18 @@ public sealed partial class MainWindow : Window
     private StateDocument? _state;
     private StateStore? _stateStore;
     private LibraryPlan? _plan;
-    private CancellationTokenSource?
-        _operationCancellation;
-    private LibraryDisplayItem?
-        _selectedLibraryItem;
+    private LibraryDisplayItem? _selectedLibraryItem;
+    private LibraryDisplayItem? _contextLibraryItem;
+    private CancellationTokenSource? _operationCancellation;
+    private CancellationTokenSource? _settingsSaveCancellation;
     private bool _busy;
+    private bool _loadingSettings = true;
     private int _detailRequestId;
+    private int _artworkGeneration;
     private string _uiLanguage =
         DetectSystemLanguage();
+    private string _accentColor = "system";
+    private string? _currentLyricsRaw;
 
     public MainWindow()
     {
@@ -59,16 +68,17 @@ public sealed partial class MainWindow : Window
             "MainWindow.InitializeComponent.after");
 
         LibraryFilterBox.SelectedIndex = 0;
+        LibrarySortBox.SelectedIndex = 0;
         LyricsStorageModeBox.SelectedIndex = 0;
         LanguageBox.SelectedIndex =
             IsChinese ? 1 : 0;
-        LogPathText.Text =
-            AppDiagnostics.LogPath;
         Navigation.SelectedItem =
             Navigation.MenuItems[0];
 
         ApplyLanguage();
+        HideDetailPane();
         ResetTrackDetails();
+
         _ = InitializeSettingsAsync();
 
         StartupTrace.Mark(
@@ -100,19 +110,26 @@ public sealed partial class MainWindow : Window
             _uiLanguage =
                 NormalizeLanguage(
                     settings.Ui.Language);
+            _accentColor =
+                string.IsNullOrWhiteSpace(
+                    settings.Ui.AccentColor)
+                    ? "system"
+                    : settings.Ui.AccentColor;
 
             PopulateSettingsForm(settings);
             ApplyLanguage();
-            UpdateLibraryEmptyState();
+            ApplyAppearance(settings);
 
             SettingsStatusText.Text =
                 File.Exists(ConfigPath)
                     ? L(
-                        "Settings loaded.",
-                        "设置已加载。")
+                        "Settings loaded. Changes are saved automatically.",
+                        "设置已加载。后续修改会自动保存。")
                     : L(
-                        "Choose the source and destination once, then save.",
-                        "只需设置一次源音乐库和目标目录，然后保存。");
+                        "Choose your source and destination. Changes are saved automatically.",
+                        "请选择源音乐库和目标目录。修改会自动保存。");
+
+            UpdateLibraryEmptyState();
 
             AddActivity(
                 L("Ready", "就绪"),
@@ -128,8 +145,8 @@ public sealed partial class MainWindow : Window
 
             SettingsStatusText.Text =
                 L(
-                    "Could not load saved settings. Review the fields and save again.",
-                    "无法加载已保存设置。请检查各字段并重新保存。");
+                    "Could not load saved settings.",
+                    "无法加载已保存设置。");
 
             AddActivity(
                 L(
@@ -140,7 +157,31 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            UpdateLibraryEmptyState();
+            _loadingSettings = false;
+        }
+    }
+
+    private void ApplyAppearance(
+        MusicLoomSettings settings)
+    {
+        AppearanceManager.Apply(
+            this,
+            settings.Ui);
+
+        if (AppearanceManager.TryParseColor(
+                settings.Ui.AccentColor,
+                out Color accent))
+        {
+            AccentPreview.Background =
+                new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                    accent);
+        }
+        else
+        {
+            AccentPreview.Background =
+                Application.Current.Resources[
+                    "AccentFillColorDefaultBrush"]
+                as Microsoft.UI.Xaml.Media.Brush;
         }
     }
 
@@ -180,9 +221,8 @@ public sealed partial class MainWindow : Window
                     "Sync blocked",
                     "同步已阻止"),
                 L(
-                    "Resolve the error items shown in the library before syncing.",
-                    "请先处理音乐库中显示的错误项目，再进行同步。"));
-
+                    "Resolve error items before syncing.",
+                    "请先处理错误项目，再进行同步。"));
             LibraryFilterBox.SelectedIndex = 3;
             return;
         }
@@ -192,32 +232,13 @@ public sealed partial class MainWindow : Window
             ShowInfo(
                 InfoBarSeverity.Success,
                 L(
-                    "Already up to date",
-                    "已经是最新"),
+                    "Already synced",
+                    "已经同步"),
                 L(
-                    "There is nothing to sync.",
-                    "没有需要同步的内容。"));
+                    "There are no pending changes.",
+                    "没有待同步的更改。"));
             return;
         }
-
-        string storage =
-            LyricsStorageModes.Normalize(
-                settings.Organizer.Lyrics
-                    .StorageMode);
-
-        string lyricsText =
-            !settings.Organizer.Lyrics.Enabled
-                ? L(
-                    "Lyrics are disabled.",
-                    "歌词功能已关闭。")
-                : storage
-                    == LyricsStorageModes.Sidecar
-                    ? L(
-                        "Fetched lyrics will be written as sidecar .lrc files.",
-                        "获取到的歌词将写入独立的 .lrc 文件。")
-                    : L(
-                        "Fetched lyrics will be embedded in destination audio files.",
-                        "获取到的歌词将嵌入目标音频文件。");
 
         ContentDialog confirmation = new()
         {
@@ -233,24 +254,19 @@ public sealed partial class MainWindow : Window
             CloseButtonText =
                 L("Cancel", "取消"),
             DefaultButton =
-                ContentDialogButton.Close,
+                ContentDialogButton.Primary,
             Content = new TextBlock
             {
                 Text =
                     L(
-                        $"{plan.PendingTrackCount:N0} tracks need work.\n" +
-                        $"{plan.AudioCopyCount:N0} audio files will be copied or refreshed.\n" +
-                        $"{plan.CoverWriteCount:N0} covers and {plan.PlaylistWriteCount:N0} playlists will be updated.\n\n" +
-                        $"{lyricsText}\n\nDestination: {settings.Path.DestinationDirectory}\n\n" +
+                        $"{plan.PendingTrackCount:N0} pending tracks\n" +
+                        $"{plan.CoverWriteCount + plan.PlaylistWriteCount:N0} extra updates\n\n" +
                         "The source library remains read-only.",
-                        $"{plan.PendingTrackCount:N0} 首歌曲需要处理。\n" +
-                        $"{plan.AudioCopyCount:N0} 个音频文件将被复制或刷新。\n" +
-                        $"{plan.CoverWriteCount:N0} 个封面和 {plan.PlaylistWriteCount:N0} 个播放列表将被更新。\n\n" +
-                        $"{lyricsText}\n\n目标目录：{settings.Path.DestinationDirectory}\n\n" +
+                        $"{plan.PendingTrackCount:N0} 首歌曲待同步\n" +
+                        $"{plan.CoverWriteCount + plan.PlaylistWriteCount:N0} 项附加更新\n\n" +
                         "源音乐库保持只读。"),
                 TextWrapping =
                     TextWrapping.Wrap,
-                MaxWidth = 620,
             },
         };
 
@@ -266,26 +282,16 @@ public sealed partial class MainWindow : Window
             cancellation;
 
         SetBusy(
-            busy: true,
-            operationStatus:
-                L(
-                    "Preparing sync…",
-                    "正在准备同步……"));
+            true,
+            L(
+                "Preparing sync…",
+                "正在准备同步……"));
 
         await Task.Yield();
 
-        AddActivity(
-            L(
-                "Sync started",
-                "同步开始"),
-            L(
-                $"{plan.PendingCount:N0} pending items.",
-                $"{plan.PendingCount:N0} 个待处理项目。"));
-
         try
         {
-            using NeteaseClient client =
-                new();
+            using NeteaseClient client = new();
             CompositeFingerprintPcmDecoder
                 decoder = new();
             NeteaseTrackProvider provider =
@@ -294,10 +300,12 @@ public sealed partial class MainWindow : Window
                     decoder);
 
             ITrackLyricsWriter lyricsWriter =
-                storage
+                LyricsStorageModes.Normalize(
+                    settings.Organizer.Lyrics
+                        .StorageMode)
                     == LyricsStorageModes.Sidecar
-                    ? new SidecarLrcLyricsWriter()
-                    : new TagLibSharpLyricsWriter();
+                        ? new SidecarLrcLyricsWriter()
+                        : new TagLibSharpLyricsWriter();
 
             SyncExecutor executor = new(
                 new LocalLibraryMaterializer(),
@@ -339,12 +347,12 @@ public sealed partial class MainWindow : Window
                     $"{summary.Local.CopiedTracks:N0} audio · " +
                     $"{summary.Local.CopiedCovers:N0} covers · " +
                     $"{summary.Local.WrittenPlaylists:N0} playlists · " +
-                    $"{summary.WrittenLyrics:N0} lyrics written · " +
+                    $"{summary.WrittenLyrics:N0} lyrics · " +
                     $"{summary.Errors.Count:N0} errors",
                     $"音频 {summary.Local.CopiedTracks:N0} · " +
                     $"封面 {summary.Local.CopiedCovers:N0} · " +
                     $"播放列表 {summary.Local.WrittenPlaylists:N0} · " +
-                    $"写入歌词 {summary.WrittenLyrics:N0} · " +
+                    $"歌词 {summary.WrittenLyrics:N0} · " +
                     $"错误 {summary.Errors.Count:N0}");
 
             LastRunTitle.Text =
@@ -355,7 +363,6 @@ public sealed partial class MainWindow : Window
                     : L(
                         "Last sync completed with errors",
                         "上次同步完成，但有错误");
-
             LastRunSummaryText.Text =
                 message;
 
@@ -402,14 +409,6 @@ public sealed partial class MainWindow : Window
                     "Sync cancelled",
                     "同步已取消"),
                 L(
-                    "Completed work was checkpointed. Refresh the library to continue later.",
-                    "已完成的工作已经保存。稍后刷新音乐库即可继续。"));
-
-            AddActivity(
-                L(
-                    "Sync cancelled",
-                    "同步已取消"),
-                L(
                     "Completed work was checkpointed.",
                     "已完成的工作已经保存。"));
         }
@@ -425,11 +424,10 @@ public sealed partial class MainWindow : Window
         {
             _operationCancellation = null;
             SetBusy(
-                busy: false,
-                operationStatus:
-                    L(
-                        "Refreshing library…",
-                        "正在刷新音乐库……"));
+                false,
+                L(
+                    "Refreshing library…",
+                    "正在刷新音乐库……"));
         }
 
         await ScanLibraryAsync(
@@ -456,8 +454,7 @@ public sealed partial class MainWindow : Window
                 "Cancelling…",
                 "正在取消……");
 
-        await cancellation
-            .CancelAsync();
+        await cancellation.CancelAsync();
     }
 
     private async Task<bool> ScanLibraryAsync(
@@ -467,16 +464,14 @@ public sealed partial class MainWindow : Window
         if (!File.Exists(ConfigPath))
         {
             NavigateTo("settings");
-
             ShowInfo(
                 InfoBarSeverity.Warning,
                 L(
                     "Set up your library first",
                     "请先设置音乐库"),
                 L(
-                    "Choose a source and destination in Settings, then save.",
-                    "请在“设置”中选择源音乐库和目标目录，然后保存。"));
-
+                    "Choose a source and destination in Settings.",
+                    "请在“设置”中选择源音乐库和目标目录。"));
             return false;
         }
 
@@ -486,11 +481,10 @@ public sealed partial class MainWindow : Window
             cancellation;
 
         SetBusy(
-            busy: true,
-            operationStatus:
-                L(
-                    "Scanning library…",
-                    "正在扫描音乐库……"));
+            true,
+            L(
+                "Scanning library…",
+                "正在扫描音乐库……"));
 
         if (clearInfoBar)
         {
@@ -510,8 +504,6 @@ public sealed partial class MainWindow : Window
             _uiLanguage =
                 NormalizeLanguage(
                     settings.Ui.Language);
-            ApplyLanguage();
-            PopulateSettingsForm(settings);
 
             LibraryPathSafety.ValidateStatePath(
                 settings,
@@ -584,6 +576,12 @@ public sealed partial class MainWindow : Window
                             cancellation.Token),
                     cancellation.Token);
 
+            // Scans may enrich MusicLoom's private state cache (for example
+            // migrating TITLE metadata) but never mutate the source library.
+            await stateStore.SaveAsync(
+                state,
+                cancellation.Token);
+
             _state = state;
             _stateStore = stateStore;
             _plan = plan;
@@ -599,21 +597,25 @@ public sealed partial class MainWindow : Window
             PopulateLibrary(
                 settings,
                 plan);
-            UpdateLibrarySummary(
-                plan);
 
-            OpenDestinationButton.IsEnabled =
-                Directory.Exists(
-                    settings.Path
-                        .DestinationDirectory);
+            PlaylistDisplayItem[] playlists =
+                await Task.Run(
+                    () =>
+                        BuildPlaylists(
+                            settings,
+                            plan),
+                    cancellation.Token);
+            PopulatePlaylists(playlists);
+
+            UpdateLibrarySummary(plan);
 
             string summary =
                 L(
                     $"{plan.TotalCount:N0} tracks · " +
-                    $"{plan.PendingCount:N0} pending · " +
+                    $"{plan.PendingTrackCount:N0} pending · " +
                     $"{plan.ErrorCount:N0} errors",
                     $"{plan.TotalCount:N0} 首歌曲 · " +
-                    $"{plan.PendingCount:N0} 项待处理 · " +
+                    $"{plan.PendingTrackCount:N0} 首待同步 · " +
                     $"{plan.ErrorCount:N0} 个错误");
 
             OperationStatusText.Text =
@@ -636,26 +638,6 @@ public sealed partial class MainWindow : Window
                         "State recovered",
                         "状态已恢复"),
                     recoveryWarning);
-
-                ShowInfo(
-                    InfoBarSeverity.Warning,
-                    L(
-                        "State recovered from backup",
-                        "已从备份恢复状态"),
-                    L(
-                        "MusicLoom recovered the last valid state file.",
-                        "MusicLoom 已恢复最近的有效状态文件。"));
-            }
-            else if (plan.ErrorCount > 0)
-            {
-                ShowInfo(
-                    InfoBarSeverity.Warning,
-                    L(
-                        "Scan completed with errors",
-                        "扫描完成，但有错误"),
-                    L(
-                        "Use the Errors filter to review them.",
-                        "请使用“错误”筛选查看。"));
             }
 
             return true;
@@ -672,6 +654,7 @@ public sealed partial class MainWindow : Window
         {
             _plan = null;
             _allLibraryItems.Clear();
+            LibraryList.ItemsSource = null;
             UpdateLibraryEmptyState();
 
             HandleUiException(
@@ -685,9 +668,8 @@ public sealed partial class MainWindow : Window
         {
             _operationCancellation = null;
             SetBusy(
-                busy: false,
-                operationStatus:
-                    OperationStatusText.Text);
+                false,
+                OperationStatusText.Text);
         }
     }
 
@@ -696,12 +678,15 @@ public sealed partial class MainWindow : Window
         LibraryPlan plan)
     {
         _allLibraryItems.Clear();
+        int artworkGeneration =
+            ++_artworkGeneration;
 
         foreach (PlanEntry entry
             in plan.Entries)
         {
             string title =
-                Path.GetFileNameWithoutExtension(
+                entry.Metadata?.Title
+                ?? Path.GetFileNameWithoutExtension(
                     entry.SourcePath);
 
             string artist =
@@ -724,17 +709,11 @@ public sealed partial class MainWindow : Window
                     : entry.Status
                         == PlanEntryStatus.Unchanged
                         ? "synced"
-                        : entry.NeedsAudioCopy
-                            ? "copy"
-                            : "enrich";
-
-            string status =
-                StatusLabel(kind);
+                        : "pending";
 
             string relative =
                 MakeRelative(
-                    settings.Path
-                        .SourceDirectory,
+                    settings.Path.SourceDirectory,
                     entry.SourcePath);
 
             _allLibraryItems.Add(
@@ -745,14 +724,13 @@ public sealed partial class MainWindow : Window
                     artist,
                     album,
                     relative,
-                    status,
-                    $"{artist} · {album}"));
+                    StatusLabel(kind)));
         }
 
-        LibraryListPanel.Visibility =
-            Visibility.Visible;
         LibraryEmptyPanel.Visibility =
             Visibility.Collapsed;
+        LibraryList.Visibility =
+            Visibility.Visible;
 
         ApplyLibraryFilter();
 
@@ -761,39 +739,25 @@ public sealed partial class MainWindow : Window
             && plan.PendingCount > 0
             && plan.ErrorCount == 0;
 
-        SyncButton.Content =
-            L(
-                "Sync pending",
-                "同步待处理");
-
-        ScanButton.Content =
-            L(
-                "Refresh library",
-                "刷新音乐库");
+        _ = LoadArtworkThumbnailsAsync(
+            settings,
+            artworkGeneration);
 
         if (LibraryList.Items.Count > 0)
         {
-            LibraryList.SelectedIndex = 0;
+            LibraryList.SelectedIndex = -1;
         }
-        else
-        {
-            ResetTrackDetails();
-        }
+
+        HideDetailPane();
     }
 
     private void UpdateLibrarySummary(
         LibraryPlan plan)
     {
-        TracksValue.Text =
-            plan.TotalCount.ToString("N0");
-        PendingValue.Text =
+        PendingCountText.Text =
             plan.PendingTrackCount.ToString("N0");
-        AncillaryValue.Text =
-            plan.AncillaryPendingCount.ToString("N0");
-        ErrorsValue.Text =
+        ErrorCountText.Text =
             plan.ErrorCount.ToString("N0");
-        LastScanValue.Text =
-            DateTime.Now.ToString("t");
     }
 
     private void UpdateLibraryEmptyState()
@@ -805,17 +769,19 @@ public sealed partial class MainWindow : Window
             && !string.IsNullOrWhiteSpace(
                 settings.Path.DestinationDirectory);
 
-        LibraryListPanel.Visibility =
-            _plan is null
+        bool empty =
+            _plan is null;
+
+        LibraryList.Visibility =
+            empty
                 ? Visibility.Collapsed
                 : Visibility.Visible;
-
         LibraryEmptyPanel.Visibility =
-            _plan is null
+            empty
                 ? Visibility.Visible
                 : Visibility.Collapsed;
 
-        if (_plan is not null)
+        if (!empty)
         {
             return;
         }
@@ -832,53 +798,34 @@ public sealed partial class MainWindow : Window
         LibraryEmptyBodyText.Text =
             configured
                 ? L(
-                    "Scan the source library to load tracks, artwork, lyrics and sync status.",
-                    "扫描源音乐库以加载歌曲、封面、歌词和同步状态。")
+                    "Refresh the library to load tracks, artwork, lyrics and sync status.",
+                    "刷新音乐库以加载歌曲、封面、歌词和同步状态。")
                 : L(
                     "Choose the source and destination once. MusicLoom keeps the source read-only.",
                     "只需选择一次源音乐库和目标目录。MusicLoom 会保持源目录只读。");
-
-        OpenSettingsButton.Content =
-            configured
-                ? L(
-                    "Review settings",
-                    "查看设置")
-                : L(
-                    "Open settings",
-                    "打开设置");
-
-        ScanButton.Content =
-            L(
-                "Scan library",
-                "扫描音乐库");
-
-        SyncButton.Content =
-            L(
-                "Sync pending",
-                "同步待处理");
-
-        SyncButton.IsEnabled = false;
     }
 
     private void LibrarySearchBox_TextChanged(
         object sender,
-        TextChangedEventArgs e)
-    {
+        TextChangedEventArgs e) =>
         ApplyLibraryFilter();
-    }
 
     private void LibraryFilterBox_SelectionChanged(
         object sender,
-        SelectionChangedEventArgs e)
-    {
+        SelectionChangedEventArgs e) =>
         ApplyLibraryFilter();
-    }
+
+    private void LibrarySortBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e) =>
+        ApplyLibraryFilter();
 
     private void ApplyLibraryFilter()
     {
         if (LibraryList is null
             || LibrarySearchBox is null
-            || LibraryFilterBox is null)
+            || LibraryFilterBox is null
+            || LibrarySortBox is null)
         {
             return;
         }
@@ -892,27 +839,23 @@ public sealed partial class MainWindow : Window
                 ?.Tag?.ToString()
             ?? "all";
 
+        string sort =
+            (LibrarySortBox.SelectedItem
+                as ComboBoxItem)
+                ?.Tag?.ToString()
+            ?? "title";
+
         IEnumerable<LibraryDisplayItem>
             items = _allLibraryItems;
 
-        if (filter == "pending")
+        if (filter != "all")
         {
             items = items.Where(
-                static item =>
-                    item.Kind
-                        is "copy" or "enrich");
-        }
-        else if (filter == "synced")
-        {
-            items = items.Where(
-                static item =>
-                    item.Kind == "synced");
-        }
-        else if (filter == "error")
-        {
-            items = items.Where(
-                static item =>
-                    item.Kind == "error");
+                item =>
+                    string.Equals(
+                        item.Kind,
+                        filter,
+                        StringComparison.Ordinal));
         }
 
         if (!string.IsNullOrWhiteSpace(
@@ -926,11 +869,61 @@ public sealed partial class MainWindow : Window
                             .OrdinalIgnoreCase));
         }
 
+        items = sort switch
+        {
+            "album" =>
+                items
+                    .OrderBy(
+                        static item =>
+                            item.Album,
+                        StringComparer
+                            .CurrentCultureIgnoreCase)
+                    .ThenBy(
+                        static item =>
+                            item.Title,
+                        StringComparer
+                            .CurrentCultureIgnoreCase),
+            "artist" =>
+                items
+                    .OrderBy(
+                        static item =>
+                            item.Artist,
+                        StringComparer
+                            .CurrentCultureIgnoreCase)
+                    .ThenBy(
+                        static item =>
+                            item.Title,
+                        StringComparer
+                            .CurrentCultureIgnoreCase),
+            _ =>
+                items.OrderBy(
+                    static item =>
+                        item.Title,
+                    StringComparer
+                        .CurrentCultureIgnoreCase),
+        };
+
         LibraryDisplayItem[] visible =
             items.ToArray();
 
+        LibraryDisplayItem?
+            selected =
+                LibraryList.SelectedItem
+                    as LibraryDisplayItem;
+
         LibraryList.ItemsSource =
             visible;
+
+        if (selected is not null
+            && visible.Contains(selected))
+        {
+            LibraryList.SelectedItem =
+                selected;
+        }
+        else if (selected is not null)
+        {
+            HideDetailPane();
+        }
 
         LibraryVisibleCountText.Text =
             L(
@@ -946,12 +939,98 @@ public sealed partial class MainWindow : Window
             is not LibraryDisplayItem item)
         {
             _selectedLibraryItem = null;
+            HideDetailPane();
             ResetTrackDetails();
             return;
         }
 
         _selectedLibraryItem = item;
+        ShowDetailPane();
         await ShowTrackDetailsAsync(item);
+    }
+
+    private void ShowDetailPane()
+    {
+        LibraryListColumn.Width =
+            new GridLength(
+                5,
+                GridUnitType.Star);
+        LibrarySplitterColumn.Width =
+            new GridLength(6);
+        LibraryDetailColumn.Width =
+            new GridLength(
+                7,
+                GridUnitType.Star);
+        LibraryDetailColumn.MinWidth = 420;
+
+        LibrarySplitter.Visibility =
+            Visibility.Visible;
+        DetailPane.Visibility =
+            Visibility.Visible;
+    }
+
+    private void HideDetailPane()
+    {
+        LibraryListColumn.Width =
+            new GridLength(
+                1,
+                GridUnitType.Star);
+        LibrarySplitterColumn.Width =
+            new GridLength(0);
+        LibraryDetailColumn.MinWidth = 0;
+        LibraryDetailColumn.Width =
+            new GridLength(0);
+
+        LibrarySplitter.Visibility =
+            Visibility.Collapsed;
+        DetailPane.Visibility =
+            Visibility.Collapsed;
+    }
+
+    private void CloseDetailButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        LibraryList.SelectedItem = null;
+        _selectedLibraryItem = null;
+        HideDetailPane();
+        ResetTrackDetails();
+    }
+
+    private void ResetTrackDetails()
+    {
+        _currentLyricsRaw = null;
+
+        TrackTitleText.Text = string.Empty;
+        TrackArtistText.Text = string.Empty;
+        TrackAlbumText.Text = string.Empty;
+        TrackStatusText.Text = string.Empty;
+        TrackStatusIcon.Glyph = "\uE823";
+        TrackStatusIcon.Foreground =
+            new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                Color.FromArgb(255, 202, 116, 0));
+
+        CoverImage.Source = null;
+        CoverPlaceholderText.Visibility =
+            Visibility.Visible;
+
+        LyricsSourceText.Text = string.Empty;
+        LyricsList.ItemsSource =
+            Array.Empty<LyricDisplayLine>();
+
+        CurrentMatchText.Text =
+            L(
+                "No NetEase match cached.",
+                "尚未缓存网易云匹配。");
+
+        TrackSourcePathText.Text = string.Empty;
+        TrackDestinationPathText.Text = string.Empty;
+        TrackFormatText.Text = string.Empty;
+        TrackSizeText.Text = string.Empty;
+        TrackModifiedText.Text = string.Empty;
+        TrackCreatedText.Text = string.Empty;
+        TrackDestinationSizeText.Text = string.Empty;
+        TrackDestinationModifiedText.Text = string.Empty;
     }
 
     private async Task ShowTrackDetailsAsync(
@@ -960,8 +1039,6 @@ public sealed partial class MainWindow : Window
         int requestId =
             ++_detailRequestId;
 
-        ResetCandidateArea();
-
         TrackTitleText.Text =
             item.Title;
         TrackArtistText.Text =
@@ -969,41 +1046,35 @@ public sealed partial class MainWindow : Window
         TrackAlbumText.Text =
             item.Album;
         TrackStatusText.Text =
-            StatusLabel(item.Kind);
-        TrackSourcePathText.Text =
-            item.Entry.SourcePath;
-        TrackDestinationPathText.Text =
-            item.Entry.DestinationPath
-                ?? string.Empty;
-
-        FindMatchesButton.IsEnabled =
-            !_busy
-            && item.Kind != "error";
+            item.StatusText;
+        TrackStatusIcon.Glyph =
+            item.StatusGlyph;
+        TrackStatusIcon.Foreground =
+            item.StatusBrush;
 
         CurrentMatchText.Text =
             GetCachedMatchText(
                 item.Entry.SourcePath);
 
-        LyricsPreviewText.Text =
-            L(
-                "Loading track details…",
-                "正在加载歌曲详情……");
+        CoverImage.Source =
+            item.Artwork;
+        CoverPlaceholderText.Visibility =
+            item.Artwork is null
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
         LyricsSourceText.Text =
             string.Empty;
-        CoverImage.Source = null;
-        CoverPlaceholderText.Visibility =
-            Visibility.Visible;
-
-        MusicLoomSettings? settings =
-            _settings;
-
-        if (settings is null)
-        {
-            return;
-        }
+        LyricsList.ItemsSource =
+            Array.Empty<LyricDisplayLine>();
 
         try
         {
+            MusicLoomSettings settings =
+                _settings
+                ?? throw new InvalidOperationException(
+                    "Settings are not loaded.");
+
             TrackDetailPayload payload =
                 await Task.Run(
                     () =>
@@ -1017,20 +1088,43 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            await SetArtworkAsync(
-                payload.Artwork);
+            if (payload.Artwork
+                is { Length: > 0 })
+            {
+                BitmapImage bitmap =
+                    await CreateBitmapImageAsync(
+                        payload.Artwork);
+                item.Artwork = bitmap;
+                CoverImage.Source = bitmap;
+                CoverPlaceholderText.Visibility =
+                    Visibility.Collapsed;
+            }
 
-            LyricsPreviewText.Text =
-                string.IsNullOrWhiteSpace(
-                    payload.Lyrics)
-                    ? L(
-                        "No lyrics found in the current local output.",
-                        "当前本地文件中没有找到歌词。")
-                    : FormatLyricsForDisplay(
-                        payload.Lyrics);
-
+            _currentLyricsRaw =
+                payload.Lyrics;
             LyricsSourceText.Text =
                 payload.LyricsSource;
+            RenderLyrics();
+
+            TrackSourcePathText.Text =
+                payload.SourcePath;
+            TrackDestinationPathText.Text =
+                payload.DestinationPath
+                ?? L(
+                    "Not created yet",
+                    "尚未创建");
+            TrackFormatText.Text =
+                payload.Format;
+            TrackSizeText.Text =
+                payload.SourceSize;
+            TrackModifiedText.Text =
+                payload.SourceModified;
+            TrackCreatedText.Text =
+                payload.SourceCreated;
+            TrackDestinationSizeText.Text =
+                payload.DestinationSize;
+            TrackDestinationModifiedText.Text =
+                payload.DestinationModified;
         }
         catch (Exception exception)
         {
@@ -1039,11 +1133,6 @@ public sealed partial class MainWindow : Window
             {
                 return;
             }
-
-            LyricsPreviewText.Text =
-                L(
-                    "Could not read track details.",
-                    "无法读取歌曲详情。");
 
             AppDiagnostics.LogException(
                 "Could not inspect track details.",
@@ -1067,15 +1156,10 @@ public sealed partial class MainWindow : Window
                 inspectPath);
 
         byte[]? artwork =
-            inspection.Artwork;
-
-        if (artwork is null)
-        {
-            artwork =
-                TryReadExternalArtwork(
-                    settings,
-                    entry);
-        }
+            inspection.Artwork
+            ?? TryReadExternalArtwork(
+                settings,
+                entry);
 
         string? lyrics =
             inspection.Lyrics;
@@ -1084,49 +1168,384 @@ public sealed partial class MainWindow : Window
                 "Embedded lyrics",
                 "嵌入歌词");
 
-        string storage =
-            LyricsStorageModes.Normalize(
-                settings.Organizer.Lyrics
-                    .StorageMode);
-
-        if (storage
-            == LyricsStorageModes.Sidecar)
+        string? sidecar =
+            FindExistingSidecar(entry);
+        if (sidecar is not null)
         {
-            string? sidecar =
-                FindExistingSidecar(entry);
-
-            if (sidecar is not null)
-            {
-                lyrics =
-                    File.ReadAllText(sidecar);
-                lyricsSource =
-                    L(
-                        $"Sidecar: {sidecar}",
-                        $"独立歌词：{sidecar}");
-            }
-            else if (string.IsNullOrWhiteSpace(
-                         lyrics))
-            {
-                lyricsSource =
-                    L(
-                        "No local sidecar or embedded lyrics",
-                        "没有本地独立歌词或嵌入歌词");
-            }
+            lyrics =
+                File.ReadAllText(sidecar);
+            lyricsSource =
+                L(
+                    $"Sidecar · {Path.GetFileName(sidecar)}",
+                    $"独立歌词 · {Path.GetFileName(sidecar)}");
         }
         else if (string.IsNullOrWhiteSpace(
                      lyrics))
         {
             lyricsSource =
                 L(
-                    "No embedded lyrics",
-                    "没有嵌入歌词");
+                    "No local lyrics",
+                    "没有本地歌词");
         }
+
+        FileInfo source =
+            new(entry.SourcePath);
+        FileInfo? destinationInfo =
+            entry.DestinationPath is
+                string destinationPath
+            && File.Exists(destinationPath)
+                ? new FileInfo(destinationPath)
+                : null;
 
         return new TrackDetailPayload(
             artwork,
             lyrics,
-            lyricsSource);
+            lyricsSource,
+            entry.SourcePath,
+            entry.DestinationPath,
+            Path.GetExtension(
+                entry.SourcePath)
+                .TrimStart('.')
+                .ToUpperInvariant(),
+            FormatBytes(source.Length),
+            source.LastWriteTime.ToString("G"),
+            source.CreationTime.ToString("G"),
+            destinationInfo is null
+                ? "—"
+                : FormatBytes(
+                    destinationInfo.Length),
+            destinationInfo is null
+                ? "—"
+                : destinationInfo
+                    .LastWriteTime
+                    .ToString("G"));
     }
+
+    private void RenderLyrics()
+    {
+        bool showTranslation =
+            ShowTranslationToggle.IsChecked
+                != false;
+
+        ShowTranslationToggle.Content =
+            showTranslation
+                ? L(
+                    "Show translation",
+                    "显示翻译")
+                : L(
+                    "Original only",
+                    "仅原文");
+
+        LyricDisplayLine[] lines =
+            BuildLyricLines(
+                _currentLyricsRaw,
+                showTranslation);
+
+        LyricsList.ItemsSource =
+            lines.Length == 0
+                ? new[]
+                {
+                    new LyricDisplayLine(
+                        L(
+                            "No lyrics found.",
+                            "没有找到歌词。"),
+                        null,
+                        false),
+                }
+                : lines;
+    }
+
+    private void ShowTranslationToggle_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        RenderLyrics();
+
+    private static LyricDisplayLine[]
+        BuildLyricLines(
+            string? raw,
+            bool showTranslation)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return [];
+        }
+
+        LrcDocument document =
+            LrcDocument.Parse(raw);
+
+        List<LyricDisplayLine> result = [];
+
+        if (document.Lines.Count > 0)
+        {
+            foreach (IGrouping<TimeSpan, LrcLine>
+                group in document.Lines
+                    .GroupBy(
+                        static line =>
+                            line.Timestamp))
+            {
+                string[] texts =
+                    group
+                        .Select(
+                            static line =>
+                                line.Text.Trim())
+                        .Where(
+                            static text =>
+                                text.Length > 0)
+                        .ToArray();
+
+                if (texts.Length == 0)
+                {
+                    continue;
+                }
+
+                (string original,
+                    string? translation) =
+                    SplitTranslation(
+                        texts[0]);
+
+                if (translation is null
+                    && texts.Length > 1)
+                {
+                    translation =
+                        string.Join(
+                            Environment.NewLine,
+                            texts.Skip(1));
+                }
+
+                result.Add(
+                    new LyricDisplayLine(
+                        original,
+                        translation,
+                        showTranslation));
+            }
+
+            return [.. result];
+        }
+
+        foreach (string rawLine
+            in raw.Split(
+                ['\r', '\n'],
+                StringSplitOptions
+                    .RemoveEmptyEntries))
+        {
+            string text =
+                rawLine.Trim();
+
+            if (text.Length == 0
+                || (text.StartsWith('[')
+                    && text.Contains(':')
+                    && text.EndsWith(']')))
+            {
+                continue;
+            }
+
+            (string original,
+                string? translation) =
+                SplitTranslation(text);
+
+            result.Add(
+                new LyricDisplayLine(
+                    original,
+                    translation,
+                    showTranslation));
+        }
+
+        return [.. result];
+    }
+
+    private static (string Original,
+        string? Translation)
+        SplitTranslation(string text)
+    {
+        if (text.Contains(
+                "://",
+                StringComparison.Ordinal))
+        {
+            return (text, null);
+        }
+
+        int slash =
+            text.IndexOf('/');
+
+        if (slash <= 0
+            || slash >= text.Length - 1)
+        {
+            return (text, null);
+        }
+
+        string left =
+            text[..slash].Trim();
+        string right =
+            text[(slash + 1)..].Trim();
+
+        return left.Length > 0
+            && right.Length > 0
+                ? (left, right)
+                : (text, null);
+    }
+
+    private async Task
+        LoadArtworkThumbnailsAsync(
+            MusicLoomSettings settings,
+            int generation)
+    {
+        IGrouping<string, LibraryDisplayItem>[]
+            groups =
+                _allLibraryItems
+                    .GroupBy(
+                        ArtworkKey,
+                        StringComparer
+                            .OrdinalIgnoreCase)
+                    .ToArray();
+
+        foreach (IGrouping<string,
+            LibraryDisplayItem> group
+            in groups)
+        {
+            if (generation !=
+                _artworkGeneration)
+            {
+                return;
+            }
+
+            LibraryDisplayItem first =
+                group.First();
+
+            byte[]? bytes =
+                await Task.Run(
+                    () =>
+                        TryReadArtworkBytes(
+                            settings,
+                            first.Entry));
+
+            if (bytes is null
+                || bytes.Length == 0
+                || generation !=
+                    _artworkGeneration)
+            {
+                continue;
+            }
+
+            try
+            {
+                BitmapImage bitmap =
+                    await CreateBitmapImageAsync(
+                        bytes);
+
+                foreach (LibraryDisplayItem item
+                    in group)
+                {
+                    item.Artwork = bitmap;
+                }
+            }
+            catch
+            {
+                // Artwork is optional. Corrupt pictures must not block browsing.
+            }
+        }
+    }
+
+    private static string ArtworkKey(
+        LibraryDisplayItem item)
+    {
+        if (item.Entry.DestinationPath
+            is string destination)
+        {
+            return Path.GetDirectoryName(
+                       destination)
+                   ?? item.Entry.SourcePath;
+        }
+
+        return string.Join(
+            "|",
+            Path.GetDirectoryName(
+                item.Entry.SourcePath),
+            item.Artist,
+            item.Album);
+    }
+
+    private static byte[]?
+        TryReadArtworkBytes(
+            MusicLoomSettings settings,
+            PlanEntry entry)
+    {
+        try
+        {
+            if (entry.DestinationPath
+                is string destination)
+            {
+                string? directory =
+                    Path.GetDirectoryName(
+                        destination);
+
+                if (!string.IsNullOrWhiteSpace(
+                        directory)
+                    && Directory.Exists(
+                        directory))
+                {
+                    string? existing =
+                        Directory
+                            .EnumerateFiles(
+                                directory,
+                                "Cover.*",
+                                SearchOption.TopDirectoryOnly)
+                            .FirstOrDefault();
+
+                    if (existing is not null)
+                    {
+                        return File.ReadAllBytes(
+                            existing);
+                    }
+                }
+            }
+
+            if (entry.Metadata is not null)
+            {
+                string? sourceDirectory =
+                    Path.GetDirectoryName(
+                        entry.SourcePath);
+
+                if (!string.IsNullOrWhiteSpace(
+                        sourceDirectory))
+                {
+                    string? cover =
+                        AlbumArtLocator.Find(
+                            sourceDirectory,
+                            entry.Metadata,
+                            onlyExplicit: false);
+
+                    if (cover is not null)
+                    {
+                        return File.ReadAllBytes(
+                            cover);
+                    }
+                }
+            }
+
+            string inspectPath =
+                entry.DestinationPath
+                    is string path
+                && File.Exists(path)
+                    ? path
+                    : entry.SourcePath;
+
+            return AtlTrackInspector
+                .Read(inspectPath)
+                .Artwork;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static byte[]?
+        TryReadExternalArtwork(
+            MusicLoomSettings settings,
+            PlanEntry entry) =>
+        TryReadArtworkBytes(
+            settings,
+            entry);
 
     private static string? FindExistingSidecar(
         PlanEntry entry)
@@ -1155,76 +1574,10 @@ public sealed partial class MainWindow : Window
             : null;
     }
 
-    private static byte[]?
-        TryReadExternalArtwork(
-            MusicLoomSettings settings,
-            PlanEntry entry)
+    private static async Task<BitmapImage>
+        CreateBitmapImageAsync(
+            byte[] artwork)
     {
-        if (entry.DestinationPath
-            is string destination)
-        {
-            string? directory =
-                Path.GetDirectoryName(
-                    destination);
-
-            if (!string.IsNullOrWhiteSpace(
-                    directory)
-                && Directory.Exists(directory))
-            {
-                string? existing =
-                    Directory
-                        .EnumerateFiles(
-                            directory,
-                            "Cover.*",
-                            SearchOption.TopDirectoryOnly)
-                        .FirstOrDefault();
-
-                if (existing is not null)
-                {
-                    return File.ReadAllBytes(
-                        existing);
-                }
-            }
-        }
-
-        if (entry.Metadata is null)
-        {
-            return null;
-        }
-
-        string? sourceDirectory =
-            Path.GetDirectoryName(
-                entry.SourcePath);
-
-        if (string.IsNullOrWhiteSpace(
-                sourceDirectory))
-        {
-            return null;
-        }
-
-        string? cover =
-            AlbumArtLocator.Find(
-                sourceDirectory,
-                entry.Metadata,
-                onlyExplicit: false);
-
-        return cover is null
-            ? null
-            : File.ReadAllBytes(cover);
-    }
-
-    private async Task SetArtworkAsync(
-        byte[]? artwork)
-    {
-        if (artwork is null
-            || artwork.Length == 0)
-        {
-            CoverImage.Source = null;
-            CoverPlaceholderText.Visibility =
-                Visibility.Visible;
-            return;
-        }
-
         using InMemoryRandomAccessStream
             stream = new();
         using DataWriter writer =
@@ -1233,285 +1586,465 @@ public sealed partial class MainWindow : Window
         writer.WriteBytes(artwork);
         await writer.StoreAsync();
         writer.DetachStream();
-
         stream.Seek(0);
 
-        BitmapImage bitmap = new();
-        await bitmap.SetSourceAsync(stream);
+        BitmapImage bitmap = new()
+        {
+            DecodePixelWidth = 256,
+        };
 
-        CoverImage.Source = bitmap;
-        CoverPlaceholderText.Visibility =
-            Visibility.Collapsed;
+        await bitmap.SetSourceAsync(stream);
+        return bitmap;
     }
 
-    private async void FindMatchesButton_Click(
+    private async void OpenMatchDialogButton_Click(
         object sender,
         RoutedEventArgs e)
     {
         if (_selectedLibraryItem
-            is not LibraryDisplayItem item)
+            is LibraryDisplayItem item)
         {
-            return;
-        }
-
-        FindMatchesButton.IsEnabled = false;
-        UseSelectedMatchButton.IsEnabled = false;
-        NeteaseCandidatesList.Items.Clear();
-        CandidateLyricsPreviewText.Text =
-            L(
-                "Waiting for a candidate…",
-                "等待选择候选……");
-        CandidateStatusText.Text =
-            L(
-                "Fingerprinting and searching NetEase…",
-                "正在生成指纹并搜索网易云音乐……");
-
-        try
-        {
-            using NeteaseClient client =
-                new();
-            CompositeFingerprintPcmDecoder
-                decoder = new();
-            NeteaseTrackProvider provider =
-                new(
-                    client,
-                    decoder);
-
-            IReadOnlyList<NeteaseMatchCandidate>
-                candidates =
-                    await provider
-                        .FindCandidatesAsync(
-                            item.Entry.SourcePath);
-
-            foreach (NeteaseMatchCandidate
-                candidate in candidates)
-            {
-                NeteaseCandidatesList.Items.Add(
-                    candidate);
-            }
-
-            CandidateStatusText.Text =
-                candidates.Count == 0
-                    ? L(
-                        "No candidates found.",
-                        "没有找到候选。")
-                    : L(
-                        $"{candidates.Count:N0} candidate(s) found. Select one to preview lyrics.",
-                        $"找到 {candidates.Count:N0} 个候选。选择一个即可预览歌词。");
-
-            if (candidates.Count > 0)
-            {
-                NeteaseCandidatesList
-                    .SelectedIndex = 0;
-            }
-        }
-        catch (Exception exception)
-        {
-            CandidateStatusText.Text =
-                UserFacingErrors.Describe(
-                    exception);
-            AppDiagnostics.LogException(
-                "Could not search NetEase candidates.",
-                exception);
-        }
-        finally
-        {
-            FindMatchesButton.IsEnabled =
-                !_busy
-                && _selectedLibraryItem
-                    is not null;
+            await ShowMatchDialogAsync(
+                item);
         }
     }
 
-    private async void
-        NeteaseCandidatesList_SelectionChanged(
-            object sender,
-            SelectionChangedEventArgs e)
+    private async Task ShowMatchDialogAsync(
+        LibraryDisplayItem item)
     {
-        if (NeteaseCandidatesList
-                .SelectedItem
-            is not NeteaseMatchCandidate
-                candidate)
+        TextBox artistBox = new()
         {
-            UseSelectedMatchButton.IsEnabled =
+            Header =
+                L("Artist", "艺术家"),
+            Text =
+                item.Artist
+                    .Contains(
+                        L(
+                            "Unknown artist",
+                            "未知艺术家"),
+                        StringComparison
+                            .OrdinalIgnoreCase)
+                        ? string.Empty
+                        : item.Artist,
+        };
+
+        TextBox titleBox = new()
+        {
+            Header =
+                L("Title", "歌曲名"),
+            Text = item.Title,
+        };
+
+        TextBox albumBox = new()
+        {
+            Header =
+                L(
+                    "Album (optional)",
+                    "专辑（可选）"),
+            Text =
+                item.Album
+                    .Contains(
+                        L(
+                            "Unknown album",
+                            "未知专辑"),
+                        StringComparison
+                            .OrdinalIgnoreCase)
+                        ? string.Empty
+                        : item.Album,
+        };
+
+        Button fingerprintButton = new()
+        {
+            Content =
+                L(
+                    "Recognize from audio",
+                    "通过音频指纹识别"),
+        };
+
+        Button searchButton = new()
+        {
+            Content =
+                L(
+                    "Search by metadata",
+                    "按元数据搜索"),
+            Style =
+                (Style)Application.Current
+                    .Resources[
+                        "AccentButtonStyle"],
+        };
+
+        TextBlock status = new()
+        {
+            Foreground =
+                (Microsoft.UI.Xaml.Media.Brush)
+                    Application.Current
+                        .Resources[
+                            "TextFillColorSecondaryBrush"],
+            TextWrapping =
+                TextWrapping.Wrap,
+        };
+
+        ListView results = new()
+        {
+            MinHeight = 170,
+            MaxHeight = 250,
+        };
+
+        TextBlock lyricsPreview = new()
+        {
+            Text =
+                L(
+                    "Select a result to preview lyrics.",
+                    "选择结果后可预览歌词。"),
+            TextWrapping =
+                TextWrapping.Wrap,
+            IsTextSelectionEnabled = true,
+        };
+
+        ScrollViewer lyricsScroll = new()
+        {
+            MaxHeight = 190,
+            Content = lyricsPreview,
+        };
+
+        Grid buttons = new()
+        {
+            ColumnSpacing = 8,
+        };
+        buttons.ColumnDefinitions.Add(
+            new ColumnDefinition
+            {
+                Width =
+                    new GridLength(
+                        1,
+                        GridUnitType.Star),
+            });
+        buttons.ColumnDefinitions.Add(
+            new ColumnDefinition
+            {
+                Width =
+                    GridLength.Auto,
+            });
+        buttons.Children.Add(
+            fingerprintButton);
+        Grid.SetColumn(
+            searchButton,
+            1);
+        buttons.Children.Add(
+            searchButton);
+
+        StackPanel panel = new()
+        {
+            Spacing = 10,
+            MaxWidth = 680,
+        };
+        panel.Children.Add(
+            artistBox);
+        panel.Children.Add(
+            titleBox);
+        panel.Children.Add(
+            albumBox);
+        panel.Children.Add(
+            buttons);
+        panel.Children.Add(
+            status);
+        panel.Children.Add(
+            results);
+        panel.Children.Add(
+            lyricsScroll);
+
+        ContentDialog dialog = new()
+        {
+            XamlRoot =
+                ((FrameworkElement)Content)
+                    .XamlRoot,
+            Title =
+                L(
+                    "Find NetEase match",
+                    "查找网易云匹配"),
+            PrimaryButtonText =
+                L(
+                    "Use selected",
+                    "使用所选"),
+            CloseButtonText =
+                L("Cancel", "取消"),
+            DefaultButton =
+                ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false,
+            Content = panel,
+        };
+
+        async Task SetResultsAsync(
+            Task<IReadOnlyList<
+                NeteaseMatchCandidate>>
+                request)
+        {
+            fingerprintButton.IsEnabled =
                 false;
-            return;
+            searchButton.IsEnabled =
+                false;
+            status.Text =
+                L(
+                    "Searching…",
+                    "正在搜索……");
+
+            try
+            {
+                IReadOnlyList<
+                    NeteaseMatchCandidate>
+                    candidates =
+                        await request;
+
+                results.ItemsSource =
+                    candidates;
+
+                status.Text =
+                    candidates.Count == 0
+                        ? L(
+                            "No matches found.",
+                            "没有找到匹配。")
+                        : L(
+                            $"{candidates.Count:N0} matches found.",
+                            $"找到 {candidates.Count:N0} 个匹配。");
+
+                if (candidates.Count > 0)
+                {
+                    results.SelectedIndex = 0;
+                }
+            }
+            catch (Exception exception)
+            {
+                status.Text =
+                    UserFacingErrors.Describe(
+                        exception);
+            }
+            finally
+            {
+                fingerprintButton.IsEnabled =
+                    true;
+                searchButton.IsEnabled =
+                    true;
+            }
         }
 
-        UseSelectedMatchButton.IsEnabled =
-            !_busy;
+        fingerprintButton.Click +=
+            async (_, _) =>
+            {
+                using NeteaseClient client =
+                    new();
+                CompositeFingerprintPcmDecoder
+                    decoder = new();
 
-        CandidateLyricsPreviewText.Text =
-            L(
-                "Loading candidate lyrics…",
-                "正在加载候选歌词……");
+                await SetResultsAsync(
+                    client.MatchFileCandidatesAsync(
+                        decoder,
+                        item.Entry.SourcePath));
+            };
 
-        try
+        searchButton.Click +=
+            async (_, _) =>
+            {
+                if (string.IsNullOrWhiteSpace(
+                        titleBox.Text))
+                {
+                    status.Text =
+                        L(
+                            "Enter a song title.",
+                            "请输入歌曲名。");
+                    return;
+                }
+
+                using NeteaseClient client =
+                    new();
+
+                await SetResultsAsync(
+                    client.SearchSongsAsync(
+                        titleBox.Text,
+                        artistBox.Text,
+                        albumBox.Text));
+            };
+
+        results.SelectionChanged +=
+            async (_, _) =>
+            {
+                if (results.SelectedItem
+                    is not
+                        NeteaseMatchCandidate
+                            candidate)
+                {
+                    dialog.IsPrimaryButtonEnabled =
+                        false;
+                    return;
+                }
+
+                dialog.IsPrimaryButtonEnabled =
+                    true;
+                lyricsPreview.Text =
+                    L(
+                        "Loading lyrics…",
+                        "正在加载歌词……");
+
+                try
+                {
+                    using NeteaseClient client =
+                        new();
+
+                    LrcDocument? lyrics =
+                        await client.GetLyricsAsync(
+                            candidate.TrackId);
+
+                    LyricDisplayLine[] lines =
+                        BuildLyricLines(
+                            lyrics?.ToString(),
+                            showTranslation: true);
+
+                    lyricsPreview.Text =
+                        lines.Length == 0
+                            ? L(
+                                "No lyrics for this result.",
+                                "这个结果没有歌词。")
+                            : string.Join(
+                                Environment.NewLine,
+                                lines.Select(
+                                    static line =>
+                                        string.IsNullOrWhiteSpace(
+                                            line.Translation)
+                                            ? line.Original
+                                            : $"{line.Original}\n{line.Translation}"));
+                }
+                catch (Exception exception)
+                {
+                    lyricsPreview.Text =
+                        UserFacingErrors.Describe(
+                            exception);
+                }
+            };
+
+        ContentDialogResult result =
+            await dialog.ShowAsync();
+
+        if (result
+                == ContentDialogResult.Primary
+            && results.SelectedItem
+                is NeteaseMatchCandidate
+                    selected)
         {
-            using NeteaseClient client =
-                new();
-
-            LrcDocument? lyrics =
-                await client.GetLyricsAsync(
-                    candidate.TrackId);
-
-            CandidateLyricsPreviewText.Text =
-                lyrics is null
-                || lyrics.Lines.Count == 0
-                    ? L(
-                        "This candidate has no lyrics.",
-                        "这个候选没有歌词。")
-                    : FormatLyricsForDisplay(
-                        lyrics.ToString());
-        }
-        catch (Exception exception)
-        {
-            CandidateLyricsPreviewText.Text =
-                UserFacingErrors.Describe(
-                    exception);
+            await SaveManualMatchAsync(
+                item,
+                selected);
         }
     }
 
-    private async void
-        UseSelectedMatchButton_Click(
-            object sender,
-            RoutedEventArgs e)
+    private async Task SaveManualMatchAsync(
+        LibraryDisplayItem item,
+        NeteaseMatchCandidate candidate)
     {
-        if (_selectedLibraryItem
-                is not LibraryDisplayItem item
-            || NeteaseCandidatesList
-                .SelectedItem
-                is not NeteaseMatchCandidate
-                    candidate
-            || _state is null
+        if (_state is null
             || _stateStore is null)
         {
             return;
         }
 
-        UseSelectedMatchButton.IsEnabled =
-            false;
+        FileInfo source =
+            new(item.Entry.SourcePath);
 
-        try
-        {
-            FileInfo source =
-                new(item.Entry.SourcePath);
+        ulong quickHash =
+            await Task.Run(
+                () =>
+                    QuickFileHash.Compute(
+                        item.Entry.SourcePath));
 
-            ulong quickHash =
-                await Task.Run(
-                    () =>
-                        QuickFileHash.Compute(
-                            item.Entry.SourcePath));
+        _state.Tracks.TryGetValue(
+            item.Entry.SourcePath,
+            out TrackState? previous);
 
-            _state.Tracks.TryGetValue(
-                item.Entry.SourcePath,
-                out TrackState? previous);
+        TrackMetadata metadata =
+            item.Entry.Metadata
+            ?? new TrackMetadata(
+                null,
+                null,
+                null,
+                false,
+                item.Title);
 
-            TrackMetadata metadata =
-                item.Entry.Metadata
-                ?? new TrackMetadata(
-                    null,
-                    null,
-                    null,
-                    false);
-
-            TrackState updated =
-                previous is null
-                    ? new TrackState
-                    {
-                        SourcePath =
-                            item.Entry.SourcePath,
-                        SourceSize =
-                            source.Length,
-                        SourceLastWriteUtcTicks =
-                            source
-                                .LastWriteTimeUtc
-                                .Ticks,
-                        QuickHash =
-                            quickHash,
-                        DestinationPath =
-                            item.Entry
-                                .DestinationPath,
-                        MetadataCaptured = true,
-                        Artist =
-                            metadata.Artist,
-                        AlbumArtist =
-                            metadata.AlbumArtist,
-                        Album =
-                            metadata.Album,
-                        HasEmbeddedArt =
-                            metadata.HasEmbeddedArt,
-                        ProcessedAt =
-                            DateTimeOffset.UtcNow,
-                    }
-                    : previous;
-
-            updated = updated with
+        TrackState updated =
+            previous
+            ?? new TrackState
             {
+                SourcePath =
+                    item.Entry.SourcePath,
                 SourceSize =
                     source.Length,
                 SourceLastWriteUtcTicks =
                     source.LastWriteTimeUtc
                         .Ticks,
-                QuickHash =
-                    quickHash,
-                Recognition =
-                    RecognitionState.Matched,
-                RecognitionCheckedAt =
-                    DateTimeOffset.UtcNow,
-                NeteaseSongId =
-                    candidate.TrackId,
-                Lyrics =
-                    LyricsState.Unknown,
-                LyricsCheckedAt = null,
-                LyricsFingerprint = null,
-                RecipeVersion =
-                    string.Empty,
+                QuickHash = quickHash,
+                DestinationPath =
+                    item.Entry.DestinationPath,
+                MetadataCaptured = true,
+                TitleCaptured = true,
+                Title = metadata.Title,
+                Artist = metadata.Artist,
+                AlbumArtist =
+                    metadata.AlbumArtist,
+                Album = metadata.Album,
+                HasEmbeddedArt =
+                    metadata.HasEmbeddedArt,
                 ProcessedAt =
                     DateTimeOffset.UtcNow,
             };
 
-            _state.Tracks[
-                item.Entry.SourcePath] =
-                updated;
-
-            await _stateStore.SaveAsync(
-                _state);
-
-            CurrentMatchText.Text =
-                L(
-                    $"Selected: {candidate}",
-                    $"已选择：{candidate}");
-
-            AddActivity(
-                L(
-                    "Match selected",
-                    "已选择匹配"),
-                $"{item.Title} → {candidate.TrackId}");
-
-            ShowInfo(
-                InfoBarSeverity.Success,
-                L(
-                    "Match saved",
-                    "匹配已保存"),
-                L(
-                    "The next sync will use this NetEase track.",
-                    "下次同步会使用这个网易云歌曲。"));
-        }
-        catch (Exception exception)
+        updated = updated with
         {
-            HandleUiException(
-                L(
-                    "Could not save the selected match.",
-                    "无法保存所选匹配。"),
-                exception);
-        }
-        finally
-        {
-            UseSelectedMatchButton.IsEnabled =
-                NeteaseCandidatesList
-                    .SelectedItem is not null;
-        }
+            SourceSize =
+                source.Length,
+            SourceLastWriteUtcTicks =
+                source.LastWriteTimeUtc
+                    .Ticks,
+            QuickHash = quickHash,
+            Recognition =
+                RecognitionState.Matched,
+            RecognitionCheckedAt =
+                DateTimeOffset.UtcNow,
+            NeteaseSongId =
+                candidate.TrackId,
+            NeteaseTrackName =
+                candidate.Name,
+            NeteaseTrackArtist =
+                candidate.Artist,
+            NeteaseTrackAlbum =
+                candidate.Album,
+            Lyrics =
+                LyricsState.Unknown,
+            LyricsCheckedAt = null,
+            LyricsFingerprint = null,
+            RecipeVersion =
+                string.Empty,
+            ProcessedAt =
+                DateTimeOffset.UtcNow,
+        };
+
+        _state.Tracks[
+            item.Entry.SourcePath] =
+            updated;
+
+        await _stateStore.SaveAsync(
+            _state);
+
+        CurrentMatchText.Text =
+            GetCachedMatchText(
+                item.Entry.SourcePath);
+
+        SyncButton.IsEnabled = true;
+
+        ShowInfo(
+            InfoBarSeverity.Success,
+            L(
+                "Match saved",
+                "匹配已保存"),
+            L(
+                "The next sync will use the selected NetEase track.",
+                "下次同步会使用所选的网易云歌曲。"));
     }
 
     private string GetCachedMatchText(
@@ -1525,57 +2058,347 @@ public sealed partial class MainWindow : Window
                 is not long songId)
         {
             return L(
-                "No match cached.",
-                "尚未缓存匹配。");
+                "No NetEase match cached.",
+                "尚未缓存网易云匹配。");
         }
 
-        return L(
-            $"Cached NetEase ID: {songId}",
-            $"已缓存网易云 ID：{songId}");
+        string artist =
+            state.NeteaseTrackArtist
+            ?? _selectedLibraryItem?.Artist
+            ?? string.Empty;
+        string title =
+            state.NeteaseTrackName
+            ?? _selectedLibraryItem?.Title
+            ?? $"#{songId}";
+
+        return IsChinese
+            ? $"{artist} - {title}（缓存 ID: {songId}）"
+            : $"{artist} - {title} (cached ID: {songId})";
     }
 
-    private void ResetCandidateArea()
+    private void LibraryList_RightTapped(
+        object sender,
+        RightTappedRoutedEventArgs e)
     {
-        NeteaseCandidatesList.Items.Clear();
-        CandidateStatusText.Text =
-            string.Empty;
-        CandidateLyricsPreviewText.Text =
-            L(
-                "Find matches to compare NetEase candidates.",
-                "搜索匹配后可比较网易云候选。");
-        UseSelectedMatchButton.IsEnabled =
-            false;
+        if (e.OriginalSource
+                is FrameworkElement element
+            && element.DataContext
+                is LibraryDisplayItem item)
+        {
+            LibraryList.SelectedItem = item;
+            _contextLibraryItem = item;
+        }
+        else
+        {
+            _contextLibraryItem =
+                LibraryList.SelectedItem
+                    as LibraryDisplayItem;
+        }
     }
 
-    private void ResetTrackDetails()
+    private void TrackContextMenu_Opening(
+        object sender,
+        object e)
     {
-        TrackTitleText.Text =
+        LibraryDisplayItem? item =
+            _contextLibraryItem
+            ?? LibraryList.SelectedItem
+                as LibraryDisplayItem;
+
+        bool hasItem =
+            item is not null;
+        bool hasDestination =
+            item?.Entry.DestinationPath
+                is string destination
+            && File.Exists(destination);
+
+        ContextOpenSourceItem.IsEnabled =
+            hasItem;
+        ContextCopySourceItem.IsEnabled =
+            hasItem;
+        ContextFindMatchItem.IsEnabled =
+            hasItem;
+        ContextOpenDestinationItem.IsEnabled =
+            hasDestination;
+        ContextCopyDestinationItem.IsEnabled =
+            item?.Entry.DestinationPath
+                is not null;
+    }
+
+    private void ContextOpenSourceItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (GetContextItem()
+            is LibraryDisplayItem item)
+        {
+            OpenInExplorer(
+                item.Entry.SourcePath);
+        }
+    }
+
+    private void ContextOpenDestinationItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (GetContextItem()
+                ?.Entry.DestinationPath
+            is string path)
+        {
+            OpenInExplorer(path);
+        }
+    }
+
+    private void ContextCopySourceItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (GetContextItem()
+            is LibraryDisplayItem item)
+        {
+            CopyText(
+                item.Entry.SourcePath);
+        }
+    }
+
+    private void ContextCopyDestinationItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (GetContextItem()
+                ?.Entry.DestinationPath
+            is string path)
+        {
+            CopyText(path);
+        }
+    }
+
+    private async void ContextFindMatchItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (GetContextItem()
+            is LibraryDisplayItem item)
+        {
+            LibraryList.SelectedItem =
+                item;
+            await ShowMatchDialogAsync(
+                item);
+        }
+    }
+
+    private LibraryDisplayItem?
+        GetContextItem() =>
+        _contextLibraryItem
+        ?? LibraryList.SelectedItem
+            as LibraryDisplayItem;
+
+    private static void CopyText(
+        string text)
+    {
+        DataPackage package = new();
+        package.SetText(text);
+        Clipboard.SetContent(package);
+        Clipboard.Flush();
+    }
+
+    private static void OpenInExplorer(
+        string path)
+    {
+        if (File.Exists(path))
+        {
+            Process.Start(
+                new ProcessStartInfo
+                {
+                    FileName =
+                        "explorer.exe",
+                    Arguments =
+                        $"/select,\"{path}\"",
+                    UseShellExecute =
+                        true,
+                });
+            return;
+        }
+
+        string directory =
+            Directory.Exists(path)
+                ? path
+                : Path.GetDirectoryName(path)
+                    ?? path;
+
+        Process.Start(
+            new ProcessStartInfo
+            {
+                FileName = directory,
+                UseShellExecute = true,
+            });
+    }
+
+    private PlaylistDisplayItem[]
+        BuildPlaylists(
+            MusicLoomSettings settings,
+            LibraryPlan plan)
+    {
+        string root =
+            settings.Path
+                .SourcePlaylistDirectory;
+
+        if (string.IsNullOrWhiteSpace(root)
+            || !Directory.Exists(root))
+        {
+            return [];
+        }
+
+        Dictionary<string, PlanEntry>
+            trackLookup =
+                plan.Entries.ToDictionary(
+                    static entry =>
+                        Path.GetFullPath(
+                            entry.SourcePath),
+                    StringComparer
+                        .OrdinalIgnoreCase);
+
+        Dictionary<string, string>
+            destinations =
+                plan.Playlists.ToDictionary(
+                    static playlist =>
+                        Path.GetFullPath(
+                            playlist.SourcePath),
+                    static playlist =>
+                        playlist.DestinationPath,
+                    StringComparer
+                        .OrdinalIgnoreCase);
+
+        List<PlaylistDisplayItem> result =
+            [];
+
+        foreach (string playlistPath
+            in Directory.EnumerateFiles(
+                root,
+                "*.m3u",
+                SearchOption.TopDirectoryOnly)
+                .Order(
+                    StringComparer
+                        .CurrentCultureIgnoreCase))
+        {
+            IReadOnlyList<string> paths =
+                PlaylistMapper.ParseM3u(
+                    File.ReadAllLines(
+                        playlistPath));
+
+            List<PlaylistTrackDisplayItem>
+                tracks = [];
+
+            foreach (string rawPath in paths)
+            {
+                string normalized;
+                try
+                {
+                    normalized =
+                        Path.GetFullPath(
+                            rawPath);
+                }
+                catch
+                {
+                    normalized =
+                        rawPath;
+                }
+
+                if (trackLookup.TryGetValue(
+                        normalized,
+                        out PlanEntry? entry))
+                {
+                    tracks.Add(
+                        new PlaylistTrackDisplayItem(
+                            entry.Metadata?.Title
+                            ?? Path.GetFileNameWithoutExtension(
+                                entry.SourcePath),
+                            entry.Metadata?.AlbumArtist
+                            ?? entry.Metadata?.Artist
+                            ?? string.Empty,
+                            entry.SourcePath));
+                }
+                else
+                {
+                    tracks.Add(
+                        new PlaylistTrackDisplayItem(
+                            Path.GetFileNameWithoutExtension(
+                                rawPath),
+                            string.Empty,
+                            rawPath));
+                }
+            }
+
+            destinations.TryGetValue(
+                Path.GetFullPath(
+                    playlistPath),
+                out string? destination);
+
+            result.Add(
+                new PlaylistDisplayItem(
+                    Path.GetFileNameWithoutExtension(
+                        playlistPath),
+                    playlistPath,
+                    destination
+                    ?? Path.Combine(
+                        settings.Path
+                            .DestinationDirectory,
+                        Path.GetFileNameWithoutExtension(
+                            playlistPath)
+                        + ".txt"),
+                    tracks));
+        }
+
+        return [.. result];
+    }
+
+    private void PopulatePlaylists(
+        IEnumerable<PlaylistDisplayItem>
+            playlists)
+    {
+        _playlists.Clear();
+        _playlists.AddRange(playlists);
+        PlaylistsList.ItemsSource =
+            _playlists.ToArray();
+
+        if (_playlists.Count > 0)
+        {
+            PlaylistsList.SelectedIndex = 0;
+        }
+        else
+        {
+            PlaylistTitleText.Text =
+                L(
+                    "No playlists",
+                    "没有播放列表");
+            PlaylistMetaText.Text =
+                L(
+                    "Configure a MusicBee playlist folder in Settings.",
+                    "请在“设置”中配置 MusicBee 播放列表目录。");
+            PlaylistTracksList.ItemsSource =
+                null;
+        }
+    }
+
+    private void PlaylistsList_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (PlaylistsList.SelectedItem
+            is not PlaylistDisplayItem
+                playlist)
+        {
+            return;
+        }
+
+        PlaylistTitleText.Text =
+            playlist.Name;
+        PlaylistMetaText.Text =
             L(
-                "Select a track",
-                "选择一首歌曲");
-        TrackArtistText.Text = "—";
-        TrackAlbumText.Text = "—";
-        TrackStatusText.Text = "—";
-        TrackSourcePathText.Text =
-            string.Empty;
-        TrackDestinationPathText.Text =
-            string.Empty;
-        CoverImage.Source = null;
-        CoverPlaceholderText.Visibility =
-            Visibility.Visible;
-        LyricsPreviewText.Text =
-            L(
-                "Select a track to inspect its lyrics.",
-                "选择歌曲后可查看歌词。");
-        LyricsSourceText.Text =
-            string.Empty;
-        CurrentMatchText.Text =
-            L(
-                "No match cached.",
-                "尚未缓存匹配。");
-        FindMatchesButton.IsEnabled =
-            false;
-        ResetCandidateArea();
+                $"{playlist.TrackCount:N0} tracks · {playlist.SourcePath}",
+                $"{playlist.TrackCount:N0} 首歌曲 · {playlist.SourcePath}");
+        PlaylistTracksList.ItemsSource =
+            playlist.Tracks;
     }
 
     private async void BrowseSourceButton_Click(
@@ -1584,24 +2407,22 @@ public sealed partial class MainWindow : Window
     {
         string? path =
             await PickFolderAsync();
-
         if (path is not null)
         {
             SourcePathBox.Text = path;
         }
     }
 
-    private async void
-        BrowseDestinationButton_Click(
-            object sender,
-            RoutedEventArgs e)
+    private async void BrowseDestinationButton_Click(
+        object sender,
+        RoutedEventArgs e)
     {
         string? path =
             await PickFolderAsync();
-
         if (path is not null)
         {
-            DestinationPathBox.Text = path;
+            DestinationPathBox.Text =
+                path;
         }
     }
 
@@ -1611,7 +2432,6 @@ public sealed partial class MainWindow : Window
     {
         string? path =
             await PickFolderAsync();
-
         if (path is not null)
         {
             PlaylistSourcePathBox.Text =
@@ -1619,24 +2439,20 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async Task<string?>
-        PickFolderAsync()
+    private async Task<string?> PickFolderAsync()
     {
         try
         {
             FolderPicker picker = new()
             {
                 SuggestedStartLocation =
-                    PickerLocationId
-                        .MusicLibrary,
+                    PickerLocationId.MusicLibrary,
             };
-
             picker.FileTypeFilter.Add("*");
 
             nint hwnd =
                 WinRT.Interop.WindowNative
                     .GetWindowHandle(this);
-
             WinRT.Interop
                 .InitializeWithWindow
                 .Initialize(
@@ -1661,77 +2477,173 @@ public sealed partial class MainWindow : Window
                     "Could not open the folder picker.",
                     "无法打开文件夹选择器。"),
                 exception);
-
             return null;
         }
     }
 
-    private async void SaveSettingsButton_Click(
+    private void OpenSourceButton_Click(
         object sender,
-        RoutedEventArgs e)
+        RoutedEventArgs e) =>
+        TryOpenConfiguredDirectory(
+            SourcePathBox.Text);
+
+    private void OpenDestinationSettingButton_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        TryOpenConfiguredDirectory(
+            DestinationPathBox.Text);
+
+    private void OpenPlaylistButton_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        TryOpenConfiguredDirectory(
+            PlaylistSourcePathBox.Text);
+
+    private static void
+        TryOpenConfiguredDirectory(
+            string path)
+    {
+        if (string.IsNullOrWhiteSpace(
+                path))
+        {
+            return;
+        }
+
+        string full =
+            Path.GetFullPath(path);
+
+        if (!Directory.Exists(full))
+        {
+            return;
+        }
+
+        Process.Start(
+            new ProcessStartInfo
+            {
+                FileName = full,
+                UseShellExecute = true,
+            });
+    }
+
+    private void SettingsControl_Changed(
+        object sender,
+        TextChangedEventArgs e) =>
+        ScheduleSettingsSave();
+
+    private void SettingsControl_Changed(
+        object sender,
+        RoutedEventArgs e) =>
+        ScheduleSettingsSave();
+
+    private void SettingsControl_Changed(
+        object sender,
+        SelectionChangedEventArgs e) =>
+        ScheduleSettingsSave();
+
+    private void LyricsRefreshHoursBox_ValueChanged(
+        NumberBox sender,
+        NumberBoxValueChangedEventArgs args) =>
+        ScheduleSettingsSave();
+
+    private void ScheduleSettingsSave()
+    {
+        if (_loadingSettings)
+        {
+            return;
+        }
+
+        _settingsSaveCancellation
+            ?.Cancel();
+        _settingsSaveCancellation
+            ?.Dispose();
+
+        CancellationTokenSource cts =
+            new();
+        _settingsSaveCancellation =
+            cts;
+
+        SettingsStatusText.Text =
+            L(
+                "Saving…",
+                "正在保存……");
+
+        _ = SaveSettingsAfterDelayAsync(
+            cts.Token);
+    }
+
+    private async Task
+        SaveSettingsAfterDelayAsync(
+            CancellationToken cancellationToken)
     {
         try
         {
+            await Task.Delay(
+                450,
+                cancellationToken);
+
             MusicLoomSettings settings =
                 BuildSettingsFromForm();
 
-            if (!Directory.Exists(
-                    settings.Path
-                        .SourceDirectory))
-            {
-                throw new
-                    DirectoryNotFoundException(
-                        L(
-                            "The source library does not exist.",
-                            "源音乐库不存在。"));
-            }
-
-            LibraryPathSafety
-                .ValidateStatePath(
-                    settings,
-                    StatePath);
+            bool planChanged =
+                _settings is null
+                || SettingsAffectPlan(
+                    _settings,
+                    settings);
 
             await SettingsLoader.SaveAsync(
                 ConfigPath,
-                settings);
+                settings,
+                cancellationToken);
 
             _settings = settings;
             _uiLanguage =
                 NormalizeLanguage(
                     settings.Ui.Language);
+            _accentColor =
+                settings.Ui.AccentColor;
 
+            ApplyAppearance(settings);
             ApplyLanguage();
-            PopulateSettingsForm(settings);
 
-            _plan = null;
-            _allLibraryItems.Clear();
-            UpdateLibraryEmptyState();
-            ResetTrackDetails();
+            if (planChanged
+                && _plan is not null)
+            {
+                SyncButton.IsEnabled = false;
+                OperationStatusText.Text =
+                    L(
+                        "Settings changed · refresh the library.",
+                        "设置已更改 · 请刷新音乐库。");
+            }
 
             SettingsStatusText.Text =
                 L(
-                    "Settings saved. Return to Library and scan.",
-                    "设置已保存。返回“音乐库”并开始扫描。");
+                    "Saved automatically.",
+                    "已自动保存。");
 
-            ShowInfo(
-                InfoBarSeverity.Success,
-                L(
-                    "Settings saved",
-                    "设置已保存"),
-                L(
-                    "The library is ready to scan.",
-                    "音乐库已可以开始扫描。"));
-
-            NavigateTo("library");
+            UpdateLibraryEmptyState();
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception exception)
         {
-            HandleUiException(
-                L(
-                    "Could not save settings.",
-                    "无法保存设置。"),
+            SettingsStatusText.Text =
+                UserFacingErrors.Describe(
+                    exception);
+            AppDiagnostics.LogException(
+                "Could not auto-save settings.",
                 exception);
         }
+    }
+
+    private static bool SettingsAffectPlan(
+        MusicLoomSettings left,
+        MusicLoomSettings right)
+    {
+        return left.Path
+                != right.Path
+            || left.Organizer
+                != right.Organizer;
     }
 
     private MusicLoomSettings
@@ -1806,6 +2718,13 @@ public sealed partial class MainWindow : Window
                 Language =
                     NormalizeLanguage(
                         language),
+                AcrylicEnabled =
+                    AcrylicToggle.IsOn,
+                AccentColor =
+                    string.IsNullOrWhiteSpace(
+                        _accentColor)
+                        ? "system"
+                        : _accentColor,
             },
         };
     }
@@ -1813,95 +2732,157 @@ public sealed partial class MainWindow : Window
     private void PopulateSettingsForm(
         MusicLoomSettings settings)
     {
-        SourcePathBox.Text =
-            settings.Path.SourceDirectory;
-        DestinationPathBox.Text =
-            settings.Path.DestinationDirectory;
-        PlaylistSourcePathBox.Text =
-            settings.Path
-                .SourcePlaylistDirectory;
-        PlaylistBaseBox.Text =
-            settings.Path
-                .DestinationPlaylistBase;
+        _loadingSettings = true;
+        try
+        {
+            SourcePathBox.Text =
+                settings.Path
+                    .SourceDirectory;
+            DestinationPathBox.Text =
+                settings.Path
+                    .DestinationDirectory;
+            PlaylistSourcePathBox.Text =
+                settings.Path
+                    .SourcePlaylistDirectory;
+            PlaylistBaseBox.Text =
+                settings.Path
+                    .DestinationPlaylistBase;
 
-        LyricsEnabledToggle.IsOn =
-            settings.Organizer.Lyrics
-                .Enabled;
-        LyricsOverrideToggle.IsOn =
-            settings.Organizer.Lyrics
-                .OverrideExisting;
-
-        LyricsRefreshHoursBox.Value =
-            settings.Organizer.Lyrics
-                    .RefreshIntervalHours
-                > 0
-                    ? settings.Organizer
-                        .Lyrics
-                        .RefreshIntervalHours
-                    : 24;
-
-        string storage =
-            LyricsStorageModes.Normalize(
+            LyricsEnabledToggle.IsOn =
                 settings.Organizer.Lyrics
-                    .StorageMode);
+                    .Enabled;
+            LyricsOverrideToggle.IsOn =
+                settings.Organizer.Lyrics
+                    .OverrideExisting;
 
-        LyricsStorageModeBox
-            .SelectedIndex =
-                storage
-                == LyricsStorageModes.Sidecar
+            LyricsRefreshHoursBox.Value =
+                settings.Organizer.Lyrics
+                        .RefreshIntervalHours
+                    > 0
+                        ? settings.Organizer
+                            .Lyrics
+                            .RefreshIntervalHours
+                        : 24;
+
+            string storage =
+                LyricsStorageModes.Normalize(
+                    settings.Organizer.Lyrics
+                        .StorageMode);
+            LyricsStorageModeBox
+                .SelectedIndex =
+                    storage
+                        == LyricsStorageModes
+                            .Sidecar
+                        ? 1
+                        : 0;
+
+            string language =
+                NormalizeLanguage(
+                    settings.Ui.Language);
+            LanguageBox.SelectedIndex =
+                language == "zh-CN"
                     ? 1
                     : 0;
 
-        string language =
-            NormalizeLanguage(
-                settings.Ui.Language);
-
-        LanguageBox.SelectedIndex =
-            language == "zh-CN"
-                ? 1
-                : 0;
-
-        SettingsStorageText.Text =
-            L(
-                $"Settings: {ConfigPath}\nState: {StatePath}",
-                $"设置：{ConfigPath}\n状态：{StatePath}");
+            AcrylicToggle.IsOn =
+                settings.Ui
+                    .AcrylicEnabled;
+            _accentColor =
+                string.IsNullOrWhiteSpace(
+                    settings.Ui.AccentColor)
+                    ? "system"
+                    : settings.Ui.AccentColor;
+        }
+        finally
+        {
+            _loadingSettings = false;
+        }
     }
 
-    private void
-        OpenDestinationButton_Click(
-            object sender,
-            RoutedEventArgs e)
+    private async void ChooseAccentButton_Click(
+        object sender,
+        RoutedEventArgs e)
     {
-        if (_settings is not
-            MusicLoomSettings settings)
+        Color initial =
+            AppearanceManager.TryParseColor(
+                _accentColor,
+                out Color custom)
+                ? custom
+                : Color.FromArgb(
+                    255,
+                    0,
+                    120,
+                    212);
+
+        ColorPicker picker = new()
         {
-            return;
+            Color = initial,
+            IsAlphaEnabled = false,
+            IsColorChannelTextInputVisible =
+                true,
+            IsHexInputVisible = true,
+        };
+
+        ContentDialog dialog = new()
+        {
+            XamlRoot =
+                ((FrameworkElement)Content)
+                    .XamlRoot,
+            Title =
+                L(
+                    "Accent color",
+                    "主题色"),
+            PrimaryButtonText =
+                L("Use color", "使用此颜色"),
+            CloseButtonText =
+                L("Cancel", "取消"),
+            Content = picker,
+        };
+
+        if (await dialog.ShowAsync()
+            == ContentDialogResult.Primary)
+        {
+            _accentColor =
+                AppearanceManager.ToHex(
+                    picker.Color);
+
+            if (_settings is not null)
+            {
+                ApplyAppearance(
+                    BuildSettingsFromForm());
+            }
+
+            ScheduleSettingsSave();
+        }
+    }
+
+    private void ResetAccentButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        _accentColor = "system";
+
+        if (_settings is not null)
+        {
+            ApplyAppearance(
+                BuildSettingsFromForm());
         }
 
-        TryOpenDirectory(
-            settings.Path
-                .DestinationDirectory,
-            L(
-                "destination library",
-                "目标音乐库"));
+        ScheduleSettingsSave();
     }
 
     private void OpenSettingsButton_Click(
         object sender,
-        RoutedEventArgs e)
-    {
+        RoutedEventArgs e) =>
         NavigateTo("settings");
-    }
 
-    private void
-        OpenLogFolderButton_Click(
-            object sender,
-            RoutedEventArgs e)
+    private void OpenLogFolderButton_Click(
+        object sender,
+        RoutedEventArgs e)
     {
         try
         {
-            AppDiagnostics
-                .OpenLogDirectory();
+            AppDiagnostics.OpenLogDirectory();
         }
         catch (Exception exception)
         {
@@ -1913,18 +2894,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void
-        OpenDataFolderButton_Click(
-            object sender,
-            RoutedEventArgs e)
-    {
-        TryOpenDirectory(
-            AppDiagnostics.DataDirectory,
-            L(
-                "MusicLoom data folder",
-                "MusicLoom 数据文件夹"));
-    }
-
     private void ClearActivityButton_Click(
         object sender,
         RoutedEventArgs e)
@@ -1933,23 +2902,21 @@ public sealed partial class MainWindow : Window
         RefreshActivityList();
     }
 
-    private void
-        Navigation_SelectionChanged(
-            NavigationView sender,
-            NavigationViewSelectionChangedEventArgs
-                args)
+    private void Navigation_SelectionChanged(
+        NavigationView sender,
+        NavigationViewSelectionChangedEventArgs
+            args)
     {
         if (args.SelectedItemContainer
                 ?.Tag
-            is not string tag)
+            is string tag)
         {
-            return;
+            ShowPage(tag);
         }
-
-        ShowPage(tag);
     }
 
-    private void NavigateTo(string tag)
+    private void NavigateTo(
+        string tag)
     {
         NavigationViewItem? target =
             Navigation.MenuItems
@@ -1971,18 +2938,21 @@ public sealed partial class MainWindow : Window
         ShowPage(tag);
     }
 
-    private void ShowPage(string tag)
+    private void ShowPage(
+        string tag)
     {
         LibraryPage.Visibility =
             tag == "library"
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-
+        PlaylistsPage.Visibility =
+            tag == "playlists"
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         ActivityPage.Visibility =
             tag == "activity"
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-
         SettingsPage.Visibility =
             tag == "settings"
                 ? Visibility.Visible
@@ -1995,7 +2965,8 @@ public sealed partial class MainWindow : Window
     {
         _busy = busy;
 
-        ScanButton.IsEnabled = !busy;
+        ScanButton.IsEnabled =
+            !busy;
         SyncButton.IsEnabled =
             !busy
             && _plan is
@@ -2003,59 +2974,25 @@ public sealed partial class MainWindow : Window
                     PendingCount: > 0,
                     ErrorCount: 0,
                 };
-        OpenDestinationButton.IsEnabled =
-            !busy
-            && _settings is
-                MusicLoomSettings settings
-            && Directory.Exists(
-                settings.Path
-                    .DestinationDirectory);
-
         CancelButton.Visibility =
             busy
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-        CancelButton.IsEnabled = busy;
+        CancelButton.IsEnabled =
+            busy;
 
         LibrarySearchBox.IsEnabled =
             !busy;
         LibraryFilterBox.IsEnabled =
             !busy;
+        LibrarySortBox.IsEnabled =
+            !busy;
         LibraryList.IsEnabled =
             !busy;
-        FindMatchesButton.IsEnabled =
+        OpenMatchDialogButton.IsEnabled =
             !busy
             && _selectedLibraryItem
                 is not null;
-        UseSelectedMatchButton.IsEnabled =
-            !busy
-            && NeteaseCandidatesList
-                .SelectedItem
-                is not null;
-
-        SaveSettingsButton.IsEnabled =
-            !busy;
-        BrowseSourceButton.IsEnabled =
-            !busy;
-        BrowseDestinationButton.IsEnabled =
-            !busy;
-        BrowsePlaylistButton.IsEnabled =
-            !busy;
-        SourcePathBox.IsEnabled = !busy;
-        DestinationPathBox.IsEnabled =
-            !busy;
-        PlaylistSourcePathBox.IsEnabled =
-            !busy;
-        PlaylistBaseBox.IsEnabled = !busy;
-        LyricsEnabledToggle.IsEnabled =
-            !busy;
-        LyricsOverrideToggle.IsEnabled =
-            !busy;
-        LyricsStorageModeBox.IsEnabled =
-            !busy;
-        LyricsRefreshHoursBox.IsEnabled =
-            !busy;
-        LanguageBox.IsEnabled = !busy;
 
         OperationProgressBar.Visibility =
             busy
@@ -2094,7 +3031,6 @@ public sealed partial class MainWindow : Window
 
         OperationProgressBar
             .IsIndeterminate = false;
-
         OperationProgressBar.Value =
             Math.Clamp(
                 processed * 100.0 / total,
@@ -2134,22 +3070,15 @@ public sealed partial class MainWindow : Window
 
     private void RefreshActivityList()
     {
-        ActivityList.Items.Clear();
-
-        if (_activityItems.Count == 0)
-        {
-            ActivityList.Items.Add(
-                L(
-                    "No activity yet.",
-                    "暂无活动记录。"));
-            return;
-        }
-
-        foreach (string item
-            in _activityItems)
-        {
-            ActivityList.Items.Add(item);
-        }
+        ActivityList.ItemsSource =
+            _activityItems.Count == 0
+                ? new[]
+                {
+                    L(
+                        "No activity yet.",
+                        "暂无活动记录。"),
+                }
+                : _activityItems.ToArray();
     }
 
     private void HandleUiException(
@@ -2161,9 +3090,7 @@ public sealed partial class MainWindow : Window
                 exception);
 
         AddActivity(
-            L(
-                "Error",
-                "错误"),
+            L("Error", "错误"),
             message);
 
         AppDiagnostics.LogException(
@@ -2176,52 +3103,22 @@ public sealed partial class MainWindow : Window
             message);
     }
 
-    private void TryOpenDirectory(
-        string path,
-        string description)
-    {
-        try
-        {
-            Directory.CreateDirectory(path);
-
-            Process.Start(
-                new ProcessStartInfo
-                {
-                    FileName = path,
-                    UseShellExecute = true,
-                });
-        }
-        catch (Exception exception)
-        {
-            HandleUiException(
-                L(
-                    $"Could not open {description}.",
-                    $"无法打开{description}。"),
-                exception);
-        }
-    }
-
     private string StatusLabel(
         string kind) =>
         kind switch
         {
             "synced" =>
                 L(
-                    "Up to date",
+                    "Synced",
                     "已同步"),
-            "copy" =>
-                L(
-                    "Needs copy",
-                    "需要复制"),
-            "enrich" =>
-                L(
-                    "Needs lyrics/state refresh",
-                    "需要刷新歌词/状态"),
             "error" =>
                 L(
                     "Error",
                     "错误"),
-            _ => kind,
+            _ =>
+                L(
+                    "Pending",
+                    "待同步"),
         };
 
     private string FriendlyStage(
@@ -2275,6 +3172,8 @@ public sealed partial class MainWindow : Window
     {
         LibraryNav.Content =
             L("Library", "音乐库");
+        PlaylistsNav.Content =
+            L("Playlists", "音乐列表");
         ActivityNav.Content =
             L("Activity", "活动");
         SettingsNav.Content =
@@ -2289,45 +3188,21 @@ public sealed partial class MainWindow : Window
                 "Browse, inspect and sync your local collection.",
                 "浏览、检查并同步你的本地音乐收藏。");
 
-        ScanButton.Content =
-            _plan is null
-                ? L(
-                    "Scan library",
-                    "扫描音乐库")
-                : L(
-                    "Refresh library",
-                    "刷新音乐库");
-
-        SyncButton.Content =
+        ScanButtonText.Text =
+            L(
+                "Refresh library",
+                "刷新音乐库");
+        SyncButtonText.Text =
             L(
                 "Sync pending",
                 "同步待处理");
-
-        CancelButton.Content =
+        CancelButtonText.Text =
             L("Cancel", "取消");
-        OpenDestinationButton.Content =
-            L(
-                "Open destination",
-                "打开目标目录");
-
-        TracksLabelText.Text =
-            L("Tracks", "歌曲");
-        PendingLabelText.Text =
-            L("Pending tracks", "待处理歌曲");
-        AncillaryLabelText.Text =
-            L("Extra updates", "附加更新");
-        ErrorsLabelText.Text =
-            L("Errors", "错误");
-        LastScanLabelText.Text =
-            L(
-                "Last scan",
-                "上次扫描");
 
         LibrarySearchBox.PlaceholderText =
             L(
                 "Search title, artist, album or path",
                 "搜索歌曲、艺术家、专辑或路径");
-
         LibraryFilterAllItem.Content =
             L(
                 "All tracks",
@@ -2335,44 +3210,110 @@ public sealed partial class MainWindow : Window
         LibraryFilterPendingItem.Content =
             L(
                 "Pending",
-                "待处理");
+                "待同步");
         LibraryFilterSyncedItem.Content =
             L(
-                "Up to date",
+                "Synced",
                 "已同步");
         LibraryFilterErrorsItem.Content =
             L(
                 "Errors",
                 "错误");
-
-        LyricsTab.Header =
+        SortTitleItem.Content =
             L(
-                "Lyrics",
-                "歌词");
+                "Sort by title",
+                "按歌曲名排序");
+        SortAlbumItem.Content =
+            L(
+                "Sort by album",
+                "按专辑排序");
+        SortArtistItem.Content =
+            L(
+                "Sort by artist",
+                "按艺术家排序");
+
+        ToolTipService.SetToolTip(
+            CloseDetailButton,
+            L(
+                "Close details",
+                "关闭详情"));
+        LyricsTab.Header =
+            L("Lyrics", "歌词");
         MatchTab.Header =
             L(
                 "NetEase match",
                 "网易云匹配");
-        FileTab.Header =
+        PropertiesTab.Header =
             L(
-                "File",
-                "文件");
+                "Properties",
+                "属性");
+        MatchHelpText.Text =
+            L(
+                "Use fingerprint recognition or search by artist and title.",
+                "可以使用音频指纹识别，或按艺术家和歌曲名搜索。");
+        OpenMatchDialogButtonText.Text =
+            L(
+                "Find or change match…",
+                "查找或更改匹配……");
+
         SourcePathHeadingText.Text =
-            L(
-                "Source",
-                "源文件");
+            L("Source", "源文件");
         DestinationPathHeadingText.Text =
             L(
                 "Destination",
                 "目标文件");
-        FindMatchesButton.Content =
+        FormatHeadingText.Text =
+            L("Format", "格式");
+        SizeHeadingText.Text =
             L(
-                "Find matches",
-                "查找匹配");
-        UseSelectedMatchButton.Content =
+                "Source size",
+                "源文件大小");
+        ModifiedHeadingText.Text =
             L(
-                "Use selected match",
-                "使用所选匹配");
+                "Modified",
+                "修改时间");
+        CreatedHeadingText.Text =
+            L(
+                "Created",
+                "创建时间");
+        DestinationSizeHeadingText.Text =
+            L(
+                "Destination size",
+                "目标文件大小");
+        DestinationModifiedHeadingText.Text =
+            L(
+                "Destination modified",
+                "目标修改时间");
+
+        ContextOpenSourceItem.Text =
+            L(
+                "Open source folder",
+                "打开源文件位置");
+        ContextOpenDestinationItem.Text =
+            L(
+                "Open destination folder",
+                "打开目标文件位置");
+        ContextCopySourceItem.Text =
+            L(
+                "Copy source path",
+                "复制源文件路径");
+        ContextCopyDestinationItem.Text =
+            L(
+                "Copy destination path",
+                "复制目标文件路径");
+        ContextFindMatchItem.Text =
+            L(
+                "Find NetEase match…",
+                "查找网易云匹配……");
+
+        PlaylistsTitleText.Text =
+            L(
+                "Playlists",
+                "音乐列表");
+        PlaylistsSubtitleText.Text =
+            L(
+                "Browse the MusicBee playlists that MusicLoom exports for your phone.",
+                "浏览 MusicLoom 为手机导出的 MusicBee 播放列表。");
 
         ActivityTitleText.Text =
             L(
@@ -2397,65 +3338,78 @@ public sealed partial class MainWindow : Window
                 "设置");
         SettingsSubtitleText.Text =
             L(
-                "Configure the library once; MusicLoom stores settings outside the app folder.",
-                "只需配置一次音乐库；MusicLoom 会把设置保存在程序目录之外。");
-
+                "Changes are saved automatically.",
+                "更改会自动保存。");
         LibrarySettingsHeadingText.Text =
             L(
                 "Library",
                 "音乐库");
-
-        SourcePathBox.Header =
-            L(
-                "Source library",
-                "源音乐库");
-        SourcePathBox.PlaceholderText =
-            L(
-                "Folder containing your original music",
-                "包含原始音乐的文件夹");
-
-        DestinationPathBox.Header =
-            L(
-                "Destination library",
-                "目标音乐库");
-        DestinationPathBox.PlaceholderText =
-            L(
-                "Separate output folder",
-                "独立的输出目录");
-
-        PlaylistSourcePathBox.Header =
-            L(
-                "MusicBee playlist folder (optional)",
-                "MusicBee 播放列表目录（可选）");
-
-        PlaylistBaseBox.Header =
-            L(
-                "Playlist path on phone",
-                "手机上的播放列表路径");
-
-        BrowseSourceButton.Content =
-            L("Browse…", "浏览……");
-        BrowseDestinationButton.Content =
-            L("Browse…", "浏览……");
-        BrowsePlaylistButton.Content =
-            L("Browse…", "浏览……");
-
         LyricsSettingsHeadingText.Text =
             L(
                 "Lyrics",
                 "歌词");
-        LyricsEnabledToggle.Header =
+        AppearanceSettingsHeadingText.Text =
+            L(
+                "Appearance",
+                "外观");
+
+        SourceLibrarySettingTitle.Text =
+            L(
+                "Source library",
+                "源音乐库");
+        SourceLibrarySettingDescription.Text =
+            L(
+                "Your original music collection. MusicLoom never writes here.",
+                "你的原始音乐收藏。MusicLoom 永远不会写入这里。");
+        DestinationLibrarySettingTitle.Text =
+            L(
+                "Destination library",
+                "目标音乐库");
+        DestinationLibrarySettingDescription.Text =
+            L(
+                "The organized library MusicLoom creates.",
+                "MusicLoom 创建的整理后音乐库。");
+        PlaylistFolderSettingTitle.Text =
+            L(
+                "MusicBee playlist folder",
+                "MusicBee 播放列表目录");
+        PlaylistFolderSettingDescription.Text =
+            L(
+                "Optional folder containing .m3u playlists.",
+                "包含 .m3u 播放列表的可选目录。");
+        PlaylistBaseSettingTitle.Text =
+            L(
+                "Playlist path on phone",
+                "手机上的播放列表路径");
+        PlaylistBaseSettingDescription.Text =
+            L(
+                "Base path written into exported Salt Player playlists.",
+                "写入 Salt Player 导出播放列表的基础路径。");
+
+        FetchLyricsSettingTitle.Text =
             L(
                 "Fetch lyrics from NetEase",
                 "从网易云获取歌词");
-        LyricsOverrideToggle.Header =
+        FetchLyricsSettingDescription.Text =
+            L(
+                "Recognize tracks and cache synchronized lyrics.",
+                "识别歌曲并缓存同步歌词。");
+        OverwriteLyricsSettingTitle.Text =
             L(
                 "Overwrite existing lyrics",
                 "覆盖已有歌词");
-        LyricsStorageModeBox.Header =
+        OverwriteLyricsSettingDescription.Text =
             L(
-                "Store lyrics as",
+                "Replace lyrics already present in the destination.",
+                "替换目标文件中已经存在的歌词。");
+        LyricsStorageSettingTitle.Text =
+            L(
+                "Lyrics storage",
                 "歌词保存方式");
+        LyricsStorageSettingDescription.Text =
+            L(
+                "Choose embedded tags or sidecar .lrc files.",
+                "选择嵌入标签或独立 .lrc 文件。");
         LyricsStorageEmbeddedItem.Content =
             L(
                 "Embedded in audio file",
@@ -2464,30 +3418,63 @@ public sealed partial class MainWindow : Window
             L(
                 "Sidecar .lrc file",
                 "独立 .lrc 文件");
+        LyricsCacheSettingTitle.Text =
+            L(
+                "Lyrics cache lifetime",
+                "歌词缓存有效期");
+        LyricsCacheSettingDescription.Text =
+            L(
+                "How long a result stays fresh before MusicLoom checks again.",
+                "在 MusicLoom 再次检查前，结果保持有效的时间。");
 
-        RefreshSettingsHeadingText.Text =
+        AcrylicSettingTitle.Text =
             L(
-                "Interface",
-                "界面");
-        LyricsRefreshHoursBox.Header =
+                "Acrylic backdrop",
+                "亚克力背景");
+        AcrylicSettingDescription.Text =
             L(
-                "Lyrics cache lifetime (hours)",
-                "歌词缓存有效期（小时）");
-        LanguageBox.Header =
+                "Use desktop acrylic instead of the default Mica backdrop.",
+                "使用桌面亚克力效果代替默认的 Mica 背景。");
+        AccentSettingTitle.Text =
+            L(
+                "Accent color",
+                "主题色");
+        AccentSettingDescription.Text =
+            L(
+                "Customize MusicLoom's primary accent or follow Windows.",
+                "自定义 MusicLoom 的主题色，或跟随 Windows。");
+        ChooseAccentButton.Content =
+            L("Choose…", "选择……");
+        ResetAccentButton.Content =
+            L(
+                "Use system",
+                "跟随系统");
+        LanguageSettingTitle.Text =
             L(
                 "Interface language",
                 "界面语言");
-
-        SaveSettingsButton.Content =
+        LanguageSettingDescription.Text =
             L(
-                "Save settings",
-                "保存设置");
-        OpenDataFolderButton.Content =
-            L(
-                "Open data folder",
-                "打开数据目录");
+                "MusicLoom supports English and Simplified Chinese.",
+                "MusicLoom 支持英语和简体中文。");
 
-        UpdateLibraryEmptyState();
+        SettingsStatusText.Text =
+            L(
+                "Changes are saved automatically.",
+                "更改会自动保存。");
+
+        ShowTranslationToggle.Content =
+            ShowTranslationToggle.IsChecked
+                != false
+                ? L(
+                    "Show translation",
+                    "显示翻译")
+                : L(
+                    "Original only",
+                    "仅原文");
+
+        RefreshActivityList();
+        ApplyLibraryFilter();
     }
 
     private static string NormalizeLanguage(
@@ -2524,37 +3511,6 @@ public sealed partial class MainWindow : Window
                 : "en-US";
     }
 
-    private static string FormatLyricsForDisplay(
-        string rawLyrics)
-    {
-        if (string.IsNullOrWhiteSpace(rawLyrics))
-        {
-            return string.Empty;
-        }
-
-        LrcDocument document =
-            LrcDocument.Parse(rawLyrics);
-
-        if (document.Lines.Count == 0)
-        {
-            return rawLyrics.Trim();
-        }
-
-        string[] lines =
-            document.Lines
-                .Select(static line =>
-                    line.Text.Trim())
-                .Where(static line =>
-                    line.Length > 0)
-                .ToArray();
-
-        return lines.Length == 0
-            ? rawLyrics.Trim()
-            : string.Join(
-                Environment.NewLine,
-                lines);
-    }
-
     private static string MakeRelative(
         string root,
         string path)
@@ -2576,24 +3532,35 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private sealed record LibraryDisplayItem(
-        PlanEntry Entry,
-        string Kind,
-        string Title,
-        string Artist,
-        string Album,
-        string RelativePath,
-        string StatusText,
-        string ArtistAlbum)
+    private static string FormatBytes(
+        long bytes)
     {
-        public string SearchText =>
-            $"{Title}\n{Artist}\n{Album}\n" +
-            $"{RelativePath}\n{Entry.SourcePath}\n" +
-            $"{Entry.DestinationPath}\n{Entry.Detail}";
+        string[] suffixes =
+            ["B", "KB", "MB", "GB", "TB"];
+        double value = bytes;
+        int index = 0;
+
+        while (value >= 1024
+            && index
+                < suffixes.Length - 1)
+        {
+            value /= 1024;
+            index++;
+        }
+
+        return $"{value:0.##} {suffixes[index]}";
     }
 
     private sealed record TrackDetailPayload(
         byte[]? Artwork,
         string? Lyrics,
-        string LyricsSource);
+        string LyricsSource,
+        string SourcePath,
+        string? DestinationPath,
+        string Format,
+        string SourceSize,
+        string SourceModified,
+        string SourceCreated,
+        string DestinationSize,
+        string DestinationModified);
 }

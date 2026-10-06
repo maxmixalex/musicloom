@@ -73,6 +73,12 @@ public sealed record UiSettings
 {
     [JsonPropertyName("language")]
     public string Language { get; init; } = "system";
+
+    [JsonPropertyName("acrylicEnabled")]
+    public bool AcrylicEnabled { get; init; }
+
+    [JsonPropertyName("accentColor")]
+    public string AccentColor { get; init; } = "system";
 }
 
 

@@ -48,12 +48,17 @@ public sealed record TrackState
     public RecognitionState Recognition { get; init; }
     public DateTimeOffset? RecognitionCheckedAt { get; init; }
     public long? NeteaseSongId { get; init; }
+    public string? NeteaseTrackName { get; init; }
+    public string? NeteaseTrackArtist { get; init; }
+    public string? NeteaseTrackAlbum { get; init; }
 
     public LyricsState Lyrics { get; init; }
     public DateTimeOffset? LyricsCheckedAt { get; init; }
     public string? LyricsFingerprint { get; init; }
 
     public bool MetadataCaptured { get; init; }
+    public bool TitleCaptured { get; init; }
+    public string? Title { get; init; }
     public string? Artist { get; init; }
     public string? AlbumArtist { get; init; }
     public string? Album { get; init; }

@@ -88,13 +88,58 @@ public sealed class LibraryScanner
                         quickHash);
             }
 
-            TrackMetadata? cachedMetadata = trackState is { MetadataCaptured: true }
+            TrackMetadata? cachedMetadata = trackState is
+                { MetadataCaptured: true, TitleCaptured: true }
                 ? new TrackMetadata(
                     trackState.Artist,
                     trackState.AlbumArtist,
                     trackState.Album,
-                    trackState.HasEmbeddedArt)
+                    trackState.HasEmbeddedArt,
+                    trackState.Title)
                 : null;
+
+            // State files from earlier MusicLoom versions did not cache TITLE.
+            // Refresh that cache once without turning an otherwise up-to-date
+            // track into sync work; scanning may update the internal state
+            // cache but never writes the source library.
+            if (trackState is
+                    { MetadataCaptured: true, TitleCaptured: false }
+                && sourceVersionUnchanged)
+            {
+                try
+                {
+                    TrackMetadata refreshed =
+                        await _metadataReader.ReadAsync(
+                            sourcePath,
+                            cancellationToken);
+
+                    trackState = trackState with
+                    {
+                        TitleCaptured = true,
+                        Title = refreshed.Title,
+                        Artist = refreshed.Artist,
+                        AlbumArtist = refreshed.AlbumArtist,
+                        Album = refreshed.Album,
+                        HasEmbeddedArt = refreshed.HasEmbeddedArt,
+                    };
+                    state.Tracks[sourcePath] = trackState;
+                    cachedMetadata = refreshed;
+                }
+                catch
+                {
+                    trackState = trackState with
+                    {
+                        TitleCaptured = true,
+                    };
+                    state.Tracks[sourcePath] = trackState;
+                    cachedMetadata = new TrackMetadata(
+                        trackState.Artist,
+                        trackState.AlbumArtist,
+                        trackState.Album,
+                        trackState.HasEmbeddedArt,
+                        trackState.Title);
+                }
+            }
 
             // Source metadata remains valid even when the output recipe changes.
             // This is the critical warm path: config changes should not force us
@@ -257,7 +302,8 @@ public sealed class LibraryScanner
                     Artist: null,
                     AlbumArtist: null,
                     Album: null,
-                    HasEmbeddedArt: false);
+                    HasEmbeddedArt: false,
+                    Title: null);
                 string destinationPath = GetDestinationPath(
                     sourcePath,
                     sourceRoot,

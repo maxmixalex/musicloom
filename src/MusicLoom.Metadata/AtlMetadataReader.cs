@@ -23,7 +23,8 @@ public sealed class AtlMetadataReader : ITrackMetadataReader
             NullIfWhiteSpace(track.Artist),
             NullIfWhiteSpace(track.AlbumArtist),
             NullIfWhiteSpace(track.Album),
-            track.EmbeddedPictures.Count > 0);
+            track.EmbeddedPictures.Count > 0,
+            NullIfWhiteSpace(track.Title));
 
         return ValueTask.FromResult(metadata);
     }

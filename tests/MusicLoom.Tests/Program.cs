@@ -208,6 +208,7 @@ static async Task WarmScanSkipsMetadataAsync()
             DestinationPath = destinationPath,
             RecipeVersion = SyncRecipe.For(settings),
             MetadataCaptured = true,
+            TitleCaptured = true,
             Artist = "Artist",
             AlbumArtist = "Album Artist",
             Album = "Album",

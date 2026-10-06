@@ -1,10 +1,14 @@
 # MusicLoom
 
-MusicLoom is a local music-library organizer and synchronization tool for keeping a desktop library and a mobile-player library consistent.
+<p align="center">
+  <img src="assets/musicloom.svg" width="112" height="112" alt="MusicLoom icon" />
+</p>
+
+MusicLoom is a compiled Windows-first music-library organizer and synchronization tool for keeping a desktop library and a mobile-player library consistent.
 
 It is a compiled rewrite of a personal Python `musicorg` workflow originally built around **MusicBee → Salt Player (Android)**. The rewrite focuses first on preserving the existing organization, lyrics, cover, and playlist behavior while removing the Python/NumPy/PythonMonkey/WASM/PyNCM runtime stack and making unchanged libraries genuinely incremental.
 
-> **Status:** first-SAT candidate. Native AFP, Netease WEAPI, recipe-aware incremental state, atomic/resumable sync, legacy-compatible lyric writing for ID3/Vorbis/MP4, and a guarded WinUI 3 scan/review/apply workflow are in place.
+> **Status:** active SAT. Native AFP, Netease WEAPI, recipe-aware incremental state, atomic/resumable sync, legacy-compatible lyric writing for ID3/Vorbis/MP4, and a library-first WinUI 3 desktop UI are in place.
 
 ## Why a rewrite?
 
@@ -79,7 +83,14 @@ musicloom scan [config.json] [.musicloom/state.json]
 
 ## Windows UI
 
-The WinUI 3 app exposes the same planner as the CLI. **Scan library** is read-only. **Apply sync** is enabled only for an error-free pending plan, forces a fresh scan, shows a confirmation summary (pending tracks, actual audio copies, destination, state path, and network behavior), and then executes the shared transactional sync engine. Sync can be cancelled; completed/partial state is persisted so the next scan resumes safely.
+The WinUI 3 app is organized around the music library rather than the internal planner:
+
+- **Library** — searchable/sortable tracks with album art, sync status, resizable details, player-style lyrics, properties, context actions, and manual NetEase matching.
+- **Playlists** — browse MusicBee playlists and the tracks MusicLoom exports for Salt Player.
+- **Activity** — recent scans, syncs, recoveries, and user-visible errors.
+- **Settings** — auto-saved library, lyrics, language, Acrylic, and accent-color preferences.
+
+Scanning stays off the UI thread and never modifies the source library. Sync runs transactionally and can be cancelled; completed/partial state is checkpointed so the next refresh resumes safely.
 
 ## Configuration
 

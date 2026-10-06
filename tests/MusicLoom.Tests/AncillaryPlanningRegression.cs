@@ -116,6 +116,7 @@ internal static class AncillaryPlanningRegression
                 DestinationPath = destinationPath,
                 RecipeVersion = SyncRecipe.For(settings),
                 MetadataCaptured = true,
+                TitleCaptured = true,
                 Artist = metadata.Artist,
                 AlbumArtist = metadata.AlbumArtist,
                 Album = metadata.Album,
