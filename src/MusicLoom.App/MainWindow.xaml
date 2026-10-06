@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives"
     mc:Ignorable="d"
     Title="MusicLoom">
 
@@ -70,21 +71,21 @@
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <Button x:Name="ScanButton" Click="ScanButton_Click">
+              <Button x:Name="ScanButton" Padding="10,5" Click="ScanButton_Click">
                 <StackPanel Orientation="Horizontal" Spacing="7">
-                  <SymbolIcon Symbol="Refresh" />
+                  <SymbolIcon Symbol="Refresh" FontSize="14" />
                   <TextBlock x:Name="ScanButtonText" Text="Refresh library" />
                 </StackPanel>
               </Button>
-              <Button x:Name="SyncButton" Style="{StaticResource AccentButtonStyle}" Click="SyncButton_Click" IsEnabled="False">
+              <Button x:Name="SyncButton" Padding="10,5" Style="{StaticResource AccentButtonStyle}" Click="SyncButton_Click" IsEnabled="False">
                 <StackPanel Orientation="Horizontal" Spacing="7">
-                  <SymbolIcon Symbol="Sync" />
+                  <SymbolIcon Symbol="Sync" FontSize="14" />
                   <TextBlock x:Name="SyncButtonText" Text="Sync pending" />
                 </StackPanel>
               </Button>
-              <Button x:Name="CancelButton" Click="CancelButton_Click" Visibility="Collapsed">
+              <Button x:Name="CancelButton" Padding="10,5" Click="CancelButton_Click" Visibility="Collapsed">
                 <StackPanel Orientation="Horizontal" Spacing="7">
-                  <SymbolIcon Symbol="Cancel" />
+                  <SymbolIcon Symbol="Cancel" FontSize="14" />
                   <TextBlock x:Name="CancelButtonText" Text="Cancel" />
                 </StackPanel>
               </Button>
@@ -216,6 +217,23 @@
                       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                       <Setter Property="Padding" Value="0" />
                       <Setter Property="Margin" Value="0,1" />
+                      <Setter Property="Template">
+                        <Setter.Value>
+                          <ControlTemplate TargetType="ListViewItem">
+                            <primitives:ListViewItemPresenter
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Padding="{TemplateBinding Padding}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                SelectionIndicatorVisualEnabled="True"
+                                SelectionIndicatorMode="Inline"
+                                SelectionIndicatorBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                SelectionIndicatorPointerOverBrush="{ThemeResource AccentFillColorSecondaryBrush}"
+                                SelectionIndicatorPressedBrush="{ThemeResource AccentFillColorTertiaryBrush}" />
+                          </ControlTemplate>
+                        </Setter.Value>
+                      </Setter>
                     </Style>
                   </ListView.ItemContainerStyle>
 
@@ -307,28 +325,42 @@
                     <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
 
-                  <Border
-                      x:Name="CoverHost"
+                  <Button
+                      x:Name="CoverButton"
                       Width="132"
                       Height="132"
-                      CornerRadius="9"
-                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                      DoubleTapped="CoverHost_DoubleTapped"
-                      ToolTipService.ToolTip="Double-click to view artwork">
-                    <Grid>
-                      <Image x:Name="CoverImage" Stretch="UniformToFill" />
-                      <TextBlock
-                          x:Name="CoverPlaceholderText"
-                          Text="No artwork"
-                          HorizontalAlignment="Center"
-                          VerticalAlignment="Center"
-                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </Grid>
-                  </Border>
+                      Padding="0"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      RenderTransformOrigin="0.5,0.5"
+                      Click="CoverButton_Click"
+                      PointerEntered="CoverButton_PointerEntered"
+                      PointerExited="CoverButton_PointerExited"
+                      ToolTipService.ToolTip="Open artwork">
+                    <Button.RenderTransform>
+                      <ScaleTransform x:Name="CoverScaleTransform" ScaleX="1" ScaleY="1" />
+                    </Button.RenderTransform>
+                    <Border
+                        Width="132"
+                        Height="132"
+                        CornerRadius="9"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                      <Grid>
+                        <Image x:Name="CoverImage" Stretch="UniformToFill" />
+                        <TextBlock
+                            x:Name="CoverPlaceholderText"
+                            Text="No artwork"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      </Grid>
+                    </Border>
+                  </Button>
 
                   <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5">
                     <ScrollViewer
-                        HorizontalScrollBarVisibility="Auto"
+                        x:Name="TrackTitleScroller"
+                        HorizontalScrollBarVisibility="Hidden"
                         VerticalScrollBarVisibility="Disabled"
                         HorizontalScrollMode="Enabled"
                         VerticalScrollMode="Disabled"
@@ -351,8 +383,11 @@
                   <Button
                       x:Name="CloseDetailButton"
                       Grid.Column="2"
-                      Width="36"
-                      Height="36"
+                      Width="32"
+                      Height="32"
+                      Margin="0,-10,-10,0"
+                      HorizontalAlignment="Right"
+                      VerticalAlignment="Top"
                       Padding="0"
                       Background="Transparent"
                       BorderThickness="0"
@@ -402,14 +437,32 @@
                       <ListView
                           x:Name="LyricsList"
                           Grid.Row="1"
-                          SelectionMode="None"
+                          SelectionMode="Single"
                           IsItemClickEnabled="False"
+                          RightTapped="LyricsList_RightTapped"
                           HorizontalContentAlignment="Stretch">
                         <ListView.ItemContainerStyle>
                           <Style TargetType="ListViewItem">
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             <Setter Property="Padding" Value="0" />
                             <Setter Property="IsTabStop" Value="False" />
+                            <Setter Property="Template">
+                              <Setter.Value>
+                                <ControlTemplate TargetType="ListViewItem">
+                                  <primitives:ListViewItemPresenter
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      SelectionIndicatorVisualEnabled="True"
+                                      SelectionIndicatorMode="Inline"
+                                      SelectionIndicatorBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                      SelectionIndicatorPointerOverBrush="{ThemeResource AccentFillColorSecondaryBrush}"
+                                      SelectionIndicatorPressedBrush="{ThemeResource AccentFillColorTertiaryBrush}" />
+                                </ControlTemplate>
+                              </Setter.Value>
+                            </Setter>
                           </Style>
                         </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
