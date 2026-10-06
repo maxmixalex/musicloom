@@ -69,5 +69,5 @@ public sealed record LoggingSettings
 public sealed record UiSettings
 {
     [JsonPropertyName("language")]
-    public string Language { get; init; } = "en-US";
+    public string Language { get; init; } = "system";
 }

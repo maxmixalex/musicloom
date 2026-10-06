@@ -36,21 +36,24 @@ public static class SettingsLoader
             path + ".tmp." + Guid.NewGuid().ToString("N");
         try
         {
-            await using FileStream stream = new(
+            await using (FileStream stream = new(
                 temporary,
                 FileMode.CreateNew,
                 FileAccess.Write,
                 FileShare.None,
                 64 * 1024,
-                FileOptions.Asynchronous | FileOptions.WriteThrough);
+                FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                await JsonSerializer.SerializeAsync(
+                    stream,
+                    settings,
+                    MusicLoomJsonContext.Default.MusicLoomSettings,
+                    cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            }
 
-            await JsonSerializer.SerializeAsync(
-                stream,
-                settings,
-                MusicLoomJsonContext.Default.MusicLoomSettings,
-                cancellationToken);
-            await stream.FlushAsync(cancellationToken);
-
+            // Windows does not allow replacing/moving an open file. Dispose
+            // the temp stream before the atomic replace step.
             File.Move(temporary, path, overwrite: true);
         }
         finally

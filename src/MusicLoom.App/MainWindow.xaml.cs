@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -31,7 +32,7 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _syncCancellation;
     private bool _busy;
     private bool _initializing = true;
-    private string _uiLanguage = "en-US";
+    private string _uiLanguage = DetectSystemLanguage();
 
     public MainWindow()
     {
@@ -41,7 +42,8 @@ public sealed partial class MainWindow : Window
         StartupTrace.Mark("MainWindow.InitializeComponent.after");
 
         PlanFilterBox.SelectedIndex = 0;
-        LanguageBox.SelectedIndex = 0;
+        LanguageBox.SelectedIndex =
+            IsChinese ? 1 : 0;
         LogPathText.Text = AppDiagnostics.LogPath;
         Navigation.SelectedItem = Navigation.MenuItems[0];
 
@@ -330,13 +332,38 @@ public sealed partial class MainWindow : Window
     }
 
     private static string NormalizeLanguage(
-        string? language) =>
-        string.Equals(
-            language,
-            "zh-CN",
+        string? language)
+    {
+        if (string.Equals(
+                language,
+                "zh-CN",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "zh-CN";
+        }
+
+        if (string.Equals(
+                language,
+                "en-US",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "en-US";
+        }
+
+        return DetectSystemLanguage();
+    }
+
+    private static string DetectSystemLanguage()
+    {
+        string language =
+            CultureInfo.CurrentUICulture.Name;
+
+        return language.StartsWith(
+            "zh",
             StringComparison.OrdinalIgnoreCase)
-            ? "zh-CN"
-            : "en-US";
+                ? "zh-CN"
+                : "en-US";
+    }
 
     private void ReviewPlanButton_Click(
         object sender,
