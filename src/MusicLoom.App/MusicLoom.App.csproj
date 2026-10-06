@@ -36,6 +36,23 @@
         DestinationFiles="@(_MusicLoomWinUiResource->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
         SkipUnchangedFiles="true" />
   </Target>
+  <!--
+    Work around WindowsAppSDK #6720: dotnet publish can omit the app PRI
+    for unpackaged WinUI projects, causing a 0xC000027B startup crash.
+    Remove this target once the SDK publish path includes ProjectPriFullPath.
+  -->
+  <Target Name="AddProjectPriToResolvedFileToPublish"
+          BeforeTargets="ComputeResolvedFilesToPublishList"
+          DependsOnTargets="$(GenerateProjectPriFile)">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(ProjectPriFullPath)"
+                             Condition="Exists('$(ProjectPriFullPath)')">
+        <RelativePath>$(ProjectPriFileName)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <Content Include="../../config.example.json" Link="config.example.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
