@@ -484,6 +484,8 @@ public sealed class SyncExecutor
                 ? previous?.LyricsFingerprint
                 : null,
             MetadataCaptured = true,
+            MetadataSchemaVersion =
+                TrackMetadata.CurrentSchemaVersion,
             TitleCaptured = true,
             Title = metadata.Title,
             Artist = metadata.Artist,
