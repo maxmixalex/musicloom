@@ -75,7 +75,6 @@ public sealed partial class MainWindow : Window
         Navigation.SelectedItem =
             Navigation.MenuItems[0];
 
-        TrySetWindowIcon();
         ApplyLanguage();
         HideDetailPane();
         ResetTrackDetails();
@@ -159,29 +158,6 @@ public sealed partial class MainWindow : Window
         finally
         {
             _loadingSettings = false;
-        }
-    }
-
-    private void TrySetWindowIcon()
-    {
-        try
-        {
-            string iconPath =
-                Path.Combine(
-                    AppContext.BaseDirectory,
-                    "Assets",
-                    "MusicLoom.ico");
-
-            if (File.Exists(iconPath))
-            {
-                AppWindow.SetIcon(iconPath);
-            }
-        }
-        catch (Exception exception)
-        {
-            AppDiagnostics.LogException(
-                "Could not set the window icon.",
-                exception);
         }
     }
 
