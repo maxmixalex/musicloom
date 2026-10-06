@@ -20,6 +20,8 @@
     "datefmt": "%Y-%m-%d %H:%M:%S"
   },
   "ui": {
-    "language": "en-US"
+    "language": "system",
+    "acrylicEnabled": false,
+    "accentColor": "system"
   }
 }
