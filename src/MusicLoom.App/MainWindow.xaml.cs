@@ -149,10 +149,13 @@ public sealed partial class MainWindow : Window
                 "Could not load application settings.",
                 exception);
 
-            SettingsStatusText.Text =
+            ShowInfo(
+                InfoBarSeverity.Error,
                 L(
-                    "Could not load saved settings.",
-                    "无法加载已保存设置。");
+                    "Settings error",
+                    "设置错误"),
+                UserFacingErrors.Describe(
+                    exception));
 
             AddActivity(
                 L(
@@ -165,6 +168,159 @@ public sealed partial class MainWindow : Window
         {
             _loadingSettings = false;
         }
+    }
+
+    private async Task RestoreCachedLibraryAsync(
+        MusicLoomSettings settings)
+    {
+        if (string.IsNullOrWhiteSpace(
+                settings.Path.SourceDirectory)
+            || string.IsNullOrWhiteSpace(
+                settings.Path.DestinationDirectory))
+        {
+            return;
+        }
+
+        try
+        {
+            StateStore stateStore =
+                new(StatePath);
+            StateDocument state =
+                await stateStore.LoadAsync();
+
+            _stateStore = stateStore;
+            _state = state;
+
+            LibraryPlan? cachedPlan = null;
+
+            LibrarySnapshotDocument? snapshot =
+                await LibrarySnapshotStore.LoadAsync(
+                    SnapshotPath);
+
+            if (snapshot is not null
+                && LibrarySnapshotStore.Matches(
+                    snapshot,
+                    settings.Path.SourceDirectory,
+                    settings.Path.DestinationDirectory))
+            {
+                cachedPlan =
+                    LibrarySnapshotStore.ToPlan(
+                        snapshot);
+            }
+            else
+            {
+                cachedPlan =
+                    BuildCachedPlanFromState(
+                        settings,
+                        state);
+            }
+
+            if (cachedPlan.TotalCount == 0)
+            {
+                return;
+            }
+
+            PopulateLibrary(
+                settings,
+                cachedPlan);
+            UpdateLibrarySummary(
+                cachedPlan);
+
+            PlaylistDisplayItem[] playlists =
+                await Task.Run(
+                    () => BuildPlaylists(
+                        settings));
+            PopulatePlaylists(playlists);
+
+            // A cached view is for continuity only. Sync always requires a
+            // fresh scan so source/destination drift is revalidated.
+            _plan = null;
+            SyncButton.IsEnabled = false;
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Could not restore cached library view.",
+                exception);
+        }
+    }
+
+    private static LibraryPlan BuildCachedPlanFromState(
+        MusicLoomSettings settings,
+        StateDocument state)
+    {
+        string sourceRoot =
+            Path.GetFullPath(
+                settings.Path.SourceDirectory);
+
+        List<PlanEntry> entries = [];
+
+        foreach (TrackState track
+            in state.Tracks.Values)
+        {
+            if (!File.Exists(track.SourcePath)
+                || !IsPathInside(
+                    track.SourcePath,
+                    sourceRoot))
+            {
+                continue;
+            }
+
+            TrackMetadata metadata = new(
+                track.Artist,
+                track.AlbumArtist,
+                track.Album,
+                track.HasEmbeddedArt,
+                track.Title);
+
+            bool destinationMissing =
+                string.IsNullOrWhiteSpace(
+                    track.DestinationPath)
+                || !File.Exists(
+                    track.DestinationPath);
+
+            PlanEntryStatus status =
+                string.IsNullOrWhiteSpace(
+                    track.RecipeVersion)
+                || destinationMissing
+                    ? PlanEntryStatus.Modified
+                    : PlanEntryStatus.Unchanged;
+
+            entries.Add(
+                new PlanEntry(
+                    track.SourcePath,
+                    track.DestinationPath,
+                    status,
+                    metadata,
+                    Detail:
+                        destinationMissing
+                            ? "Cached destination is missing."
+                            : null,
+                    NeedsAudioCopy:
+                        destinationMissing));
+        }
+
+        return new LibraryPlan(entries);
+    }
+
+    private static bool IsPathInside(
+        string path,
+        string root)
+    {
+        string fullPath =
+            Path.GetFullPath(path);
+        string fullRoot =
+            Path.GetFullPath(root)
+                .TrimEnd(
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        return fullPath.StartsWith(
+            fullRoot,
+            OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
     }
 
     private void ApplyAppearance(
@@ -791,7 +947,7 @@ public sealed partial class MainWindow : Window
                 settings.Path.DestinationDirectory);
 
         bool empty =
-            _plan is null;
+            _allLibraryItems.Count == 0;
 
         LibraryList.Visibility =
             empty
@@ -1681,6 +1837,66 @@ public sealed partial class MainWindow : Window
 
         await bitmap.SetSourceAsync(stream);
         return bitmap;
+    }
+
+    private async void CoverHost_DoubleTapped(
+        object sender,
+        DoubleTappedRoutedEventArgs e)
+    {
+        if (_currentArtworkBytes
+            is not { Length: > 0 } artwork)
+        {
+            return;
+        }
+
+        try
+        {
+            BitmapImage bitmap =
+                await CreateBitmapImageAsync(
+                    artwork,
+                    decodePixelWidth: 0);
+
+            Image image = new()
+            {
+                Source = bitmap,
+                Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            ScrollViewer viewer = new()
+            {
+                Content = image,
+                Width = 760,
+                Height = 640,
+                ZoomMode = ZoomMode.Enabled,
+                MinZoomFactor = 0.25f,
+                MaxZoomFactor = 6f,
+                HorizontalScrollMode = ScrollMode.Enabled,
+                VerticalScrollMode = ScrollMode.Enabled,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            };
+
+            ContentDialog dialog = new()
+            {
+                XamlRoot =
+                    ((FrameworkElement)Content)
+                        .XamlRoot,
+                Title = TrackTitleText.Text,
+                CloseButtonText =
+                    L("Close", "关闭"),
+                Content = viewer,
+            };
+
+            await dialog.ShowAsync();
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Could not show artwork preview.",
+                exception);
+        }
     }
 
     private async void OpenMatchDialogButton_Click(
@@ -2805,12 +3021,17 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            SettingsStatusText.Text =
-                UserFacingErrors.Describe(
-                    exception);
             AppDiagnostics.LogException(
                 "Could not auto-save settings.",
                 exception);
+
+            ShowInfo(
+                InfoBarSeverity.Error,
+                L(
+                    "Could not save settings",
+                    "无法保存设置"),
+                UserFacingErrors.Describe(
+                    exception));
         }
     }
 
@@ -3495,8 +3716,16 @@ public sealed partial class MainWindow : Window
                 "音乐列表");
         PlaylistsSubtitleText.Text =
             L(
-                "Browse the MusicBee playlists that MusicLoom exports for your phone.",
-                "浏览 MusicLoom 为手机导出的 MusicBee 播放列表。");
+                "Browse your MusicBee playlists.",
+                "浏览你的 MusicBee 播放列表。");
+
+        if (PlaylistsList.SelectedItem is null)
+        {
+            PlaylistTitleText.Text =
+                L(
+                    "Select a playlist",
+                    "选择一个音乐列表");
+        }
 
         ActivityTitleText.Text =
             L(
@@ -3540,26 +3769,14 @@ public sealed partial class MainWindow : Window
             L(
                 "Source library",
                 "源音乐库");
-        SourceLibrarySettingDescription.Text =
-            L(
-                "Your original music collection. MusicLoom never writes here.",
-                "你的原始音乐收藏。MusicLoom 永远不会写入这里。");
         DestinationLibrarySettingTitle.Text =
             L(
                 "Destination library",
                 "目标音乐库");
-        DestinationLibrarySettingDescription.Text =
-            L(
-                "The organized library MusicLoom creates.",
-                "MusicLoom 创建的整理后音乐库。");
         PlaylistFolderSettingTitle.Text =
             L(
                 "MusicBee playlist folder",
                 "MusicBee 播放列表目录");
-        PlaylistFolderSettingDescription.Text =
-            L(
-                "Optional folder containing .m3u playlists.",
-                "包含 .m3u 播放列表的可选目录。");
         PlaylistBaseSettingTitle.Text =
             L(
                 "Playlist path on phone",
@@ -3636,28 +3853,69 @@ public sealed partial class MainWindow : Window
             L(
                 "Interface language",
                 "界面语言");
-        LanguageSettingDescription.Text =
+
+        OpenSettingsButton.Content =
             L(
-                "MusicLoom supports English and Simplified Chinese.",
-                "MusicLoom 支持英语和简体中文。");
+                "Open settings",
+                "打开设置");
 
-        SettingsStatusText.Text =
+        CoverPlaceholderText.Text =
             L(
-                "Changes are saved automatically.",
-                "更改会自动保存。");
+                "No artwork",
+                "无封面");
 
-        TranslationButton.Content =
-            TranslationButton.IsChecked
-                != false
-                ? L(
-                    "Show translation",
-                    "显示翻译")
-                : L(
-                    "Original only",
-                    "仅原文");
+        PlaylistSearchBox.PlaceholderText =
+            L(
+                "Search this playlist",
+                "搜索当前音乐列表");
+        PlaylistSortTitleItem.Content =
+            L(
+                "Sort by title",
+                "按歌曲名排序");
+        PlaylistSortAlbumItem.Content =
+            L(
+                "Sort by album",
+                "按专辑排序");
+        PlaylistSortArtistItem.Content =
+            L(
+                "Sort by artist",
+                "按艺术家排序");
+        PlaylistShowInLibraryItem.Text =
+            L(
+                "Show in library",
+                "在音乐库中显示");
 
+        BrowseSourceButton.Content =
+            L("Browse", "浏览");
+        OpenSourceButton.Content =
+            L("Open", "打开");
+        BrowseDestinationButton.Content =
+            L("Browse", "浏览");
+        OpenDestinationSettingButton.Content =
+            L("Open", "打开");
+        BrowsePlaylistButton.Content =
+            L("Browse", "浏览");
+        OpenPlaylistButton.Content =
+            L("Open", "打开");
+
+        if (LastRunTitle.Text
+            is "No sync run yet"
+            or "尚无同步记录")
+        {
+            LastRunTitle.Text =
+                L(
+                    "No sync run yet",
+                    "尚无同步记录");
+            LastRunSummaryText.Text =
+                L(
+                    "Refresh the library to begin.",
+                    "刷新音乐库即可开始。");
+        }
+
+        RenderLyrics();
         RefreshActivityList();
         ApplyLibraryFilter();
+        ApplyPlaylistTrackFilter();
     }
 
     private static string NormalizeLanguage(
@@ -3692,6 +3950,25 @@ public sealed partial class MainWindow : Window
             StringComparison.OrdinalIgnoreCase)
                 ? "zh-CN"
                 : "en-US";
+    }
+
+    private static string? FormatArtistsForDisplay(
+        string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return string.Join(
+            "; ",
+            value
+                .Split(
+                    ';',
+                    StringSplitOptions
+                        .RemoveEmptyEntries
+                    | StringSplitOptions
+                        .TrimEntries));
     }
 
     private static string MakeRelative(
