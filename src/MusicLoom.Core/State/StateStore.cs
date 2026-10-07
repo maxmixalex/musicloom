@@ -16,9 +16,9 @@ public class StateStore
 
     public string BackupPath => Path + ".bak";
 
-    public string? RecoveryWarning { get; private set; }
+    public string? RecoveryWarning { get; protected set; }
 
-    public async Task<StateDocument> LoadAsync(
+    public virtual async Task<StateDocument> LoadAsync(
         CancellationToken cancellationToken = default)
     {
         RecoveryWarning = null;
