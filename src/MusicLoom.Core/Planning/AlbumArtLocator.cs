@@ -51,12 +51,39 @@ public static class AlbumArtLocator
             return null;
         }
 
+        bool hasWindowsMediaPlayerCache =
+            Directory.EnumerateFiles(sourceDirectory)
+                .Select(Path.GetFileNameWithoutExtension)
+                .Any(static stem =>
+                    stem is not null
+                    && stem.StartsWith(
+                        "AlbumArt",
+                        StringComparison.OrdinalIgnoreCase));
+
         foreach (string item in Directory.EnumerateFiles(sourceDirectory))
         {
-            if (GenericStems.Contains(Path.GetFileNameWithoutExtension(item)))
+            string stem =
+                Path.GetFileNameWithoutExtension(item);
+
+            if (!GenericStems.Contains(stem))
             {
-                return item;
+                continue;
             }
+
+            // Windows Media Player commonly drops AlbumArt*.jpg together
+            // with Folder.jpg after extracting embedded artwork. Treat that
+            // Folder.jpg as a cache artifact rather than intentional sidecar
+            // artwork, while retaining standalone Folder.jpg compatibility.
+            if (hasWindowsMediaPlayerCache
+                && string.Equals(
+                    stem,
+                    "Folder",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return item;
         }
 
         return null;
