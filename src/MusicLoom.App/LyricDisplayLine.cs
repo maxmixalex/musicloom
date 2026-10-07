@@ -6,8 +6,27 @@ namespace MusicLoom.App;
 internal sealed record LyricDisplayLine(
     string Original,
     string? Translation,
-    string DisplayMode)
+    string DisplayMode,
+    TimeSpan? Timestamp = null)
 {
+    public string TimestampText
+    {
+        get
+        {
+            if (Timestamp is not TimeSpan value)
+            {
+                return string.Empty;
+            }
+
+            int totalMinutes =
+                (int)Math.Floor(
+                    value.TotalMinutes);
+
+            return FormattableString.Invariant(
+                $"{totalMinutes:00}:{value.Seconds:00}");
+        }
+    }
+
     public string PrimaryText =>
         LyricsDisplayModes.Normalize(
             DisplayMode)
