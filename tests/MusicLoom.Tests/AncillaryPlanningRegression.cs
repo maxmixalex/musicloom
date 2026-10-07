@@ -235,6 +235,50 @@ internal static class AncillaryPlanningRegression
                     onlyExplicit: false)
                 ?? string.Empty);
 
+            string resizedWmpDirectory =
+                Path.Combine(
+                    sourceRoot,
+                    "wmp-resized-cache");
+            Directory.CreateDirectory(
+                resizedWmpDirectory);
+
+            string resizedAlbumArt =
+                Path.Combine(
+                    resizedWmpDirectory,
+                    "AlbumArt.jpg");
+            string resizedFolder =
+                Path.Combine(
+                    resizedWmpDirectory,
+                    "Folder.jpg");
+
+            await File.WriteAllBytesAsync(
+                resizedAlbumArt,
+                [70, 71, 72, 73, 74, 75]);
+            await File.WriteAllBytesAsync(
+                resizedFolder,
+                [80, 81, 82]);
+
+            DateTime clusteredTimestamp =
+                DateTime.UtcNow
+                    .AddMinutes(-2);
+            File.SetLastWriteTimeUtc(
+                resizedAlbumArt,
+                clusteredTimestamp);
+            File.SetLastWriteTimeUtc(
+                resizedFolder,
+                clusteredTimestamp
+                    .AddMilliseconds(450));
+
+            if (AlbumArtLocator.Find(
+                    resizedWmpDirectory,
+                    metadata,
+                    onlyExplicit: false)
+                is not null)
+            {
+                throw new InvalidOperationException(
+                    "A resized/re-encoded WMP Folder.jpg cache was treated as intentional artwork.");
+            }
+
             string standaloneDirectory =
                 Path.Combine(
                     sourceRoot,
