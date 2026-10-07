@@ -5962,14 +5962,19 @@ public sealed partial class MainWindow : Window
     private static async Task OpenInExplorerAsync(
         string path)
     {
+        if (File.Exists(path)
+            && ExplorerIntegration.TryRevealFile(
+                path,
+                out Exception? shellError))
+        {
+            return;
+        }
+
         string directory =
-            File.Exists(path)
-                ? Path.GetDirectoryName(path)
-                    ?? path
-                : Directory.Exists(path)
-                    ? path
-                    : Path.GetDirectoryName(path)
-                        ?? path;
+            Directory.Exists(path)
+                ? path
+                : Path.GetDirectoryName(path)
+                    ?? path;
 
         if (!Directory.Exists(directory))
         {
@@ -5984,8 +5989,9 @@ public sealed partial class MainWindow : Window
 
         if (!launched)
         {
-            throw new InvalidOperationException(
-                $"Windows could not open '{directory}'.");
+            throw shellError
+                ?? new InvalidOperationException(
+                    $"Windows could not open '{directory}'.");
         }
     }
 
