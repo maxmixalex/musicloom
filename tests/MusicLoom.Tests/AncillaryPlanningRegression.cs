@@ -230,6 +230,116 @@ internal static class AncillaryPlanningRegression
                     onlyExplicit: false)
                 ?? string.Empty);
 
+            string wmpTrack =
+                Path.Combine(
+                    wmpDirectory,
+                    "wmp-track.mp3");
+            await File.WriteAllBytesAsync(
+                wmpTrack,
+                [50, 51, 52, 53]);
+
+            TrackMetadata wmpMetadata = new(
+                "WMP Artist",
+                "WMP Artist",
+                "WMP Album",
+                HasEmbeddedArt: false);
+
+            MusicFile wmpFile = new(
+                wmpTrack,
+                wmpDirectory,
+                wmpMetadata.Artist,
+                wmpMetadata.AlbumArtist,
+                wmpMetadata.Album,
+                wmpMetadata.HasEmbeddedArt);
+
+            string wmpDestination =
+                LibraryLayout.GetDestinationPath(
+                    wmpFile,
+                    destinationRoot);
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(
+                    wmpDestination)!);
+            File.Copy(
+                wmpTrack,
+                wmpDestination);
+
+            string staleCover =
+                Path.Combine(
+                    Path.GetDirectoryName(
+                        wmpDestination)!,
+                    "Cover.jpg");
+            File.Copy(
+                wmpFolder,
+                staleCover);
+
+            PlanEntry wmpEntry = new(
+                wmpTrack,
+                wmpDestination,
+                PlanEntryStatus.Unchanged,
+                wmpMetadata,
+                NeedsAudioCopy: false);
+
+            MusicLoomSettings cleanupSettings =
+                new()
+                {
+                    Path = new PathSettings
+                    {
+                        SourceDirectory =
+                            sourceRoot,
+                        DestinationDirectory =
+                            destinationRoot,
+                        SourcePlaylistDirectory =
+                            string.Empty,
+                        DestinationPlaylistBase =
+                            "/storage/emulated/0/Music/",
+                    },
+                    Organizer =
+                        new OrganizerSettings
+                        {
+                            Lyrics =
+                                new LyricsSettings
+                                {
+                                    Enabled =
+                                        false,
+                                },
+                        },
+                };
+
+            AncillaryPlan cleanupAncillary =
+                await AncillaryPlanner.BuildAsync(
+                    cleanupSettings,
+                    [wmpEntry]);
+
+            Equal(
+                1,
+                cleanupAncillary.Covers.Count);
+            Equal(
+                true,
+                cleanupAncillary.Covers[0]
+                    .DeleteDestination);
+
+            LibraryPlan cleanupPlan = new(
+                [wmpEntry],
+                cleanupAncillary.Covers,
+                cleanupAncillary.Playlists);
+
+            LocalMaterializeSummary
+                cleanupSummary =
+                    await new LocalLibraryMaterializer()
+                        .ApplyAsync(
+                            cleanupSettings,
+                            cleanupPlan);
+
+            Equal(
+                1,
+                cleanupSummary.DeletedCovers);
+
+            if (File.Exists(staleCover))
+            {
+                throw new InvalidOperationException(
+                    "Stale WMP-derived Cover.jpg was not deleted.");
+            }
+
             CountingReader finalReader = new();
             LibraryPlan finalPlan =
                 await new LibraryScanner(finalReader)
