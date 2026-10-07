@@ -837,7 +837,13 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="24" />
                       </Grid.ColumnDefinitions>
-                      <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                      <TextBlock
+                          Text="{Binding Name}"
+                          FontWeight="SemiBold"
+                          TextWrapping="{Binding NameTextWrapping}"
+                          TextTrimming="{Binding NameTextTrimming}"
+                          MaxLines="{Binding NameMaxLines}"
+                          ToolTipService.ToolTip="{Binding NameToolTip}" />
                       <TextBlock
                           Grid.Column="1"
                           Text="{Binding CountText}"
