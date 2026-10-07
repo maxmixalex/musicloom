@@ -104,20 +104,25 @@ public static class AncillaryPlanner
             return;
         }
 
-        bool hasWmpAlbumArt =
+        string[] wmpAlbumArt =
             Directory.EnumerateFiles(
                     sourceDirectory,
                     "*",
                     SearchOption.TopDirectoryOnly)
-                .Select(
-                    Path.GetFileNameWithoutExtension)
-                .Any(static stem =>
-                    stem is not null
-                    && stem.StartsWith(
-                        "AlbumArt",
-                        StringComparison.OrdinalIgnoreCase));
+                .Where(static path =>
+                {
+                    string? stem =
+                        Path.GetFileNameWithoutExtension(
+                            path);
 
-        if (!hasWmpAlbumArt)
+                    return stem is not null
+                        && stem.StartsWith(
+                            "AlbumArt",
+                            StringComparison.OrdinalIgnoreCase);
+                })
+                .ToArray();
+
+        if (wmpAlbumArt.Length == 0)
         {
             return;
         }
@@ -135,7 +140,12 @@ public static class AncillaryPlanner
                             "Folder",
                             StringComparison.OrdinalIgnoreCase));
 
-        if (folderCache is null)
+        if (folderCache is null
+            || !wmpAlbumArt.Any(
+                albumArt =>
+                    FilesHaveSameContent(
+                        folderCache,
+                        albumArt)))
         {
             return;
         }
