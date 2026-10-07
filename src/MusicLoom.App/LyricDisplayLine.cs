@@ -27,6 +27,31 @@ internal sealed record LyricDisplayLine(
         }
     }
 
+    public string TimestampLrcTag
+    {
+        get
+        {
+            if (Timestamp is not TimeSpan value)
+            {
+                return string.Empty;
+            }
+
+            long totalMilliseconds =
+                (long)Math.Max(
+                    0,
+                    value.TotalMilliseconds);
+            long minutes =
+                totalMilliseconds / 60_000;
+            long seconds =
+                totalMilliseconds / 1_000 % 60;
+            long milliseconds =
+                totalMilliseconds % 1_000;
+
+            return FormattableString.Invariant(
+                $"[{minutes:00}:{seconds:00}.{milliseconds:000}]");
+        }
+    }
+
     public string PrimaryText =>
         LyricsDisplayModes.Normalize(
             DisplayMode)
