@@ -33,12 +33,46 @@ public static class PlaylistMapper
                 continue;
             }
 
-            string relative = Path.GetRelativePath(destinationDirectory, destinationPath)
-                .Replace('\\', '/');
-            string basePath = destinationPlaylistBase.Replace('\\', '/').TrimEnd('/');
-            output.Add($"{basePath}/{relative}");
+            string relative =
+                Path.GetRelativePath(
+                    destinationDirectory,
+                    destinationPath)
+                    .Replace('\\', '/');
+            string basePath =
+                NormalizeDestinationBase(
+                    destinationPlaylistBase);
+
+            output.Add(
+                string.IsNullOrEmpty(
+                    basePath)
+                    ? relative
+                    : $"{basePath}/{relative}");
         }
 
         return output;
+    }
+
+    public static string NormalizeDestinationBase(
+        string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        string normalized =
+            value.Trim()
+                .Replace('\\', '/');
+
+        while (normalized.Length > 1
+            && normalized.EndsWith(
+                '/',
+                StringComparison.Ordinal))
+        {
+            normalized =
+                normalized[..^1];
+        }
+
+        return normalized;
     }
 }
