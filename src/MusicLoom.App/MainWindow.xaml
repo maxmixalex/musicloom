@@ -645,25 +645,68 @@
 
                   <TabViewItem x:Name="MatchTab" Header="NetEase match" IsClosable="False">
                     <StackPanel Padding="4,14" Spacing="12">
-                      <ScrollViewer
-                          x:Name="CurrentMatchViewport"
-                          HorizontalContentAlignment="Stretch"
-                          HorizontalScrollBarVisibility="Hidden"
-                          VerticalScrollBarVisibility="Disabled"
-                          HorizontalScrollMode="Disabled"
-                          VerticalScrollMode="Disabled"
-                          ZoomMode="Disabled"
-                          IsTabStop="False">
-                        <TextBlock
-                            x:Name="CurrentMatchText"
-                            Text="No match cached."
-                            FontWeight="SemiBold"
-                            TextWrapping="NoWrap">
-                          <TextBlock.RenderTransform>
-                            <TranslateTransform x:Name="CurrentMatchTranslateTransform" />
-                          </TextBlock.RenderTransform>
-                        </TextBlock>
-                      </ScrollViewer>
+                      <Border
+                          x:Name="CurrentMatchCard"
+                          Padding="10"
+                          CornerRadius="8"
+                          BorderThickness="1"
+                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                          Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <Grid ColumnSpacing="10">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="54" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
+                          <Border
+                              Width="54"
+                              Height="54"
+                              CornerRadius="6"
+                              Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                            <Grid>
+                              <Image
+                                  x:Name="CurrentMatchArtworkImage"
+                                  Stretch="Uniform" />
+                              <FontIcon
+                                  x:Name="CurrentMatchArtworkPlaceholder"
+                                  Glyph="&#xE8D6;"
+                                  FontSize="20"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                          </Border>
+                          <StackPanel
+                              Grid.Column="1"
+                              VerticalAlignment="Center"
+                              Spacing="1">
+                            <TextBlock
+                                x:Name="CurrentMatchTitleText"
+                                Text="No match cached."
+                                FontWeight="SemiBold"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                x:Name="CurrentMatchArtistText"
+                                Text=""
+                                FontSize="12"
+                                TextTrimming="CharacterEllipsis"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock
+                                x:Name="CurrentMatchAlbumText"
+                                Text=""
+                                FontSize="11"
+                                TextTrimming="CharacterEllipsis"
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                          </StackPanel>
+                          <TextBlock
+                              x:Name="CurrentMatchIdText"
+                              Grid.Column="2"
+                              Text=""
+                              FontSize="11"
+                              VerticalAlignment="Center"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </Grid>
+                      </Border>
                       <TextBlock
                           x:Name="MatchHelpText"
                           Text="Use fingerprint recognition or search by artist and title."
