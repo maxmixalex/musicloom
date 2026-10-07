@@ -2619,7 +2619,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void CopyAllLyricsButton_Click(
+    private void CopyAllLyricsTextItem_Click(
         object sender,
         RoutedEventArgs e)
     {
@@ -2633,43 +2633,66 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        string text =
-            string.Join(
-                Environment.NewLine,
-                lines.Select(line =>
-                {
-                    string timestamp =
-                        string.IsNullOrWhiteSpace(
-                            line.TimestampText)
-                            ? string.Empty
-                            : $"[{line.TimestampText}] ";
-
-                    return string.IsNullOrWhiteSpace(
-                        line.SecondaryText)
-                        ? timestamp
-                            + line.PrimaryText
-                        : timestamp
-                            + line.PrimaryText
-                            + Environment.NewLine
-                            + line.SecondaryText;
-                }));
-
-        CopyText(text);
+        CopyText(
+            BuildPlainLyricText(
+                lines));
     }
+
+    private void CopyAllLyricsLrcItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        LyricDisplayLine[] lines =
+            BuildLyricLines(
+                _currentLyricsRaw,
+                _lyricsDisplayMode);
+
+        if (lines.Length == 0)
+        {
+            return;
+        }
+
+        CopyText(
+            BuildLrcLyricText(
+                lines));
+    }
+
 
     private void LyricLineMenu_Opening(
         object sender,
         object e)
     {
-        if (sender is MenuFlyout menu
-            && menu.Items.Count > 0
-            && menu.Items[0]
-                is MenuFlyoutItem item)
+        if (sender is not MenuFlyout menu
+            || menu.Items.Count == 0
+            || menu.Items[0]
+                is not MenuFlyoutSubItem copy)
         {
-            item.Text =
+            return;
+        }
+
+        copy.Text =
+            L(
+                "Copy line",
+                "复制此行");
+
+        if (copy.Items.Count > 0
+            && copy.Items[0]
+                is MenuFlyoutItem textItem)
+        {
+            textItem.Text =
                 L(
-                    "Copy line",
-                    "复制此行");
+                    "Copy as text",
+                    "复制为文本");
+        }
+
+        if (copy.Items.Count > 1
+            && copy.Items[1]
+                is MenuFlyoutItem lrcItem)
+        {
+            lrcItem.Text =
+                L(
+                    "Copy as LRC",
+                    "复制为 LRC");
         }
     }
 
@@ -2687,7 +2710,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void CopyLyricLineItem_Click(
+    private void CopyLyricLineTextItem_Click(
         object sender,
         RoutedEventArgs e)
     {
@@ -2703,16 +2726,101 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        string text =
-            string.IsNullOrWhiteSpace(
-                line.SecondaryText)
-                ? line.PrimaryText
-                : line.PrimaryText
-                    + Environment.NewLine
-                    + line.SecondaryText;
-
-        CopyText(text);
+        CopyText(
+            BuildPlainLyricText(
+                [line]));
     }
+
+    private void CopyLyricLineLrcItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        LyricDisplayLine? line =
+            (sender as MenuFlyoutItem)
+                ?.Tag
+                as LyricDisplayLine
+            ?? LyricsList.SelectedItem
+                as LyricDisplayLine;
+
+        if (line is null)
+        {
+            return;
+        }
+
+        CopyText(
+            BuildLrcLyricText(
+                [line]));
+    }
+
+    private static string BuildPlainLyricText(
+        IEnumerable<LyricDisplayLine> lines) =>
+        string.Join(
+            Environment.NewLine,
+            lines.Select(
+                static line =>
+                    string.IsNullOrWhiteSpace(
+                        line.SecondaryText)
+                        ? line.PrimaryText
+                        : line.PrimaryText
+                            + Environment.NewLine
+                            + line.SecondaryText));
+
+    private static string BuildLrcLyricText(
+        IEnumerable<LyricDisplayLine> lines)
+    {
+        List<string> output = [];
+
+        foreach (LyricDisplayLine line
+            in lines)
+        {
+            string tag =
+                line.TimestampLrcTag;
+
+            AppendLrcText(
+                output,
+                tag,
+                line.PrimaryText);
+
+            if (!string.IsNullOrWhiteSpace(
+                    line.SecondaryText))
+            {
+                AppendLrcText(
+                    output,
+                    tag,
+                    line.SecondaryText!);
+            }
+        }
+
+        return string.Join(
+            Environment.NewLine,
+            output);
+    }
+
+    private static void AppendLrcText(
+        List<string> output,
+        string timestampTag,
+        string text)
+    {
+        foreach (string rawLine
+            in text.Split(
+                ['\r', '\n'],
+                StringSplitOptions
+                    .RemoveEmptyEntries))
+        {
+            string value =
+                rawLine.Trim();
+
+            if (value.Length == 0)
+            {
+                continue;
+            }
+
+            output.Add(
+                timestampTag
+                + value);
+        }
+    }
+
 
     private static LyricDisplayLine[]
         BuildLyricLines(
@@ -6745,6 +6853,14 @@ public sealed partial class MainWindow : Window
             L(
                 "Copy all",
                 "复制完整歌词");
+        CopyAllLyricsTextItem.Text =
+            L(
+                "Copy as text",
+                "复制为文本");
+        CopyAllLyricsLrcItem.Text =
+            L(
+                "Copy as LRC",
+                "复制为 LRC");
         ToolTipService.SetToolTip(
             CopyAllLyricsButton,
             L(
