@@ -19,7 +19,8 @@ public sealed record PlanEntry(
 public sealed record CoverPlanEntry(
     string SourcePath,
     string DestinationPath,
-    bool NeedsWrite);
+    bool NeedsWrite,
+    bool DeleteDestination = false);
 
 public sealed record PlaylistPlanEntry(
     string SourcePath,
