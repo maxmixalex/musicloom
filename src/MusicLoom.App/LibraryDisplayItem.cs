@@ -96,55 +96,54 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
     public bool IsPlaying =>
         _isPlaying;
 
+    public Visibility PlayingIndicatorVisibility =>
+        _isPlaying
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
     public Brush RowBackground =>
+        _isPlaying
+            ? Application.Current.Resources[
+                "CardBackgroundFillColorSecondaryBrush"]
+                as Brush
+                ?? new SolidColorBrush(
+                    Color.FromArgb(
+                        18, 255, 255, 255))
+            : new SolidColorBrush(
+                Color.FromArgb(
+                    0, 0, 0, 0));
+
+    public Brush TitleBrush =>
+        _isPlaying
+            ? Application.Current.Resources[
+                "AccentTextFillColorPrimaryBrush"]
+                as Brush
+                ?? new SolidColorBrush(
+                    Color.FromArgb(
+                        255, 0, 120, 212))
+            : Application.Current.Resources[
+                "TextFillColorPrimaryBrush"]
+                as Brush
+                ?? new SolidColorBrush(
+                    Color.FromArgb(
+                        255, 255, 255, 255));
+
+    public Brush StatusBadgeBackground =>
         Kind switch
         {
             "error" =>
                 new SolidColorBrush(
                     Color.FromArgb(
-                        34, 196, 43, 28)),
+                        28, 196, 43, 28)),
             "warning" =>
                 new SolidColorBrush(
                     Color.FromArgb(
-                        32, 202, 116, 0)),
-            _ when _isPlaying =>
-                Application.Current.Resources[
-                    "AccentFillColorTertiaryBrush"]
-                as Brush
-                ?? new SolidColorBrush(
-                    Color.FromArgb(
-                        28, 0, 120, 212)),
+                        26, 202, 116, 0)),
             _ =>
                 new SolidColorBrush(
                     Color.FromArgb(
                         0, 0, 0, 0)),
         };
-
-    public Brush RowBorderBrush =>
-        _isPlaying
-            ? Application.Current.Resources[
-                "AccentFillColorDefaultBrush"]
-                as Brush
-                ?? new SolidColorBrush(
-                    Color.FromArgb(
-                        255, 0, 120, 212))
-            : Kind switch
-            {
-                "error" =>
-                    StatusBrush,
-                "warning" =>
-                    StatusBrush,
-                _ =>
-                    new SolidColorBrush(
-                        Color.FromArgb(
-                            0, 0, 0, 0)),
-            };
-
-    public Thickness RowBorderThickness =>
-        _isPlaying
-        || Kind is "warning" or "error"
-            ? new Thickness(1)
-            : new Thickness(0);
 
     public Brush StatusBrush => Kind switch
     {
@@ -226,11 +225,7 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
             OnPropertyChanged(
                 nameof(StatusGlyph));
             OnPropertyChanged(
-                nameof(RowBackground));
-            OnPropertyChanged(
-                nameof(RowBorderBrush));
-            OnPropertyChanged(
-                nameof(RowBorderThickness));
+                nameof(StatusBadgeBackground));
         }
     }
 
@@ -246,11 +241,11 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
         OnPropertyChanged(
             nameof(IsPlaying));
         OnPropertyChanged(
+            nameof(PlayingIndicatorVisibility));
+        OnPropertyChanged(
             nameof(RowBackground));
         OnPropertyChanged(
-            nameof(RowBorderBrush));
-        OnPropertyChanged(
-            nameof(RowBorderThickness));
+            nameof(TitleBrush));
     }
 
     public void ApplyLongTextMode(

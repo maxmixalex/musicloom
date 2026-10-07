@@ -1997,99 +1997,553 @@ public sealed partial class MainWindow : Window
                         == PlanEntryStatus.Error)
                 .ToArray();
 
-        TextBlock summary = new()
+        Brush? secondaryText =
+            Application.Current.Resources[
+                "TextFillColorSecondaryBrush"]
+            as Brush;
+        Brush? tertiaryText =
+            Application.Current.Resources[
+                "TextFillColorTertiaryBrush"]
+            as Brush;
+        Brush? cardBackground =
+            Application.Current.Resources[
+                "CardBackgroundFillColorDefaultBrush"]
+            as Brush;
+        Brush? cardSecondary =
+            Application.Current.Resources[
+                "CardBackgroundFillColorSecondaryBrush"]
+            as Brush;
+        Brush? cardStroke =
+            Application.Current.Resources[
+                "CardStrokeColorDefaultBrush"]
+            as Brush;
+
+        SolidColorBrush warningBrush =
+            new(
+                Color.FromArgb(
+                    255,
+                    202,
+                    116,
+                    0));
+        SolidColorBrush warningBackground =
+            new(
+                Color.FromArgb(
+                    22,
+                    202,
+                    116,
+                    0));
+        SolidColorBrush errorBrush =
+            new(
+                Color.FromArgb(
+                    255,
+                    196,
+                    43,
+                    28));
+        SolidColorBrush errorBackground =
+            new(
+                Color.FromArgb(
+                    20,
+                    196,
+                    43,
+                    28));
+
+        Border CreateStatCard(
+            string value,
+            string label)
         {
-            Text =
+            StackPanel stack =
+                new()
+                {
+                    Spacing = 1,
+                };
+            stack.Children.Add(
+                new TextBlock
+                {
+                    Text = value,
+                    FontSize = 20,
+                    FontWeight =
+                        new Windows.UI.Text
+                            .FontWeight
+                        {
+                            Weight = 600,
+                        },
+                });
+            stack.Children.Add(
+                new TextBlock
+                {
+                    Text = label,
+                    FontSize = 12,
+                    Foreground =
+                        secondaryText,
+                });
+
+            return new Border
+            {
+                Padding =
+                    new Thickness(
+                        12,
+                        10,
+                        12,
+                        10),
+                CornerRadius =
+                    new CornerRadius(8),
+                Background =
+                    cardSecondary,
+                Child = stack,
+            };
+        }
+
+        Border CreateStatusChip(
+            string text,
+            Brush foreground,
+            Brush background)
+        {
+            return new Border
+            {
+                Padding =
+                    new Thickness(
+                        8,
+                        4,
+                        8,
+                        4),
+                CornerRadius =
+                    new CornerRadius(999),
+                Background =
+                    background,
+                Child =
+                    new TextBlock
+                    {
+                        Text = text,
+                        FontSize = 12,
+                        FontWeight =
+                            new Windows.UI.Text
+                                .FontWeight
+                            {
+                                Weight = 600,
+                            },
+                        Foreground =
+                            foreground,
+                    },
+            };
+        }
+
+        Border CreateIssueRow(
+            string title,
+            string detail,
+            string glyph,
+            Brush foreground,
+            Brush background)
+        {
+            Grid row =
+                new()
+                {
+                    ColumnSpacing = 10,
+                };
+            row.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        new GridLength(30),
+                });
+            row.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        new GridLength(
+                            1,
+                            GridUnitType.Star),
+                });
+
+            Border iconSurface =
+                new()
+                {
+                    Width = 28,
+                    Height = 28,
+                    CornerRadius =
+                        new CornerRadius(14),
+                    Background =
+                        background,
+                    VerticalAlignment =
+                        VerticalAlignment.Top,
+                    Child =
+                        new FontIcon
+                        {
+                            Glyph = glyph,
+                            FontSize = 13,
+                            Foreground =
+                                foreground,
+                            HorizontalAlignment =
+                                HorizontalAlignment.Center,
+                            VerticalAlignment =
+                                VerticalAlignment.Center,
+                        },
+                };
+            row.Children.Add(
+                iconSurface);
+
+            StackPanel issueText =
+                new()
+                {
+                    Spacing = 2,
+                };
+            issueText.Children.Add(
+                new TextBlock
+                {
+                    Text = title,
+                    FontWeight =
+                        new Windows.UI.Text
+                            .FontWeight
+                        {
+                            Weight = 600,
+                        },
+                    TextTrimming =
+                        TextTrimming
+                            .CharacterEllipsis,
+                });
+            issueText.Children.Add(
+                new TextBlock
+                {
+                    Text = detail,
+                    FontSize = 12,
+                    Foreground =
+                        secondaryText,
+                    TextWrapping =
+                        TextWrapping.WrapWholeWords,
+                });
+            Grid.SetColumn(
+                issueText,
+                1);
+            row.Children.Add(
+                issueText);
+
+            return new Border
+            {
+                Padding =
+                    new Thickness(10),
+                CornerRadius =
+                    new CornerRadius(7),
+                Background =
+                    cardBackground,
+                BorderBrush =
+                    cardStroke,
+                BorderThickness =
+                    new Thickness(1),
+                Child = row,
+            };
+        }
+
+        Border CreateIssueSection(
+            string title,
+            string subtitle,
+            string glyph,
+            Brush foreground,
+            Brush background,
+            IEnumerable<Border> rows)
+        {
+            StackPanel headingText =
+                new()
+                {
+                    Spacing = 1,
+                };
+            headingText.Children.Add(
+                new TextBlock
+                {
+                    Text = title,
+                    FontSize = 14,
+                    FontWeight =
+                        new Windows.UI.Text
+                            .FontWeight
+                        {
+                            Weight = 600,
+                        },
+                });
+            headingText.Children.Add(
+                new TextBlock
+                {
+                    Text = subtitle,
+                    FontSize = 12,
+                    Foreground =
+                        secondaryText,
+                    TextWrapping =
+                        TextWrapping.WrapWholeWords,
+                });
+
+            Grid heading =
+                new()
+                {
+                    ColumnSpacing = 10,
+                };
+            heading.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        new GridLength(30),
+                });
+            heading.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        new GridLength(
+                            1,
+                            GridUnitType.Star),
+                });
+            heading.Children.Add(
+                new Border
+                {
+                    Width = 28,
+                    Height = 28,
+                    CornerRadius =
+                        new CornerRadius(14),
+                    Background =
+                        background,
+                    Child =
+                        new FontIcon
+                        {
+                            Glyph = glyph,
+                            FontSize = 13,
+                            Foreground =
+                                foreground,
+                            HorizontalAlignment =
+                                HorizontalAlignment.Center,
+                            VerticalAlignment =
+                                VerticalAlignment.Center,
+                        },
+                });
+            Grid.SetColumn(
+                headingText,
+                1);
+            heading.Children.Add(
+                headingText);
+
+            StackPanel body =
+                new()
+                {
+                    Spacing = 8,
+                };
+            body.Children.Add(
+                heading);
+
+            foreach (Border row
+                in rows)
+            {
+                body.Children.Add(
+                    row);
+            }
+
+            return new Border
+            {
+                Padding =
+                    new Thickness(12),
+                CornerRadius =
+                    new CornerRadius(10),
+                Background =
+                    cardSecondary,
+                Child = body,
+            };
+        }
+
+        StackPanel header =
+            new()
+            {
+                Spacing = 12,
+            };
+        header.Children.Add(
+            new TextBlock
+            {
+                Text =
+                    L(
+                        "Review the changes before MusicLoom writes to your destination library.",
+                        "在 MusicLoom 写入目标音乐库之前，请确认本次更改。"),
+                Foreground =
+                    secondaryText,
+                TextWrapping =
+                    TextWrapping.WrapWholeWords,
+            });
+
+        Grid stats =
+            new()
+            {
+                ColumnSpacing = 8,
+            };
+        for (int index = 0;
+            index < 4;
+            index++)
+        {
+            stats.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        new GridLength(
+                            1,
+                            GridUnitType.Star),
+                });
+        }
+
+        Border[] statCards =
+        [
+            CreateStatCard(
+                plan.PendingTrackCount
+                    .ToString("N0"),
                 L(
-                    $"{plan.PendingTrackCount:N0} tracks pending · {plan.AudioCopyCount:N0} audio copies · {plan.CoverWriteCount:N0} covers · {plan.PlaylistWriteCount:N0} playlists · {warnings.Length:N0} warnings · {errors.Length:N0} errors",
-                    $"{plan.PendingTrackCount:N0} 首歌曲待处理 · {plan.AudioCopyCount:N0} 个音频复制 · {plan.CoverWriteCount:N0} 个封面 · {plan.PlaylistWriteCount:N0} 个播放列表 · {warnings.Length:N0} 个警告 · {errors.Length:N0} 个错误"),
-            TextWrapping =
-                TextWrapping.WrapWholeWords,
-        };
+                    "Pending tracks",
+                    "待处理歌曲")),
+            CreateStatCard(
+                plan.AudioCopyCount
+                    .ToString("N0"),
+                L(
+                    "Audio copies",
+                    "音频复制")),
+            CreateStatCard(
+                plan.CoverWriteCount
+                    .ToString("N0"),
+                L(
+                    "Covers",
+                    "封面")),
+            CreateStatCard(
+                plan.PlaylistWriteCount
+                    .ToString("N0"),
+                L(
+                    "Playlists",
+                    "播放列表")),
+        ];
 
-        StackPanel issues = new()
+        for (int index = 0;
+            index < statCards.Length;
+            index++)
         {
-            Spacing = 8,
-        };
-
-        foreach (TrackSyncWarning warning
-            in warnings)
-        {
-            issues.Children.Add(
-                new TextBlock
-                {
-                    Text =
-                        $"⚠ {Path.GetFileName(warning.SourcePath)} · " +
-                        FormatTrackMatchWarning(
-                            warning),
-                    TextWrapping =
-                        TextWrapping.WrapWholeWords,
-                    Foreground =
-                        new SolidColorBrush(
-                            Color.FromArgb(
-                                255,
-                                202,
-                                116,
-                                0)),
-                });
+            Grid.SetColumn(
+                statCards[index],
+                index);
+            stats.Children.Add(
+                statCards[index]);
         }
 
-        foreach (PlanEntry error
-            in errors)
-        {
-            issues.Children.Add(
-                new TextBlock
-                {
-                    Text =
-                        $"✕ {Path.GetFileName(error.SourcePath)} · " +
-                        (error.Detail
-                            ?? L(
-                                "Unknown scan error.",
-                                "未知扫描错误。")),
-                    TextWrapping =
-                        TextWrapping.WrapWholeWords,
-                    Foreground =
-                        new SolidColorBrush(
-                            Color.FromArgb(
-                                255,
-                                196,
-                                43,
-                                28)),
-                });
-        }
+        header.Children.Add(
+            stats);
+
+        StackPanel chips =
+            new()
+            {
+                Orientation =
+                    Orientation.Horizontal,
+                Spacing = 8,
+            };
 
         if (warnings.Length > 0)
         {
-            issues.Children.Insert(
-                0,
-                new TextBlock
-                {
-                    Text =
-                        L(
-                            "Warning tracks are skipped until you manually confirm their NetEase match.",
-                            "警告歌曲会被跳过，直到你手动确认其网易云匹配。"),
-                    TextWrapping =
-                        TextWrapping.WrapWholeWords,
-                    Foreground =
-                        Application.Current.Resources[
-                            "TextFillColorSecondaryBrush"]
-                        as Brush,
-                });
+            chips.Children.Add(
+                CreateStatusChip(
+                    L(
+                        $"{warnings.Length:N0} warnings",
+                        $"{warnings.Length:N0} 个警告"),
+                    warningBrush,
+                    warningBackground));
+        }
+
+        if (errors.Length > 0)
+        {
+            chips.Children.Add(
+                CreateStatusChip(
+                    L(
+                        $"{errors.Length:N0} errors",
+                        $"{errors.Length:N0} 个错误"),
+                    errorBrush,
+                    errorBackground));
+        }
+
+        if (chips.Children.Count > 0)
+        {
+            header.Children.Add(
+                chips);
+        }
+
+        StackPanel issueSections =
+            new()
+            {
+                Spacing = 10,
+            };
+
+        if (warnings.Length > 0)
+        {
+            IEnumerable<Border>
+                warningRows =
+                    warnings.Select(
+                        warning =>
+                            CreateIssueRow(
+                                Path.GetFileName(
+                                    warning.SourcePath),
+                                FormatTrackMatchWarning(
+                                    warning),
+                                "\uE7BA",
+                                warningBrush,
+                                warningBackground));
+
+            issueSections.Children.Add(
+                CreateIssueSection(
+                    L(
+                        $"Warnings · {warnings.Length:N0}",
+                        $"警告 · {warnings.Length:N0}"),
+                    L(
+                        "These tracks are skipped until you confirm their NetEase match.",
+                        "这些歌曲会被跳过，直到你确认其网易云匹配。"),
+                    "\uE7BA",
+                    warningBrush,
+                    warningBackground,
+                    warningRows));
+        }
+
+        if (errors.Length > 0)
+        {
+            IEnumerable<Border>
+                errorRows =
+                    errors.Select(
+                        error =>
+                            CreateIssueRow(
+                                Path.GetFileName(
+                                    error.SourcePath),
+                                error.Detail
+                                ?? L(
+                                    "Unknown scan error.",
+                                    "未知扫描错误。"),
+                                "\uEA39",
+                                errorBrush,
+                                errorBackground));
+
+            issueSections.Children.Add(
+                CreateIssueSection(
+                    L(
+                        $"Errors · {errors.Length:N0}",
+                        $"错误 · {errors.Length:N0}"),
+                    L(
+                        "Resolve these errors before synchronization can start.",
+                        "需要先解决这些错误，才能开始同步。"),
+                    "\uEA39",
+                    errorBrush,
+                    errorBackground,
+                    errorRows));
         }
 
         ScrollViewer issueScroller =
             new()
             {
-                MaxHeight = 320,
+                MaxHeight = 310,
                 VerticalScrollBarVisibility =
                     ScrollBarVisibility.Auto,
-                Content = issues,
+                HorizontalScrollBarVisibility =
+                    ScrollBarVisibility.Disabled,
+                Content =
+                    issueSections,
+                Visibility =
+                    issueSections.Children.Count > 0
+                        ? Visibility.Visible
+                        : Visibility.Collapsed,
             };
 
         Button cancelButton = new()
         {
             Content =
                 L("Cancel", "取消"),
+            MinWidth = 88,
         };
 
         Button syncButton = new()
@@ -2102,6 +2556,7 @@ public sealed partial class MainWindow : Window
                     : L(
                         "Sync now",
                         "立即同步"),
+            MinWidth = 104,
             IsEnabled =
                 errors.Length == 0,
             Style =
@@ -2110,33 +2565,102 @@ public sealed partial class MainWindow : Window
                 as Style,
         };
 
-        StackPanel footer = new()
-        {
-            Orientation =
-                Orientation.Horizontal,
-            HorizontalAlignment =
-                HorizontalAlignment.Right,
-            Spacing = 8,
-        };
-        footer.Children.Add(
+        StackPanel actions =
+            new()
+            {
+                Orientation =
+                    Orientation.Horizontal,
+                HorizontalAlignment =
+                    HorizontalAlignment.Right,
+                Spacing = 8,
+            };
+        actions.Children.Add(
             cancelButton);
-        footer.Children.Add(
+        actions.Children.Add(
             syncButton);
 
-        StackPanel content = new()
-        {
-            Spacing = 14,
-        };
+        TextBlock footerHint =
+            new()
+            {
+                Text =
+                    errors.Length > 0
+                        ? L(
+                            "No files will be changed while errors remain.",
+                            "存在错误时不会修改任何文件。")
+                        : L(
+                            "No files are changed until you continue.",
+                            "只有继续后才会开始修改文件。"),
+                FontSize = 12,
+                Foreground =
+                    tertiaryText,
+                VerticalAlignment =
+                    VerticalAlignment.Center,
+                TextWrapping =
+                    TextWrapping.WrapWholeWords,
+            };
+
+        Grid footer =
+            new()
+            {
+                ColumnSpacing = 16,
+            };
+        footer.ColumnDefinitions.Add(
+            new ColumnDefinition
+            {
+                Width =
+                    new GridLength(
+                        1,
+                        GridUnitType.Star),
+            });
+        footer.ColumnDefinitions.Add(
+            new ColumnDefinition
+            {
+                Width =
+                    GridLength.Auto,
+            });
+        footer.Children.Add(
+            footerHint);
+        Grid.SetColumn(
+            actions,
+            1);
+        footer.Children.Add(
+            actions);
+
+        Grid content =
+            new()
+            {
+                RowSpacing = 16,
+            };
+        content.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    GridLength.Auto,
+            });
+        content.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    new GridLength(
+                        1,
+                        GridUnitType.Star),
+            });
+        content.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    GridLength.Auto,
+            });
         content.Children.Add(
-            summary);
-
-        if (warnings.Length > 0
-            || errors.Length > 0)
-        {
-            content.Children.Add(
-                issueScroller);
-        }
-
+            header);
+        Grid.SetRow(
+            issueScroller,
+            1);
+        content.Children.Add(
+            issueScroller);
+        Grid.SetRow(
+            footer,
+            2);
         content.Children.Add(
             footer);
 
@@ -2168,8 +2692,8 @@ public sealed partial class MainWindow : Window
                 "Confirm synchronization",
                 "确认同步"),
             content,
-            maxWidth: 760,
-            maxHeight: 620,
+            maxWidth: 820,
+            maxHeight: 680,
             onClosed: () =>
                 completion.TrySetResult(
                     false));
