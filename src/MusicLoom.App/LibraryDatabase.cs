@@ -7,7 +7,7 @@ namespace MusicLoom.App;
 
 internal static class LibraryDatabase
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
 
     public static async Task InitializeAsync(
         string path,
@@ -58,28 +58,6 @@ internal static class LibraryDatabase
             CREATE INDEX IF NOT EXISTS idx_tracks_album
                 ON tracks(album);
 
-            CREATE TABLE IF NOT EXISTS app_settings (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                verbose INTEGER NOT NULL,
-                source_directory TEXT NOT NULL,
-                destination_directory TEXT NOT NULL,
-                source_playlist_directory TEXT NOT NULL,
-                destination_playlist_base TEXT NOT NULL,
-                lyrics_enabled INTEGER NOT NULL,
-                lyrics_override_existing INTEGER NOT NULL,
-                lyrics_refresh_interval_hours REAL NOT NULL,
-                lyrics_storage_mode TEXT NOT NULL,
-                logging_level TEXT NOT NULL,
-                logging_format TEXT NOT NULL,
-                logging_date_format TEXT NOT NULL,
-                ui_language TEXT NOT NULL,
-                ui_acrylic_enabled INTEGER NOT NULL,
-                ui_accent_color TEXT NOT NULL,
-                ui_theme TEXT NOT NULL,
-                ui_auto_scroll_long_titles INTEGER NOT NULL,
-                ui_long_text_mode TEXT NULL,
-                ui_lyrics_display_mode TEXT NOT NULL
-            );
             """;
 
         await command.ExecuteNonQueryAsync(
@@ -95,18 +73,27 @@ internal static class LibraryDatabase
     }
 
     public static async Task<MusicLoomSettings?>
-        LoadSettingsAsync(
+        LoadLegacySettingsAsync(
             string path,
             CancellationToken cancellationToken = default)
     {
-        await InitializeAsync(
-            path,
-            cancellationToken);
+        if (!File.Exists(path))
+        {
+            return null;
+        }
 
         await using SqliteConnection connection =
             new(BuildConnectionString(path));
         await connection.OpenAsync(
             cancellationToken);
+
+        if (!await TableExistsAsync(
+                connection,
+                "app_settings",
+                cancellationToken))
+        {
+            return null;
+        }
 
         await using SqliteCommand command =
             connection.CreateCommand();
@@ -215,166 +202,62 @@ internal static class LibraryDatabase
         };
     }
 
-    public static async Task SaveSettingsAsync(
+
+
+    public static async Task DropLegacySettingsAsync(
         string path,
-        MusicLoomSettings settings,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(
-            settings);
-
-        await InitializeAsync(
-            path,
-            cancellationToken);
+        if (!File.Exists(path))
+        {
+            return;
+        }
 
         await using SqliteConnection connection =
             new(BuildConnectionString(path));
         await connection.OpenAsync(
             cancellationToken);
 
+        if (!await TableExistsAsync(
+                connection,
+                "app_settings",
+                cancellationToken))
+        {
+            return;
+        }
+
+        await using SqliteCommand command =
+            connection.CreateCommand();
+        command.CommandText =
+            "DROP TABLE app_settings;";
+        await command.ExecuteNonQueryAsync(
+            cancellationToken);
+    }
+
+    private static async Task<bool> TableExistsAsync(
+        SqliteConnection connection,
+        string tableName,
+        CancellationToken cancellationToken)
+    {
         await using SqliteCommand command =
             connection.CreateCommand();
         command.CommandText =
             """
-            INSERT INTO app_settings (
-                id,
-                verbose,
-                source_directory,
-                destination_directory,
-                source_playlist_directory,
-                destination_playlist_base,
-                lyrics_enabled,
-                lyrics_override_existing,
-                lyrics_refresh_interval_hours,
-                lyrics_storage_mode,
-                logging_level,
-                logging_format,
-                logging_date_format,
-                ui_language,
-                ui_acrylic_enabled,
-                ui_accent_color,
-                ui_theme,
-                ui_auto_scroll_long_titles,
-                ui_long_text_mode,
-                ui_lyrics_display_mode
-            ) VALUES (
-                1,
-                $verbose,
-                $source,
-                $destination,
-                $playlistSource,
-                $playlistBase,
-                $lyricsEnabled,
-                $lyricsOverride,
-                $lyricsRefresh,
-                $lyricsStorage,
-                $logLevel,
-                $logFormat,
-                $logDateFormat,
-                $language,
-                $acrylic,
-                $accent,
-                $theme,
-                $autoScroll,
-                $longText,
-                $lyricsDisplay
-            )
-            ON CONFLICT(id)
-            DO UPDATE SET
-                verbose = excluded.verbose,
-                source_directory = excluded.source_directory,
-                destination_directory = excluded.destination_directory,
-                source_playlist_directory = excluded.source_playlist_directory,
-                destination_playlist_base = excluded.destination_playlist_base,
-                lyrics_enabled = excluded.lyrics_enabled,
-                lyrics_override_existing = excluded.lyrics_override_existing,
-                lyrics_refresh_interval_hours = excluded.lyrics_refresh_interval_hours,
-                lyrics_storage_mode = excluded.lyrics_storage_mode,
-                logging_level = excluded.logging_level,
-                logging_format = excluded.logging_format,
-                logging_date_format = excluded.logging_date_format,
-                ui_language = excluded.ui_language,
-                ui_acrylic_enabled = excluded.ui_acrylic_enabled,
-                ui_accent_color = excluded.ui_accent_color,
-                ui_theme = excluded.ui_theme,
-                ui_auto_scroll_long_titles = excluded.ui_auto_scroll_long_titles,
-                ui_long_text_mode = excluded.ui_long_text_mode,
-                ui_lyrics_display_mode = excluded.ui_lyrics_display_mode;
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = $name
+            LIMIT 1;
             """;
+        command.Parameters.AddWithValue(
+            "$name",
+            tableName);
 
-        command.Parameters.AddWithValue(
-            "$verbose",
-            settings.Verbose ? 1 : 0);
-        command.Parameters.AddWithValue(
-            "$source",
-            settings.Path.SourceDirectory);
-        command.Parameters.AddWithValue(
-            "$destination",
-            settings.Path.DestinationDirectory);
-        command.Parameters.AddWithValue(
-            "$playlistSource",
-            settings.Path.SourcePlaylistDirectory);
-        command.Parameters.AddWithValue(
-            "$playlistBase",
-            PlaylistMapper.NormalizeDestinationBase(
-                settings.Path.DestinationPlaylistBase));
-        command.Parameters.AddWithValue(
-            "$lyricsEnabled",
-            settings.Organizer.Lyrics.Enabled
-                ? 1
-                : 0);
-        command.Parameters.AddWithValue(
-            "$lyricsOverride",
-            settings.Organizer.Lyrics.OverrideExisting
-                ? 1
-                : 0);
-        command.Parameters.AddWithValue(
-            "$lyricsRefresh",
-            settings.Organizer.Lyrics.RefreshIntervalHours);
-        command.Parameters.AddWithValue(
-            "$lyricsStorage",
-            LyricsStorageModes.Normalize(
-                settings.Organizer.Lyrics.StorageMode));
-        command.Parameters.AddWithValue(
-            "$logLevel",
-            settings.Logging.Level);
-        command.Parameters.AddWithValue(
-            "$logFormat",
-            settings.Logging.Format);
-        command.Parameters.AddWithValue(
-            "$logDateFormat",
-            settings.Logging.DateFormat);
-        command.Parameters.AddWithValue(
-            "$language",
-            settings.Ui.Language);
-        command.Parameters.AddWithValue(
-            "$acrylic",
-            settings.Ui.AcrylicEnabled
-                ? 1
-                : 0);
-        command.Parameters.AddWithValue(
-            "$accent",
-            settings.Ui.AccentColor);
-        command.Parameters.AddWithValue(
-            "$theme",
-            UiThemeModes.Normalize(
-                settings.Ui.Theme));
-        command.Parameters.AddWithValue(
-            "$autoScroll",
-            settings.Ui.AutoScrollLongTitles
-                ? 1
-                : 0);
-        command.Parameters.AddWithValue(
-            "$longText",
-            DbValue(
-                settings.Ui.LongTextMode));
-        command.Parameters.AddWithValue(
-            "$lyricsDisplay",
-            LyricsDisplayModes.Normalize(
-                settings.Ui.LyricsDisplayMode));
+        object? value =
+            await command.ExecuteScalarAsync(
+                cancellationToken);
 
-        await command.ExecuteNonQueryAsync(
-            cancellationToken);
+        return value is not null;
     }
 
     public static async Task SavePlanAsync(
