@@ -29,6 +29,11 @@ namespace MusicLoom.App;
 
 public sealed partial class MainWindow : Window
 {
+    private static readonly string ConfigPath =
+        Path.Combine(
+            AppDiagnostics.DataDirectory,
+            "config.toml");
+
     private static readonly string LegacyConfigPath =
         Path.Combine(
             AppDiagnostics.DataDirectory,
@@ -847,16 +852,46 @@ public sealed partial class MainWindow : Window
         LoadPersistedSettingsAsync(
             CancellationToken cancellationToken = default)
     {
+        if (File.Exists(
+                ConfigPath))
+        {
+            MusicLoomSettings current =
+                await TomlSettingsStore.LoadAsync(
+                    ConfigPath,
+                    cancellationToken);
+
+            await LibraryDatabase
+                .DropLegacySettingsAsync(
+                    DatabasePath,
+                    cancellationToken);
+            TryDeleteLegacyFile(
+                LegacyConfigPath);
+
+            return current;
+        }
+
         MusicLoomSettings? settings =
             await LibraryDatabase
-                .LoadSettingsAsync(
+                .LoadLegacySettingsAsync(
                     DatabasePath,
                     cancellationToken);
 
         if (settings is not null)
         {
+            await TomlSettingsStore.SaveAsync(
+                ConfigPath,
+                settings,
+                cancellationToken);
+            await LibraryDatabase
+                .DropLegacySettingsAsync(
+                    DatabasePath,
+                    cancellationToken);
             TryDeleteLegacyFile(
                 LegacyConfigPath);
+
+            AppDiagnostics.Log(
+                "Migrated legacy SQLite application settings to config.toml.");
+
             return settings;
         }
 
@@ -868,17 +903,16 @@ public sealed partial class MainWindow : Window
                     LegacyConfigPath,
                     cancellationToken);
 
-            await LibraryDatabase
-                .SaveSettingsAsync(
-                    DatabasePath,
-                    settings,
-                    cancellationToken);
+            await TomlSettingsStore.SaveAsync(
+                ConfigPath,
+                settings,
+                cancellationToken);
 
             TryDeleteLegacyFile(
                 LegacyConfigPath);
 
             AppDiagnostics.Log(
-                "Migrated legacy JSON settings into the local database.");
+                "Migrated legacy JSON settings to config.toml.");
 
             return settings;
         }
@@ -3278,11 +3312,9 @@ public sealed partial class MainWindow : Window
 
             _settings = updated;
 
-            await LibraryDatabase.SaveSettingsAsync(
-                DatabasePath,
+            await TomlSettingsStore.SaveAsync(
+                ConfigPath,
                 updated);
-
-            RefreshDatabaseSize();
         }
         catch (Exception exception)
         {
@@ -6657,11 +6689,10 @@ public sealed partial class MainWindow : Window
                     _settings,
                     settings);
 
-            await LibraryDatabase.SaveSettingsAsync(
-                DatabasePath,
+            await TomlSettingsStore.SaveAsync(
+                ConfigPath,
                 settings,
                 cancellationToken);
-            RefreshDatabaseSize();
 
             _settings = settings;
             _uiLanguage =
@@ -7066,12 +7097,12 @@ public sealed partial class MainWindow : Window
                     "完全清空本地数据库？"),
             Content =
                 L(
-                    "This deletes the cached library, synchronization state, NetEase matches and saved settings. Your source and destination music files are not deleted.",
-                    "这会删除音乐库缓存、同步状态、网易云匹配和已保存设置；不会删除源音乐或目标音乐文件。"),
+                    "This deletes the cached library, synchronization state and NetEase match cache. Settings in config.toml and your music files are kept.",
+                    "这会删除音乐库缓存、同步状态和网易云匹配缓存；config.toml 设置和音乐文件会保留。"),
             PrimaryButtonText =
                 L(
-                    "Clear everything",
-                    "全部清空"),
+                    "Clear database",
+                    "清空数据库"),
             CloseButtonText =
                 L("Cancel", "取消"),
             DefaultButton =
@@ -7099,14 +7130,10 @@ public sealed partial class MainWindow : Window
             TryDeleteLegacyFile(
                 LegacySnapshotPath);
             TryDeleteLegacyFile(
-                LegacyConfigPath);
-            TryDeleteLegacyFile(
                 LegacyStatePath);
             TryDeleteLegacyFile(
                 LegacyStatePath + ".bak");
 
-            _settings =
-                new MusicLoomSettings();
             _state =
                 new StateDocument();
             _stateStore =
@@ -7115,14 +7142,9 @@ public sealed partial class MainWindow : Window
                     LegacyStatePath);
             _plan = null;
             _trackSyncStates.Clear();
+            _manualPendingSources.Clear();
             _allLibraryItems.Clear();
             _playlists.Clear();
-
-            PopulateSettingsForm(
-                _settings);
-            ApplyAppearance(
-                _settings);
-            ApplyLanguage();
 
             LibraryList.ItemsSource = null;
             PlaylistsList.ItemsSource = null;
@@ -7139,8 +7161,8 @@ public sealed partial class MainWindow : Window
                     "Database cleared",
                     "数据库已清空"),
                 L(
-                    "MusicLoom local state has been reset. Configure the library again to continue.",
-                    "MusicLoom 的本地状态已重置，请重新配置音乐库后继续。"));
+                    "MusicLoom's local cache was reset. Your config.toml settings were preserved.",
+                    "MusicLoom 的本地缓存已重置；config.toml 设置已保留。"));
         }
         catch (Exception exception)
         {
