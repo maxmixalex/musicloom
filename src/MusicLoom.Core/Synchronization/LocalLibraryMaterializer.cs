@@ -114,9 +114,9 @@ public sealed class LocalLibraryMaterializer
         int degree =
             maxParallelTrackCopies
             ?? Math.Clamp(
-                Environment.ProcessorCount / 2,
-                2,
-                4);
+                Environment.ProcessorCount,
+                4,
+                8);
 
         ParallelOptions options = new()
         {
@@ -129,7 +129,7 @@ public sealed class LocalLibraryMaterializer
         await Parallel.ForEachAsync(
             trackWork,
             options,
-            (entry, token) =>
+            async (entry, token) =>
             {
                 token.ThrowIfCancellationRequested();
 
@@ -160,9 +160,10 @@ public sealed class LocalLibraryMaterializer
                     }
                     else
                     {
-                        AtomicCopyWithTimes(
+                        await AtomicCopyWithTimesAsync(
                             entry.SourcePath,
-                            destination);
+                            destination,
+                            token);
 
                         Interlocked.Increment(
                             ref copiedTracks);
@@ -194,7 +195,6 @@ public sealed class LocalLibraryMaterializer
                             "copy-audio"));
                 }
 
-                return ValueTask.CompletedTask;
             });
 
         foreach (CoverPlanEntry cover
@@ -238,9 +238,10 @@ public sealed class LocalLibraryMaterializer
                             directory);
                     }
 
-                    AtomicCopyWithTimes(
+                    await AtomicCopyWithTimesAsync(
                         cover.SourcePath,
-                        cover.DestinationPath);
+                        cover.DestinationPath,
+                        cancellationToken);
 
                     copiedCovers++;
                 }
@@ -381,9 +382,10 @@ public sealed class LocalLibraryMaterializer
                 == destination.LastWriteTimeUtc.Ticks;
     }
 
-    private static void AtomicCopyWithTimes(
+    private static async Task AtomicCopyWithTimesAsync(
         string sourcePath,
-        string destinationPath)
+        string destinationPath,
+        CancellationToken cancellationToken)
     {
         FileInfo source = new(sourcePath);
         string temporaryPath =
@@ -392,10 +394,48 @@ public sealed class LocalLibraryMaterializer
 
         try
         {
-            File.Copy(
-                sourcePath,
-                temporaryPath,
-                overwrite: false);
+            FileStreamOptions readOptions =
+                new()
+                {
+                    Mode = FileMode.Open,
+                    Access = FileAccess.Read,
+                    Share = FileShare.Read,
+                    Options =
+                        FileOptions.Asynchronous
+                        | FileOptions.SequentialScan,
+                    BufferSize = 1024 * 1024,
+                };
+
+            FileStreamOptions writeOptions =
+                new()
+                {
+                    Mode = FileMode.CreateNew,
+                    Access = FileAccess.Write,
+                    Share = FileShare.None,
+                    Options =
+                        FileOptions.Asynchronous
+                        | FileOptions.SequentialScan,
+                    BufferSize = 1024 * 1024,
+                    PreallocationSize =
+                        source.Length,
+                };
+
+            await using FileStream input =
+                new(
+                    sourcePath,
+                    readOptions);
+            await using FileStream output =
+                new(
+                    temporaryPath,
+                    writeOptions);
+
+            await input.CopyToAsync(
+                output,
+                1024 * 1024,
+                cancellationToken);
+            await output.FlushAsync(
+                cancellationToken);
+
             File.SetLastWriteTimeUtc(
                 temporaryPath,
                 source.LastWriteTimeUtc);
