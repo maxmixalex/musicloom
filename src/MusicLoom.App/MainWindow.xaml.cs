@@ -106,7 +106,8 @@ public sealed partial class MainWindow : Window
     private NeteaseMatchCandidate?
         _activeMatchDialogCandidate;
     private ListView? _matchLyricsPreviewList;
-    private Window? _matchWindow;
+    private TaskCompletionSource<NeteaseMatchCandidate?>?
+        _matchDialogCompletion;
     private readonly Dictionary<long, SymbolIcon>
         _neteasePreviewIcons = [];
     private byte[]? _currentArtworkBytes;
@@ -238,7 +239,7 @@ public sealed partial class MainWindow : Window
         WindowEventArgs args)
     {
         _playerTimer?.Stop();
-        _matchWindow?.Close();
+        CloseMatchOverlay();
         _mediaPlayer.Dispose();
     }
 
@@ -4911,6 +4912,38 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void MatchDialogCloseButton_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        CloseMatchOverlay();
+
+    private void CloseMatchOverlay()
+    {
+        if (MatchOverlay is not null)
+        {
+            MatchOverlay.Visibility =
+                Visibility.Collapsed;
+        }
+
+        if (MatchDialogHost is not null)
+        {
+            MatchDialogHost.Content =
+                null;
+        }
+
+        _matchDialogCompletion
+            ?.TrySetResult(
+                null);
+        _matchDialogCompletion =
+            null;
+
+        _neteasePreviewIcons.Clear();
+        _matchDialogLyricLines.Clear();
+        _matchLyricsPreviewList = null;
+        _activeMatchDialogCandidate =
+            null;
+    }
+
     private async void OpenMatchDialogButton_Click(
         object sender,
         RoutedEventArgs e)
@@ -5250,7 +5283,7 @@ public sealed partial class MainWindow : Window
         root.Children.Add(
             lyricColumn);
 
-        _matchWindow?.Close();
+        CloseMatchOverlay();
 
         Button useSelectedButton = new()
         {
@@ -5293,7 +5326,7 @@ public sealed partial class MainWindow : Window
         Grid shell = new()
         {
             Padding =
-                new Thickness(16),
+                new Thickness(0),
         };
         shell.RowDefinitions.Add(
             new RowDefinition
@@ -5316,28 +5349,20 @@ public sealed partial class MainWindow : Window
         shell.Children.Add(
             footer);
 
-        Window matchWindow = new()
-        {
-            Title =
-                L(
-                    "Find NetEase match",
-                    "查找网易云匹配"),
-            Content = shell,
-        };
-        _matchWindow = matchWindow;
-
         TaskCompletionSource<NeteaseMatchCandidate?>
             completion =
                 new(
                     TaskCreationOptions
                         .RunContinuationsAsynchronously);
+        _matchDialogCompletion =
+            completion;
 
         useSelectedButton.Click +=
             (_, _) =>
             {
                 completion.TrySetResult(
                     GetSelectedCandidate());
-                matchWindow.Close();
+                CloseMatchOverlay();
             };
 
         cancelMatchButton.Click +=
@@ -5345,63 +5370,17 @@ public sealed partial class MainWindow : Window
             {
                 completion.TrySetResult(
                     null);
-                matchWindow.Close();
+                CloseMatchOverlay();
             };
 
-        matchWindow.Closed +=
-            (_, _) =>
-            {
-                if (ReferenceEquals(
-                        _matchWindow,
-                        matchWindow))
-                {
-                    _matchWindow = null;
-                }
-
-                _neteasePreviewIcons.Clear();
-                _matchDialogLyricLines.Clear();
-                _matchLyricsPreviewList = null;
-                _activeMatchDialogCandidate =
-                    null;
-
-                completion.TrySetResult(
-                    null);
-            };
-
-        matchWindow.Activate();
-
-        const int MatchWindowWidth = 1220;
-        const int MatchWindowHeight = 680;
-
-        matchWindow.AppWindow.Resize(
-            new Windows.Graphics.SizeInt32(
-                MatchWindowWidth,
-                MatchWindowHeight));
-
-        Microsoft.UI.Windowing.DisplayArea displayArea =
-            Microsoft.UI.Windowing.DisplayArea
-                .GetFromWindowId(
-                    matchWindow.AppWindow.Id,
-                    Microsoft.UI.Windowing
-                        .DisplayAreaFallback.Primary);
-
-        Windows.Graphics.RectInt32 workArea =
-            displayArea.WorkArea;
-
-        matchWindow.AppWindow.Move(
-            new Windows.Graphics.PointInt32(
-                workArea.X
-                    + Math.Max(
-                        0,
-                        (workArea.Width
-                            - MatchWindowWidth)
-                        / 2),
-                workArea.Y
-                    + Math.Max(
-                        0,
-                        (workArea.Height
-                            - MatchWindowHeight)
-                        / 2)));
+        MatchDialogTitleText.Text =
+            L(
+                "Find NetEase match",
+                "查找网易云匹配");
+        MatchDialogHost.Content =
+            shell;
+        MatchOverlay.Visibility =
+            Visibility.Visible;
 
         NeteaseMatchCandidate?
             GetSelectedCandidate()
@@ -5907,6 +5886,14 @@ public sealed partial class MainWindow : Window
         NeteaseMatchCandidate?
             selected =
                 await completion.Task;
+
+        if (ReferenceEquals(
+                _matchDialogCompletion,
+                completion))
+        {
+            _matchDialogCompletion =
+                null;
+        }
 
         if (selected is not null)
         {
