@@ -567,8 +567,9 @@ internal static class AncillaryPlanningRegression
             }
 
             // Keep the original warm-scan assertion focused on the original
-            // library fixture rather than this synthetic cleanup-only track.
+            // library fixture rather than these synthetic cleanup-only tracks.
             File.Delete(wmpTrack);
+            File.Delete(legacyTrack);
 
             CountingReader finalReader = new();
             LibraryPlan finalPlan =
