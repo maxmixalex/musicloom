@@ -17,6 +17,9 @@ using MusicLoom.Metadata;
 using MusicLoom.Netease;
 using MusicLoom.Tagging;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Media.Core;
+using Windows.Media.Playback;
+using Windows.Storage;
 using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
 using Windows.UI;
@@ -52,6 +55,11 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<string, TrackSyncViewState>
         _trackSyncStates =
             new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string>
+        _manualPendingSources =
+            new(StringComparer.OrdinalIgnoreCase);
+    private readonly MediaPlayer
+        _mediaPlayer = new();
 
     private MusicLoomSettings? _settings;
     private StateDocument? _state;
@@ -76,6 +84,13 @@ public sealed partial class MainWindow : Window
     private Storyboard? _currentMatchScrollStoryboard;
     private Storyboard? _playlistTitleScrollStoryboard;
     private Storyboard? _playlistMetaScrollStoryboard;
+    private DispatcherTimer? _playerTimer;
+    private LibraryDisplayItem? _playingLibraryItem;
+    private NeteaseMatchCandidate? _playingPreviewCandidate;
+    private LibraryDisplayItem[] _playbackQueue = [];
+    private int _playbackQueueIndex = -1;
+    private bool _updatingPlayerProgress;
+    private LyricDisplayLine? _activePlaybackLyric;
     private byte[]? _currentArtworkBytes;
     private string _lyricsDisplayMode =
         LyricsDisplayModes.PreferOriginal;
@@ -90,6 +105,8 @@ public sealed partial class MainWindow : Window
         StartupTrace.Mark(
             "MainWindow.InitializeComponent.after");
 
+        InitializePlayer();
+        Closed += MainWindow_Closed;
         ApplyWindowIcon();
 
         LibraryFilterBox.SelectedIndex = 0;
@@ -118,6 +135,585 @@ public sealed partial class MainWindow : Window
 
         StartupTrace.Mark(
             "MainWindow.ctor.ready");
+    }
+
+    private void InitializePlayer()
+    {
+        _mediaPlayer.AutoPlay = false;
+        _mediaPlayer.Volume =
+            PlayerVolumeSlider.Value;
+
+        _mediaPlayer.MediaOpened +=
+            (_, _) =>
+                DispatcherQueue.TryEnqueue(
+                    () =>
+                    {
+                        UpdatePlayerProgress();
+                        UpdatePlayerVisualState();
+                    });
+
+        _mediaPlayer.MediaEnded +=
+            (_, _) =>
+                DispatcherQueue.TryEnqueue(
+                    async () =>
+                    {
+                        if (_playingLibraryItem
+                            is not null)
+                        {
+                            await PlayQueueOffsetAsync(
+                                1);
+                        }
+                    });
+
+        _mediaPlayer.MediaFailed +=
+            (_, args) =>
+                DispatcherQueue.TryEnqueue(
+                    () =>
+                    {
+                        PlayerHintText.Text =
+                            L(
+                                $"Playback failed · {args.ErrorMessage}",
+                                $"播放失败 · {args.ErrorMessage}");
+
+                        ShowInfo(
+                            InfoBarSeverity.Error,
+                            L(
+                                "Playback failed",
+                                "播放失败"),
+                            args.ErrorMessage);
+                    });
+
+        _mediaPlayer.PlaybackSession
+            .PlaybackStateChanged +=
+            (_, _) =>
+                DispatcherQueue.TryEnqueue(
+                    UpdatePlayerVisualState);
+
+        DispatcherTimer timer = new()
+        {
+            Interval =
+                TimeSpan.FromMilliseconds(
+                    120),
+        };
+        timer.Tick +=
+            PlayerTimer_Tick;
+        _playerTimer = timer;
+        timer.Start();
+
+        UpdatePlayerVisualState();
+    }
+
+    private void MainWindow_Closed(
+        object sender,
+        WindowEventArgs args)
+    {
+        _playerTimer?.Stop();
+        _mediaPlayer.Dispose();
+    }
+
+    private async Task PlayLibraryItemAsync(
+        LibraryDisplayItem item,
+        bool rebuildQueue = true)
+    {
+        try
+        {
+            StorageFile file =
+                await StorageFile.GetFileFromPathAsync(
+                    item.Entry.SourcePath);
+
+            if (rebuildQueue)
+            {
+                _playbackQueue =
+                    GetCurrentPlaybackQueue(
+                        item);
+                _playbackQueueIndex =
+                    Array.IndexOf(
+                        _playbackQueue,
+                        item);
+            }
+
+            _playingLibraryItem = item;
+            _playingPreviewCandidate = null;
+            _activePlaybackLyric = null;
+
+            _mediaPlayer.Source =
+                MediaSource.CreateFromStorageFile(
+                    file);
+
+            PlayerTitleText.Text =
+                item.Title;
+            PlayerMetadataText.Text =
+                string.IsNullOrWhiteSpace(
+                    item.Album)
+                    ? item.Artist
+                    : $"{item.Artist} · {item.Album}";
+            PlayerHintText.Text =
+                L(
+                    "Local library",
+                    "本地音乐库");
+            PlayerArtworkImage.Source =
+                item.Artwork;
+            PlayerArtworkPlaceholder.Visibility =
+                item.Artwork is null
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+            _mediaPlayer.Play();
+            UpdatePlayerVisualState();
+        }
+        catch (Exception exception)
+        {
+            HandleUiException(
+                L(
+                    "Could not play the track.",
+                    "无法播放歌曲。"),
+                exception);
+        }
+    }
+
+    private Task PlayNetEasePreviewAsync(
+        NeteaseMatchCandidate candidate)
+    {
+        _playingLibraryItem = null;
+        _playingPreviewCandidate =
+            candidate;
+        _playbackQueue = [];
+        _playbackQueueIndex = -1;
+        _activePlaybackLyric = null;
+
+        _mediaPlayer.Source =
+            MediaSource.CreateFromUri(
+                NeteaseClient.GetPreviewUri(
+                    candidate.TrackId));
+
+        PlayerTitleText.Text =
+            candidate.Name;
+        PlayerMetadataText.Text =
+            string.IsNullOrWhiteSpace(
+                candidate.Album)
+                ? candidate.Artist
+                : $"{candidate.Artist} · {candidate.Album}";
+        PlayerHintText.Text =
+            L(
+                "NetEase Music online preview",
+                "网易云音乐在线预览");
+
+        if (!string.IsNullOrWhiteSpace(
+                candidate.CoverUrl)
+            && Uri.TryCreate(
+                candidate.CoverUrl,
+                UriKind.Absolute,
+                out Uri? coverUri))
+        {
+            PlayerArtworkImage.Source =
+                new BitmapImage
+                {
+                    DecodePixelWidth = 144,
+                    UriSource = coverUri,
+                };
+            PlayerArtworkPlaceholder.Visibility =
+                Visibility.Collapsed;
+        }
+        else
+        {
+            PlayerArtworkImage.Source = null;
+            PlayerArtworkPlaceholder.Visibility =
+                Visibility.Visible;
+        }
+
+        _mediaPlayer.Play();
+        UpdatePlayerVisualState();
+
+        return Task.CompletedTask;
+    }
+
+    private LibraryDisplayItem[]
+        GetCurrentPlaybackQueue(
+            LibraryDisplayItem item)
+    {
+        if (PlaylistsPage.Visibility
+                == Visibility.Visible
+            && PlaylistTracksList.ItemsSource
+                is IEnumerable<LibraryDisplayItem>
+                    playlistItems)
+        {
+            LibraryDisplayItem[] playlistQueue =
+                playlistItems.ToArray();
+
+            if (playlistQueue.Contains(
+                    item))
+            {
+                return playlistQueue;
+            }
+        }
+
+        if (LibraryList.ItemsSource
+            is IEnumerable<LibraryDisplayItem>
+                visibleItems)
+        {
+            LibraryDisplayItem[] visible =
+                visibleItems.ToArray();
+
+            if (visible.Contains(item))
+            {
+                return visible;
+            }
+        }
+
+        return [.. _allLibraryItems];
+    }
+
+    private async Task PlayQueueOffsetAsync(
+        int offset)
+    {
+        if (_playbackQueue.Length == 0)
+        {
+            return;
+        }
+
+        int current =
+            _playbackQueueIndex;
+
+        if (current < 0)
+        {
+            current = 0;
+        }
+
+        int next =
+            (current
+                + offset
+                + _playbackQueue.Length)
+            % _playbackQueue.Length;
+
+        _playbackQueueIndex = next;
+
+        await PlayLibraryItemAsync(
+            _playbackQueue[next],
+            rebuildQueue: false);
+    }
+
+    private void PlayerTimer_Tick(
+        object? sender,
+        object e)
+    {
+        UpdatePlayerProgress();
+        UpdatePlaybackLyrics();
+    }
+
+    private void UpdatePlayerProgress()
+    {
+        MediaPlaybackSession session =
+            _mediaPlayer
+                .PlaybackSession;
+
+        TimeSpan duration =
+            session.NaturalDuration;
+        TimeSpan position =
+            session.Position;
+
+        double durationSeconds =
+            Math.Max(
+                0,
+                duration.TotalSeconds);
+        double positionSeconds =
+            Math.Clamp(
+                position.TotalSeconds,
+                0,
+                Math.Max(
+                    durationSeconds,
+                    position.TotalSeconds));
+
+        _updatingPlayerProgress = true;
+        try
+        {
+            PlayerProgressSlider.Maximum =
+                durationSeconds > 0
+                    ? durationSeconds
+                    : 1;
+            PlayerProgressSlider.Value =
+                durationSeconds > 0
+                    ? Math.Min(
+                        positionSeconds,
+                        durationSeconds)
+                    : 0;
+        }
+        finally
+        {
+            _updatingPlayerProgress = false;
+        }
+
+        PlayerTimeText.Text =
+            $"{FormatPlayerTime(position)} / {FormatPlayerTime(duration)}";
+    }
+
+    private void UpdatePlayerVisualState()
+    {
+        bool playing =
+            _mediaPlayer.PlaybackSession
+                .PlaybackState
+            == MediaPlaybackState.Playing;
+
+        PlayerPlayPauseIcon.Symbol =
+            playing
+                ? Symbol.Pause
+                : Symbol.Play;
+
+        ToolTipService.SetToolTip(
+            PlayerPlayPauseButton,
+            playing
+                ? L("Pause", "暂停")
+                : L("Play", "播放"));
+
+        PlayerPreviousButton.IsEnabled =
+            _playingLibraryItem is not null
+            && _playbackQueue.Length > 1;
+        PlayerNextButton.IsEnabled =
+            _playingLibraryItem is not null
+            && _playbackQueue.Length > 1;
+
+        if (_selectedLibraryItem is not null)
+        {
+            DetailPlayIcon.Symbol =
+                ReferenceEquals(
+                        _selectedLibraryItem,
+                        _playingLibraryItem)
+                    && playing
+                        ? Symbol.Pause
+                        : Symbol.Play;
+        }
+    }
+
+    private static string FormatPlayerTime(
+        TimeSpan value)
+    {
+        if (value < TimeSpan.Zero
+            || value == TimeSpan.MaxValue)
+        {
+            return "0:00";
+        }
+
+        return value.TotalHours >= 1
+            ? value.ToString(
+                @"h\:mm\:ss",
+                CultureInfo.InvariantCulture)
+            : value.ToString(
+                @"m\:ss",
+                CultureInfo.InvariantCulture);
+    }
+
+    private void UpdatePlaybackLyrics()
+    {
+        if (_playingLibraryItem is null
+            || _selectedLibraryItem is null
+            || !ReferenceEquals(
+                _playingLibraryItem,
+                _selectedLibraryItem)
+            || LyricsList.ItemsSource
+                is not IEnumerable<LyricDisplayLine>
+                    source)
+        {
+            return;
+        }
+
+        TimeSpan position =
+            _mediaPlayer
+                .PlaybackSession
+                .Position;
+
+        LyricDisplayLine? active =
+            source
+                .Where(
+                    static line =>
+                        line.Timestamp.HasValue)
+                .LastOrDefault(
+                    line =>
+                        line.Timestamp
+                        <= position);
+
+        if (active is null
+            || ReferenceEquals(
+                active,
+                _activePlaybackLyric))
+        {
+            return;
+        }
+
+        _activePlaybackLyric = active;
+        LyricsList.SelectedItem =
+            active;
+        LyricsList.ScrollIntoView(
+            active,
+            ScrollIntoViewAlignment.Leading);
+    }
+
+    private void PlayerPlayPauseButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_mediaPlayer.Source is null)
+        {
+            if (_selectedLibraryItem
+                is LibraryDisplayItem selected)
+            {
+                _ = PlayLibraryItemAsync(
+                    selected);
+            }
+
+            return;
+        }
+
+        if (_mediaPlayer.PlaybackSession
+                .PlaybackState
+            == MediaPlaybackState.Playing)
+        {
+            _mediaPlayer.Pause();
+        }
+        else
+        {
+            _mediaPlayer.Play();
+        }
+    }
+
+    private async void PlayerPreviousButton_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        await PlayQueueOffsetAsync(-1);
+
+    private async void PlayerNextButton_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        await PlayQueueOffsetAsync(1);
+
+    private void PlayerProgressSlider_ValueChanged(
+        object sender,
+        RangeBaseValueChangedEventArgs e)
+    {
+        if (_updatingPlayerProgress
+            || _mediaPlayer.Source is null)
+        {
+            return;
+        }
+
+        TimeSpan duration =
+            _mediaPlayer
+                .PlaybackSession
+                .NaturalDuration;
+
+        if (duration <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        double seconds =
+            Math.Clamp(
+                e.NewValue,
+                0,
+                duration.TotalSeconds);
+
+        _mediaPlayer
+            .PlaybackSession
+            .Position =
+                TimeSpan.FromSeconds(
+                    seconds);
+    }
+
+    private void PlayerVolumeSlider_ValueChanged(
+        object sender,
+        RangeBaseValueChangedEventArgs e)
+    {
+        double volume =
+            Math.Clamp(
+                e.NewValue,
+                0,
+                1);
+
+        _mediaPlayer.Volume =
+            volume;
+
+        PlayerVolumeIcon.Glyph =
+            volume <= 0.001
+                ? "\uE74F"
+                : volume < 0.34
+                    ? "\uE993"
+                    : volume < 0.67
+                        ? "\uE994"
+                        : "\uE767";
+    }
+
+    private void PlayerArtworkButton_DoubleTapped(
+        object sender,
+        DoubleTappedRoutedEventArgs e)
+    {
+        if (_playingLibraryItem
+            is not LibraryDisplayItem item)
+        {
+            return;
+        }
+
+        LibrarySearchBox.Text =
+            string.Empty;
+        LibraryFilterBox.SelectedIndex = 0;
+        ApplyLibraryFilter();
+
+        NavigateTo("library");
+
+        LibraryList.SelectedItem =
+            item;
+        LibraryList.ScrollIntoView(
+            item);
+    }
+
+    private async void DetailPlayButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_selectedLibraryItem
+            is not LibraryDisplayItem item)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(
+                item,
+                _playingLibraryItem))
+        {
+            PlayerPlayPauseButton_Click(
+                sender,
+                e);
+            return;
+        }
+
+        await PlayLibraryItemAsync(
+            item);
+    }
+
+    private async void ContextPlayItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (GetContextItem()
+            is LibraryDisplayItem item)
+        {
+            await PlayLibraryItemAsync(
+                item);
+        }
+    }
+
+    private async void PlaylistPlayItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        LibraryDisplayItem? item =
+            _playlistContextItem
+            ?? PlaylistTracksList
+                .SelectedItem
+                as LibraryDisplayItem;
+
+        if (item is not null)
+        {
+            await PlayLibraryItemAsync(
+                item);
+        }
     }
 
     private bool IsChinese =>
@@ -1857,6 +2453,7 @@ public sealed partial class MainWindow : Window
 
         _selectedLibraryItem = item;
         OpenMatchDialogButton.IsEnabled = !_busy;
+        UpdatePlayerVisualState();
         ShowDetailPane();
         await ShowTrackDetailsAsync(item);
     }
@@ -4909,6 +5506,8 @@ public sealed partial class MainWindow : Window
                 is string destination
             && File.Exists(destination);
 
+        ContextPlayItem.IsEnabled =
+            hasItem;
         ContextOpenSourceItem.IsEnabled =
             hasItem;
         ContextCopySourceItem.IsEnabled =
@@ -6650,6 +7249,11 @@ public sealed partial class MainWindow : Window
             L("Descending", "倒序");
 
         ToolTipService.SetToolTip(
+            DetailPlayButton,
+            L(
+                "Play or pause this track",
+                "播放或暂停此歌曲"));
+        ToolTipService.SetToolTip(
             CloseDetailButton,
             L(
                 "Close details",
@@ -6735,6 +7339,8 @@ public sealed partial class MainWindow : Window
                 "Destination modified",
                 "目标修改时间");
 
+        ContextPlayItem.Text =
+            L("Play", "播放");
         ContextOpenSourceItem.Text =
             L(
                 "Open source folder",
@@ -6982,6 +7588,8 @@ public sealed partial class MainWindow : Window
             L("Ascending", "顺序");
         PlaylistSortDescendingItem.Content =
             L("Descending", "倒序");
+        PlaylistPlayItem.Text =
+            L("Play", "播放");
         PlaylistShowInLibraryItem.Text =
             L(
                 "Show in library",
@@ -7026,6 +7634,30 @@ public sealed partial class MainWindow : Window
                 "清空");
         DiagnosticsLogPathText.Text =
             AppDiagnostics.LogPath;
+
+        if (_mediaPlayer.Source is null)
+        {
+            PlayerTitleText.Text =
+                L(
+                    "Nothing playing",
+                    "未播放歌曲");
+            PlayerMetadataText.Text =
+                string.Empty;
+            PlayerHintText.Text =
+                string.Empty;
+        }
+
+        ToolTipService.SetToolTip(
+            PlayerArtworkButton,
+            L(
+                "Double-click to locate the playing track",
+                "双击定位到正在播放的歌曲"));
+        ToolTipService.SetToolTip(
+            PlayerPreviousButton,
+            L("Previous", "上一首"));
+        ToolTipService.SetToolTip(
+            PlayerNextButton,
+            L("Next", "下一首"));
 
         RenderLyrics();
         RefreshTrackSyncTab(
