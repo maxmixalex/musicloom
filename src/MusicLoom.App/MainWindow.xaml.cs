@@ -1891,6 +1891,12 @@ public sealed partial class MainWindow : Window
         TrackSourcePathText.Text = string.Empty;
         TrackDestinationPathText.Text = string.Empty;
         TrackFormatText.Text = string.Empty;
+        TrackDurationText.Text = string.Empty;
+        TrackBitrateText.Text = string.Empty;
+        TrackSampleRateText.Text = string.Empty;
+        TrackBitDepthText.Text = string.Empty;
+        TrackChannelsText.Text = string.Empty;
+        TrackBitrateModeText.Text = string.Empty;
         TrackSizeText.Text = string.Empty;
         TrackModifiedText.Text = string.Empty;
         TrackCreatedText.Text = string.Empty;
@@ -2180,6 +2186,18 @@ public sealed partial class MainWindow : Window
                     "尚未创建");
             TrackFormatText.Text =
                 payload.Format;
+            TrackDurationText.Text =
+                payload.Duration;
+            TrackBitrateText.Text =
+                payload.Bitrate;
+            TrackSampleRateText.Text =
+                payload.SampleRate;
+            TrackBitDepthText.Text =
+                payload.BitDepth;
+            TrackChannelsText.Text =
+                payload.Channels;
+            TrackBitrateModeText.Text =
+                payload.BitrateMode;
             TrackSizeText.Text =
                 payload.SourceSize;
             TrackModifiedText.Text =
@@ -2272,6 +2290,32 @@ public sealed partial class MainWindow : Window
                 entry.SourcePath)
                 .TrimStart('.')
                 .ToUpperInvariant(),
+            FormatDuration(
+                inspection.DurationMs),
+            inspection.Bitrate > 0
+                ? $"{inspection.Bitrate:0.#} kbps"
+                : "—",
+            inspection.SampleRate > 0
+                ? $"{inspection.SampleRate:0} Hz"
+                : "—",
+            inspection.BitDepth > 0
+                ? $"{inspection.BitDepth} bit"
+                : "—",
+            inspection.Channels > 0
+                ? string.IsNullOrWhiteSpace(
+                    inspection.ChannelArrangement)
+                    ? inspection.Channels
+                        .ToString(
+                            CultureInfo.InvariantCulture)
+                    : $"{inspection.Channels} · {inspection.ChannelArrangement}"
+                : "—",
+            inspection.IsLossless
+                ? L(
+                    "Lossless",
+                    "无损")
+                : inspection.IsVbr
+                    ? "VBR"
+                    : "CBR",
             FormatBytes(source.Length),
             source.LastWriteTime.ToString("G"),
             source.CreationTime.ToString("G"),
@@ -6231,6 +6275,18 @@ public sealed partial class MainWindow : Window
                 "目标文件");
         FormatHeadingText.Text =
             L("Format", "格式");
+        DurationHeadingText.Text =
+            L("Duration", "时长");
+        BitrateHeadingText.Text =
+            L("Bitrate", "比特率");
+        SampleRateHeadingText.Text =
+            L("Sample rate", "采样率");
+        BitDepthHeadingText.Text =
+            L("Bit depth", "位深");
+        ChannelsHeadingText.Text =
+            L("Channels", "声道");
+        BitrateModeHeadingText.Text =
+            L("Encoding", "编码模式");
         SizeHeadingText.Text =
             L(
                 "Source size",
@@ -6615,6 +6671,28 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private static string FormatDuration(
+        double milliseconds)
+    {
+        if (!double.IsFinite(milliseconds)
+            || milliseconds <= 0)
+        {
+            return "—";
+        }
+
+        TimeSpan duration =
+            TimeSpan.FromMilliseconds(
+                milliseconds);
+
+        return duration.TotalHours >= 1
+            ? duration.ToString(
+                @"h\:mm\:ss",
+                CultureInfo.InvariantCulture)
+            : duration.ToString(
+                @"m\:ss",
+                CultureInfo.InvariantCulture);
+    }
+
     private static string FormatBytes(
         long bytes)
     {
@@ -6647,6 +6725,12 @@ public sealed partial class MainWindow : Window
         string SourcePath,
         string? DestinationPath,
         string Format,
+        string Duration,
+        string Bitrate,
+        string SampleRate,
+        string BitDepth,
+        string Channels,
+        string BitrateMode,
         string SourceSize,
         string SourceModified,
         string SourceCreated,
