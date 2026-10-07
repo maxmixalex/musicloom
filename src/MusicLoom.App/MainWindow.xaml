@@ -461,11 +461,25 @@
                           <ColumnDefinition Width="170" />
                           <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock
-                            x:Name="LyricsSourceText"
-                            VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            TextWrapping="Wrap" />
+                        <ScrollViewer
+                            x:Name="LyricsSourceViewport"
+                            HorizontalContentAlignment="Stretch"
+                            HorizontalScrollBarVisibility="Hidden"
+                            VerticalScrollBarVisibility="Disabled"
+                            HorizontalScrollMode="Disabled"
+                            VerticalScrollMode="Disabled"
+                            ZoomMode="Disabled"
+                            IsTabStop="False">
+                          <TextBlock
+                              x:Name="LyricsSourceText"
+                              VerticalAlignment="Center"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                              TextWrapping="NoWrap">
+                            <TextBlock.RenderTransform>
+                              <TranslateTransform x:Name="LyricsSourceTranslateTransform" />
+                            </TextBlock.RenderTransform>
+                          </TextBlock>
+                        </ScrollViewer>
                         <ComboBox
                             x:Name="LyricsModeBox"
                             Grid.Column="1"
@@ -569,7 +583,25 @@
 
                   <TabViewItem x:Name="MatchTab" Header="NetEase match" IsClosable="False">
                     <StackPanel Padding="4,14" Spacing="12">
-                      <TextBlock x:Name="CurrentMatchText" Text="No match cached." FontWeight="SemiBold" TextWrapping="Wrap" />
+                      <ScrollViewer
+                          x:Name="CurrentMatchViewport"
+                          HorizontalContentAlignment="Stretch"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Disabled"
+                          HorizontalScrollMode="Disabled"
+                          VerticalScrollMode="Disabled"
+                          ZoomMode="Disabled"
+                          IsTabStop="False">
+                        <TextBlock
+                            x:Name="CurrentMatchText"
+                            Text="No match cached."
+                            FontWeight="SemiBold"
+                            TextWrapping="NoWrap">
+                          <TextBlock.RenderTransform>
+                            <TranslateTransform x:Name="CurrentMatchTranslateTransform" />
+                          </TextBlock.RenderTransform>
+                        </TextBlock>
+                      </ScrollViewer>
                       <TextBlock
                           x:Name="MatchHelpText"
                           Text="Use fingerprint recognition or search by artist and title."
@@ -769,8 +801,44 @@
                 </Grid.RowDefinitions>
 
                 <StackPanel Spacing="2">
-                  <TextBlock x:Name="PlaylistTitleText" Text="Select a playlist" FontSize="22" FontWeight="SemiBold" />
-                  <TextBlock x:Name="PlaylistMetaText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                  <ScrollViewer
+                      x:Name="PlaylistTitleViewport"
+                      HorizontalContentAlignment="Stretch"
+                      HorizontalScrollBarVisibility="Hidden"
+                      VerticalScrollBarVisibility="Disabled"
+                      HorizontalScrollMode="Disabled"
+                      VerticalScrollMode="Disabled"
+                      ZoomMode="Disabled"
+                      IsTabStop="False">
+                    <TextBlock
+                        x:Name="PlaylistTitleText"
+                        Text="Select a playlist"
+                        FontSize="22"
+                        FontWeight="SemiBold"
+                        TextWrapping="NoWrap">
+                      <TextBlock.RenderTransform>
+                        <TranslateTransform x:Name="PlaylistTitleTranslateTransform" />
+                      </TextBlock.RenderTransform>
+                    </TextBlock>
+                  </ScrollViewer>
+                  <ScrollViewer
+                      x:Name="PlaylistMetaViewport"
+                      HorizontalContentAlignment="Stretch"
+                      HorizontalScrollBarVisibility="Hidden"
+                      VerticalScrollBarVisibility="Disabled"
+                      HorizontalScrollMode="Disabled"
+                      VerticalScrollMode="Disabled"
+                      ZoomMode="Disabled"
+                      IsTabStop="False">
+                    <TextBlock
+                        x:Name="PlaylistMetaText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="NoWrap">
+                      <TextBlock.RenderTransform>
+                        <TranslateTransform x:Name="PlaylistMetaTranslateTransform" />
+                      </TextBlock.RenderTransform>
+                    </TextBlock>
+                  </ScrollViewer>
                 </StackPanel>
 
                 <Grid Grid.Row="1" Margin="0,12,0,8" ColumnSpacing="8">
