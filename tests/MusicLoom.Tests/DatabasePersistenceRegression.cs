@@ -232,6 +232,16 @@ internal static class DatabasePersistenceRegression
                 LibraryDatabase.GetStorageSizeBytes(
                     databasePath)
                 > 0);
+
+            await LibraryDatabase.ClearAsync(
+                databasePath);
+
+            Equal(
+                0L,
+                LibraryDatabase.GetStorageSizeBytes(
+                    databasePath));
+            True(!File.Exists(
+                databasePath));
         }
         finally
         {
