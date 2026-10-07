@@ -72,6 +72,10 @@ public sealed partial class MainWindow : Window
     private string? _currentLyricsRaw;
     private Storyboard? _titleScrollStoryboard;
     private Storyboard? _albumScrollStoryboard;
+    private Storyboard? _lyricsSourceScrollStoryboard;
+    private Storyboard? _currentMatchScrollStoryboard;
+    private Storyboard? _playlistTitleScrollStoryboard;
+    private Storyboard? _playlistMetaScrollStoryboard;
     private byte[]? _currentArtworkBytes;
     private string _lyricsDisplayMode =
         LyricsDisplayModes.PreferOriginal;
@@ -2156,6 +2160,112 @@ public sealed partial class MainWindow : Window
         return storyboard;
     }
 
+    private void ConfigureAuxiliaryLongText()
+    {
+        StopAuxiliaryLongText();
+
+        string mode =
+            CurrentLongTextMode;
+
+        ConfigureDetailText(
+            LyricsSourceViewport,
+            LyricsSourceText,
+            mode,
+            maxLines: 2);
+        ConfigureDetailText(
+            CurrentMatchViewport,
+            CurrentMatchText,
+            mode,
+            maxLines: 3);
+        ConfigureDetailText(
+            PlaylistTitleViewport,
+            PlaylistTitleText,
+            mode,
+            maxLines: 2);
+        ConfigureDetailText(
+            PlaylistMetaViewport,
+            PlaylistMetaText,
+            mode,
+            maxLines: 2);
+
+        LyricsSourceTranslateTransform.X = 0;
+        CurrentMatchTranslateTransform.X = 0;
+        PlaylistTitleTranslateTransform.X = 0;
+        PlaylistMetaTranslateTransform.X = 0;
+
+        DispatcherQueue.TryEnqueue(
+            () =>
+            {
+                _lyricsSourceScrollStoryboard =
+                    ConfigureAuxiliaryViewport(
+                        LyricsSourceViewport,
+                        LyricsSourceText,
+                        LyricsSourceTranslateTransform,
+                        mode);
+                _currentMatchScrollStoryboard =
+                    ConfigureAuxiliaryViewport(
+                        CurrentMatchViewport,
+                        CurrentMatchText,
+                        CurrentMatchTranslateTransform,
+                        mode);
+                _playlistTitleScrollStoryboard =
+                    ConfigureAuxiliaryViewport(
+                        PlaylistTitleViewport,
+                        PlaylistTitleText,
+                        PlaylistTitleTranslateTransform,
+                        mode);
+                _playlistMetaScrollStoryboard =
+                    ConfigureAuxiliaryViewport(
+                        PlaylistMetaViewport,
+                        PlaylistMetaText,
+                        PlaylistMetaTranslateTransform,
+                        mode);
+            });
+    }
+
+    private static Storyboard?
+        ConfigureAuxiliaryViewport(
+            ScrollViewer viewport,
+            TextBlock text,
+            TranslateTransform transform,
+            string mode)
+    {
+        viewport.UpdateLayout();
+
+        if (mode == LongTextModes.Hover)
+        {
+            text.Width =
+                Math.Max(
+                    0,
+                    viewport.ViewportWidth);
+            return null;
+        }
+
+        if (mode != LongTextModes.AutoScroll)
+        {
+            return null;
+        }
+
+        return StartTextMarquee(
+            transform,
+            GetTextOverflow(
+                viewport,
+                text));
+    }
+
+    private void StopAuxiliaryLongText()
+    {
+        _lyricsSourceScrollStoryboard?.Stop();
+        _currentMatchScrollStoryboard?.Stop();
+        _playlistTitleScrollStoryboard?.Stop();
+        _playlistMetaScrollStoryboard?.Stop();
+
+        _lyricsSourceScrollStoryboard = null;
+        _currentMatchScrollStoryboard = null;
+        _playlistTitleScrollStoryboard = null;
+        _playlistMetaScrollStoryboard = null;
+    }
+
     private async Task ShowTrackDetailsAsync(
         LibraryDisplayItem item)
     {
@@ -2180,6 +2290,7 @@ public sealed partial class MainWindow : Window
         CurrentMatchText.Text =
             GetCachedMatchText(
                 item.Entry.SourcePath);
+        ConfigureAuxiliaryLongText();
 
         CoverImage.Source =
             item.Artwork;
@@ -2232,6 +2343,7 @@ public sealed partial class MainWindow : Window
                 payload.Lyrics;
             LyricsSourceText.Text =
                 payload.LyricsSource;
+            ConfigureAuxiliaryLongText();
             RenderLyrics();
 
             TrackSourcePathText.Text =
@@ -2468,7 +2580,43 @@ public sealed partial class MainWindow : Window
                 mode);
 
         RenderLyrics();
-        ScheduleSettingsSave();
+        _ = PersistLyricsDisplayModeAsync();
+    }
+
+    private async Task PersistLyricsDisplayModeAsync()
+    {
+        if (_settings is null)
+        {
+            return;
+        }
+
+        try
+        {
+            MusicLoomSettings updated =
+                _settings with
+                {
+                    Ui =
+                        _settings.Ui with
+                        {
+                            LyricsDisplayMode =
+                                _lyricsDisplayMode,
+                        },
+                };
+
+            _settings = updated;
+
+            await LibraryDatabase.SaveSettingsAsync(
+                DatabasePath,
+                updated);
+
+            RefreshDatabaseSize();
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Could not save the lyrics display mode.",
+                exception);
+        }
     }
 
     private void CopyAllLyricsButton_Click(
@@ -4940,6 +5088,7 @@ public sealed partial class MainWindow : Window
                     "请在“设置”中配置 MusicBee 播放列表目录。");
             PlaylistTracksList.ItemsSource =
                 null;
+            ConfigureAuxiliaryLongText();
         }
     }
 
@@ -4970,6 +5119,7 @@ public sealed partial class MainWindow : Window
                         $"{playlist.TrackCount:N0} tracks · Pending sync",
                         $"{playlist.TrackCount:N0} 首歌曲 · 待同步");
 
+        ConfigureAuxiliaryLongText();
         ApplyPlaylistTrackFilter();
     }
 
@@ -5345,6 +5495,8 @@ public sealed partial class MainWindow : Window
             {
                 ConfigureTitleAutoScroll();
             }
+
+            ConfigureAuxiliaryLongText();
 
             if (planChanged
                 && _plan is not null)
@@ -6704,6 +6856,7 @@ public sealed partial class MainWindow : Window
         RenderLyrics();
         RefreshTrackSyncTab(
             _selectedLibraryItem);
+        ConfigureAuxiliaryLongText();
         ApplyLibraryFilter();
         ApplyPlaylistTrackFilter();
     }
