@@ -2302,47 +2302,31 @@ public sealed partial class MainWindow : Window
                     !string.IsNullOrWhiteSpace(
                         line.Translation));
 
-        LyricsModeButton.Visibility =
-            hasLyrics && hasTranslation
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-
         _lyricsDisplayMode =
             LyricsDisplayModes.Normalize(
                 _lyricsDisplayMode);
 
-        LyricsModeIcon.Glyph =
+        int selectedIndex =
             _lyricsDisplayMode switch
             {
                 LyricsDisplayModes
-                    .OriginalOnly =>
-                    "\uE8C3",
+                    .OriginalOnly => 0,
                 LyricsDisplayModes
-                    .PreferTranslation =>
-                    "\uE909",
-                _ =>
-                    "\uE8AB",
+                    .PreferTranslation => 1,
+                _ => 2,
             };
 
-        ToolTipService.SetToolTip(
-            LyricsModeButton,
-            _lyricsDisplayMode switch
-            {
-                LyricsDisplayModes
-                    .OriginalOnly =>
-                    L(
-                        "Original only",
-                        "仅原文"),
-                LyricsDisplayModes
-                    .PreferTranslation =>
-                    L(
-                        "Prefer translation",
-                        "优先翻译"),
-                _ =>
-                    L(
-                        "Prefer original",
-                        "优先原文"),
-            });
+        if (LyricsModeBox.SelectedIndex
+            != selectedIndex)
+        {
+            LyricsModeBox.SelectedIndex =
+                selectedIndex;
+        }
+
+        LyricsModeBox.IsEnabled =
+            hasLyrics && hasTranslation;
+        CopyAllLyricsButton.IsEnabled =
+            hasLyrics;
 
         LyricDisplayLine[] lines =
             hasLyrics
@@ -2366,11 +2350,13 @@ public sealed partial class MainWindow : Window
                 : lines;
     }
 
-    private void LyricsModeItem_Click(
+    private void LyricsModeBox_SelectionChanged(
         object sender,
-        RoutedEventArgs e)
+        SelectionChangedEventArgs e)
     {
-        if (sender is not MenuFlyoutItem item
+        if (_loadingSettings
+            || LyricsModeBox.SelectedItem
+                is not ComboBoxItem item
             || item.Tag is not string mode)
         {
             return;
@@ -2382,6 +2368,44 @@ public sealed partial class MainWindow : Window
 
         RenderLyrics();
         ScheduleSettingsSave();
+    }
+
+    private void CopyAllLyricsButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        LyricDisplayLine[] lines =
+            BuildLyricLines(
+                _currentLyricsRaw,
+                _lyricsDisplayMode);
+
+        if (lines.Length == 0)
+        {
+            return;
+        }
+
+        string text =
+            string.Join(
+                Environment.NewLine,
+                lines.Select(line =>
+                {
+                    string timestamp =
+                        string.IsNullOrWhiteSpace(
+                            line.TimestampText)
+                            ? string.Empty
+                            : $"[{line.TimestampText}] ";
+
+                    return string.IsNullOrWhiteSpace(
+                        line.SecondaryText)
+                        ? timestamp
+                            + line.PrimaryText
+                        : timestamp
+                            + line.PrimaryText
+                            + Environment.NewLine
+                            + line.SecondaryText;
+                }));
+
+        CopyText(text);
     }
 
     private void LyricLineMenu_Opening(
@@ -6386,18 +6410,27 @@ public sealed partial class MainWindow : Window
                 "Wrap",
                 "换行显示");
 
-        LyricsOriginalOnlyItem.Text =
+        LyricsOriginalOnlyItem.Content =
             L(
                 "Original only",
                 "仅原文");
-        LyricsPreferTranslationItem.Text =
+        LyricsPreferTranslationItem.Content =
             L(
                 "Prefer translation",
                 "优先翻译");
-        LyricsPreferOriginalItem.Text =
+        LyricsPreferOriginalItem.Content =
             L(
                 "Prefer original",
                 "优先原文");
+        CopyAllLyricsButtonText.Text =
+            L(
+                "Copy all",
+                "复制完整歌词");
+        ToolTipService.SetToolTip(
+            CopyAllLyricsButton,
+            L(
+                "Copy full lyrics",
+                "复制完整歌词"));
 
         AcrylicSettingTitle.Text =
             L(
