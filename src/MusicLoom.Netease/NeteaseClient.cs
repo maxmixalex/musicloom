@@ -91,7 +91,8 @@ public sealed class NeteaseClient : IDisposable
                     name,
                     artist,
                     album,
-                    score));
+                    score,
+                    ReadAlbumCoverUrl(song)));
         }
 
         return candidates;
@@ -274,7 +275,9 @@ public sealed class NeteaseClient : IDisposable
                     ReadString(song, "name") ?? $"#{songId}",
                     ReadArtists(song),
                     ReadAlbum(song),
-                    Score: null));
+                    Score: null,
+                    CoverUrl:
+                        ReadAlbumCoverUrl(song)));
         }
 
         return candidates;
@@ -378,6 +381,20 @@ public sealed class NeteaseClient : IDisposable
             && property.TryGetDouble(out double value)
                 ? value
                 : null;
+    }
+
+    private static string? ReadAlbumCoverUrl(
+        JsonElement song)
+    {
+        JsonElement album;
+        if (!(song.TryGetProperty("album", out album)
+            || song.TryGetProperty("al", out album))
+            || album.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return ReadString(album, "picUrl");
     }
 
     private static string ReadArtists(JsonElement song)
