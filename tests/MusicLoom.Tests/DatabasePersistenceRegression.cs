@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using MusicLoom.App;
 using MusicLoom.Core.Configuration;
 using MusicLoom.Core.State;
@@ -64,9 +65,27 @@ internal static class DatabasePersistenceRegression
                         },
                 };
 
+            await CreateLegacySettingsAsync(
+                databasePath,
+                expectedSettings);
+
+            MusicLoomSettings migratedSettings =
+                await LibraryDatabase
+                    .LoadLegacySettingsAsync(
+                        databasePath)
+                ?? throw new InvalidOperationException(
+                    "Legacy SQLite settings were not loaded.");
+
             await TomlSettingsStore.SaveAsync(
                 configPath,
-                expectedSettings);
+                migratedSettings);
+            await LibraryDatabase
+                .DropLegacySettingsAsync(
+                    databasePath);
+
+            True(!await TableExistsAsync(
+                databasePath,
+                "app_settings"));
 
             MusicLoomSettings actualSettings =
                 await TomlSettingsStore.LoadAsync(
@@ -266,6 +285,190 @@ internal static class DatabasePersistenceRegression
                 root,
                 recursive: true);
         }
+    }
+
+    private static async Task CreateLegacySettingsAsync(
+        string databasePath,
+        MusicLoomSettings settings)
+    {
+        await LibraryDatabase.InitializeAsync(
+            databasePath);
+
+        await using SqliteConnection connection =
+            new(
+                new SqliteConnectionStringBuilder
+                {
+                    DataSource = databasePath,
+                }.ToString());
+        await connection.OpenAsync();
+
+        await using SqliteCommand command =
+            connection.CreateCommand();
+        command.CommandText =
+            """
+            CREATE TABLE app_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                verbose INTEGER NOT NULL,
+                source_directory TEXT NOT NULL,
+                destination_directory TEXT NOT NULL,
+                source_playlist_directory TEXT NOT NULL,
+                destination_playlist_base TEXT NOT NULL,
+                lyrics_enabled INTEGER NOT NULL,
+                lyrics_override_existing INTEGER NOT NULL,
+                lyrics_refresh_interval_hours REAL NOT NULL,
+                lyrics_storage_mode TEXT NOT NULL,
+                logging_level TEXT NOT NULL,
+                logging_format TEXT NOT NULL,
+                logging_date_format TEXT NOT NULL,
+                ui_language TEXT NOT NULL,
+                ui_acrylic_enabled INTEGER NOT NULL,
+                ui_accent_color TEXT NOT NULL,
+                ui_theme TEXT NOT NULL,
+                ui_auto_scroll_long_titles INTEGER NOT NULL,
+                ui_long_text_mode TEXT NULL,
+                ui_lyrics_display_mode TEXT NOT NULL
+            );
+
+            INSERT INTO app_settings (
+                id,
+                verbose,
+                source_directory,
+                destination_directory,
+                source_playlist_directory,
+                destination_playlist_base,
+                lyrics_enabled,
+                lyrics_override_existing,
+                lyrics_refresh_interval_hours,
+                lyrics_storage_mode,
+                logging_level,
+                logging_format,
+                logging_date_format,
+                ui_language,
+                ui_acrylic_enabled,
+                ui_accent_color,
+                ui_theme,
+                ui_auto_scroll_long_titles,
+                ui_long_text_mode,
+                ui_lyrics_display_mode
+            ) VALUES (
+                1,
+                $verbose,
+                $source,
+                $destination,
+                $playlistSource,
+                $playlistBase,
+                $lyricsEnabled,
+                $lyricsOverride,
+                $lyricsRefresh,
+                $lyricsStorage,
+                $logLevel,
+                $logFormat,
+                $logDate,
+                $language,
+                $acrylic,
+                $accent,
+                $theme,
+                $autoScroll,
+                $longText,
+                $lyricsDisplay
+            );
+            """;
+        command.Parameters.AddWithValue(
+            "$verbose",
+            settings.Verbose ? 1 : 0);
+        command.Parameters.AddWithValue(
+            "$source",
+            settings.Path.SourceDirectory);
+        command.Parameters.AddWithValue(
+            "$destination",
+            settings.Path.DestinationDirectory);
+        command.Parameters.AddWithValue(
+            "$playlistSource",
+            settings.Path.SourcePlaylistDirectory);
+        command.Parameters.AddWithValue(
+            "$playlistBase",
+            settings.Path.DestinationPlaylistBase);
+        command.Parameters.AddWithValue(
+            "$lyricsEnabled",
+            settings.Organizer.Lyrics.Enabled
+                ? 1
+                : 0);
+        command.Parameters.AddWithValue(
+            "$lyricsOverride",
+            settings.Organizer.Lyrics.OverrideExisting
+                ? 1
+                : 0);
+        command.Parameters.AddWithValue(
+            "$lyricsRefresh",
+            settings.Organizer.Lyrics.RefreshIntervalHours);
+        command.Parameters.AddWithValue(
+            "$lyricsStorage",
+            settings.Organizer.Lyrics.StorageMode);
+        command.Parameters.AddWithValue(
+            "$logLevel",
+            settings.Logging.Level);
+        command.Parameters.AddWithValue(
+            "$logFormat",
+            settings.Logging.Format);
+        command.Parameters.AddWithValue(
+            "$logDate",
+            settings.Logging.DateFormat);
+        command.Parameters.AddWithValue(
+            "$language",
+            settings.Ui.Language);
+        command.Parameters.AddWithValue(
+            "$acrylic",
+            settings.Ui.AcrylicEnabled ? 1 : 0);
+        command.Parameters.AddWithValue(
+            "$accent",
+            settings.Ui.AccentColor);
+        command.Parameters.AddWithValue(
+            "$theme",
+            settings.Ui.Theme);
+        command.Parameters.AddWithValue(
+            "$autoScroll",
+            settings.Ui.AutoScrollLongTitles
+                ? 1
+                : 0);
+        command.Parameters.AddWithValue(
+            "$longText",
+            (object?)settings.Ui.LongTextMode
+                ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$lyricsDisplay",
+            settings.Ui.LyricsDisplayMode);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<bool> TableExistsAsync(
+        string databasePath,
+        string tableName)
+    {
+        await using SqliteConnection connection =
+            new(
+                new SqliteConnectionStringBuilder
+                {
+                    DataSource = databasePath,
+                }.ToString());
+        await connection.OpenAsync();
+
+        await using SqliteCommand command =
+            connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = $name
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue(
+            "$name",
+            tableName);
+
+        return await command.ExecuteScalarAsync()
+            is not null;
     }
 
     private static void Equal<T>(
