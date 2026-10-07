@@ -6,7 +6,7 @@ namespace MusicLoom.Core.Lyrics;
 
 public sealed partial class LrcDocument
 {
-    private static readonly TimeSpan MergeThreshold = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan MergeThreshold = TimeSpan.FromMilliseconds(450);
 
     public Dictionary<string, string> Metadata { get; } = new(StringComparer.OrdinalIgnoreCase);
     public List<LrcLine> Lines { get; } = [];
@@ -62,47 +62,197 @@ public sealed partial class LrcDocument
         return document;
     }
 
-    public static LrcDocument Merge(LrcDocument original, LrcDocument translated)
+    public static LrcDocument Merge(
+        LrcDocument original,
+        LrcDocument translated)
     {
         LrcDocument merged = new();
-        foreach ((string key, string value) in original.Metadata)
+        foreach ((string key, string value)
+            in original.Metadata)
         {
             merged.Metadata[key] = value;
         }
 
-        foreach ((string key, string value) in translated.Metadata)
+        foreach ((string key, string value)
+            in translated.Metadata)
         {
             merged.Metadata[key] = value;
         }
 
-        List<LrcLine> remainingTranslations = [.. translated.Lines];
-        foreach (LrcLine originalLine in original.Lines)
-        {
-            merged.Lines.Add(originalLine);
-            LrcLine? bestMatch = null;
-            TimeSpan smallestDelta = MergeThreshold;
+        bool[] usedTranslations =
+            new bool[translated.Lines.Count];
 
-            foreach (LrcLine translation in remainingTranslations)
+        int searchStart = 0;
+
+        foreach (LrcLine originalLine
+            in original.Lines)
+        {
+            merged.Lines.Add(
+                originalLine);
+
+            int bestIndex = -1;
+            TimeSpan smallestDelta =
+                MergeThreshold
+                + TimeSpan.FromTicks(1);
+
+            for (int i = searchStart;
+                i < translated.Lines.Count;
+                i++)
             {
-                TimeSpan delta = (translation.Timestamp - originalLine.Timestamp).Duration();
-                if (delta <= smallestDelta)
+                LrcLine translation =
+                    translated.Lines[i];
+
+                if (LooksLikeCreditLine(
+                        translation.Text))
                 {
-                    bestMatch = translation;
-                    smallestDelta = delta;
+                    continue;
                 }
+
+                TimeSpan signedDelta =
+                    translation.Timestamp
+                    - originalLine.Timestamp;
+
+                if (signedDelta
+                    > MergeThreshold)
+                {
+                    break;
+                }
+
+                TimeSpan delta =
+                    signedDelta.Duration();
+
+                if (delta > MergeThreshold
+                    || delta >= smallestDelta)
+                {
+                    continue;
+                }
+
+                bestIndex = i;
+                smallestDelta = delta;
             }
 
-            if (bestMatch is not null)
+            if (bestIndex < 0)
             {
-                merged.Lines.Add(bestMatch with { Timestamp = originalLine.Timestamp });
-                remainingTranslations.Remove(bestMatch);
+                continue;
+            }
+
+            LrcLine best =
+                translated.Lines[
+                    bestIndex];
+
+            merged.Lines.Add(
+                best with
+                {
+                    Timestamp =
+                        originalLine.Timestamp,
+                });
+
+            usedTranslations[
+                bestIndex] = true;
+
+            // Translation matching is monotonic. Once a later translation
+            // has been paired, an even later original line cannot go back
+            // and steal an earlier translation.
+            searchStart =
+                bestIndex + 1;
+        }
+
+        for (int i = 0;
+            i < translated.Lines.Count;
+            i++)
+        {
+            if (!usedTranslations[i])
+            {
+                merged.Lines.Add(
+                    translated.Lines[i]);
             }
         }
 
-        merged.Lines.AddRange(remainingTranslations);
-        merged.Lines.Sort(static (left, right) => left.Timestamp.CompareTo(right.Timestamp));
+        merged.Lines.Sort(
+            static (left, right) =>
+                left.Timestamp.CompareTo(
+                    right.Timestamp));
+
         return merged;
     }
+
+    private static bool LooksLikeCreditLine(
+        string text)
+    {
+        int asciiColon =
+            text.IndexOf(':');
+        int fullWidthColon =
+            text.IndexOf('：');
+
+        int colon =
+            asciiColon < 0
+                ? fullWidthColon
+                : fullWidthColon < 0
+                    ? asciiColon
+                    : Math.Min(
+                        asciiColon,
+                        fullWidthColon);
+
+        if (colon <= 0 || colon > 24)
+        {
+            return false;
+        }
+
+        string label =
+            text[..colon].Trim();
+
+        return CreditLabels.Contains(
+            label);
+    }
+
+    private static readonly HashSet<string>
+        CreditLabels =
+            new(
+                [
+                    "器乐",
+                    "演奏",
+                    "作词",
+                    "作詞",
+                    "作曲",
+                    "编曲",
+                    "編曲",
+                    "制作",
+                    "制作人",
+                    "演唱",
+                    "和声",
+                    "和聲",
+                    "吉他",
+                    "贝斯",
+                    "貝斯",
+                    "鼓",
+                    "键盘",
+                    "鍵盤",
+                    "弦乐",
+                    "弦楽",
+                    "混音",
+                    "母带",
+                    "母帶",
+                    "录音",
+                    "錄音",
+                    "监制",
+                    "監製",
+                    "lyrics",
+                    "lyricist",
+                    "composer",
+                    "arranger",
+                    "arrangement",
+                    "instrumental",
+                    "guitar",
+                    "bass",
+                    "drums",
+                    "keyboard",
+                    "producer",
+                    "mix",
+                    "mixing",
+                    "mastering",
+                    "recording",
+                ],
+                StringComparer.OrdinalIgnoreCase);
 
     public override string ToString()
     {
