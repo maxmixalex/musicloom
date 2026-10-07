@@ -20,7 +20,9 @@ internal static class SyncExecutorRegression
         await OverrideExistingSkipsProbeAsync();
         await UnsupportedLyricsUsesZeroProbeAsync();
         await NoMatchIsNonFatalAsync();
-        MatchWarningIgnoresAlbumAndFlagsTitleArtist();
+        MatchWarningHandlesChineseAndArtistSubsets();
+        await WarningGatesLyricsUntilConfirmationAsync();
+        await SuppressedMatchSkipsRecognitionAsync();
         await LyricsWritePersistsEnrichmentStateAsync();
         await RetryableFailureKeepsWarmMetadataAndAvoidsRecopyAsync();
         await PeriodicCheckpointPersistsBeforeFinalSaveAsync();
@@ -182,7 +184,7 @@ internal static class SyncExecutorRegression
             state.RecipeVersion);
     }
 
-    private static void MatchWarningIgnoresAlbumAndFlagsTitleArtist()
+    private static void MatchWarningHandlesChineseAndArtistSubsets()
     {
         PlanEntry entry =
             new(
@@ -190,19 +192,19 @@ internal static class SyncExecutorRegression
                 "destination.mp3",
                 PlanEntryStatus.Unchanged,
                 new TrackMetadata(
-                    Artist: "Track Artist",
-                    AlbumArtist: "Album Artist",
+                    Artist: "周杰倫;方文山",
+                    AlbumArtist: "周杰倫;方文山",
                     Album: "Local Album",
                     HasEmbeddedArt: false,
-                    Title: "Local Title"));
+                    Title: "髮如雪"));
 
-        TrackState matching =
+        TrackState compatible =
             new()
             {
                 SourcePath = entry.SourcePath,
                 NeteaseSongId = 42,
-                NeteaseTrackName = "Local Title",
-                NeteaseTrackArtist = "Album Artist",
+                NeteaseTrackName = "发如雪",
+                NeteaseTrackArtist = "周杰伦",
                 NeteaseTrackAlbum = "Different Album",
             };
 
@@ -210,10 +212,10 @@ internal static class SyncExecutorRegression
             null,
             SyncExecutor.DetectMatchWarning(
                 entry,
-                matching));
+                compatible));
 
         TrackState mismatching =
-            matching with
+            compatible with
             {
                 NeteaseTrackName =
                     "Different Title",
@@ -230,14 +232,136 @@ internal static class SyncExecutorRegression
 
         True(warning.TitleMismatch);
         True(warning.ArtistMismatch);
+
+        Equal<TrackSyncWarning?>(
+            null,
+            SyncExecutor.DetectMatchWarning(
+                entry,
+                mismatching with
+                {
+                    NeteaseMatchConfirmed = true,
+                }));
+    }
+
+    private static async Task WarningGatesLyricsUntilConfirmationAsync()
+    {
+        await using Fixture fixture =
+            await Fixture.CreateAsync(
+                lyricsEnabled: true,
+                overrideExisting: true);
+
+        FakeRecognizer recognizer =
+            new(
+                TrackRecognitionResult.Matched(
+                    42,
+                    "Remote title",
+                    "Different Artist",
+                    "Remote Album",
+                    "https://example.test/cover.jpg"));
+        FakeLyricsProvider lyricsProvider =
+            new(
+                LyricsLookupResult.Found(
+                    LrcDocument.Parse(
+                        "[00:01.000]hello")));
+        FakeLyricsWriter writer =
+            new(
+                LyricsProbeStatus.Missing,
+                LyricsWriteStatus.Written);
+
+        SyncExecutionSummary summary =
+            await fixture.ExecuteAsync(
+                recognizer,
+                lyricsProvider,
+                writer);
+
+        Equal(1, summary.Warnings.Count);
+        Equal(0, summary.CompletedTracks);
+        Equal(0, lyricsProvider.CallCount);
+        Equal(0, writer.WriteCalls);
+
+        TrackState persisted =
+            await fixture.LoadTrackStateAsync();
+        Equal(42L, persisted.NeteaseSongId ?? -1);
         Equal(
-            "Local Title",
-            warning.RecordedTitle
+            "https://example.test/cover.jpg",
+            persisted.NeteaseCoverUrl
                 ?? string.Empty);
+        Equal(string.Empty, persisted.RecipeVersion);
+    }
+
+    private static async Task SuppressedMatchSkipsRecognitionAsync()
+    {
+        await using Fixture fixture =
+            await Fixture.CreateAsync(
+                lyricsEnabled: true,
+                overrideExisting: true);
+
+        FileInfo source =
+            new(
+                fixture.SourcePath);
+
+        fixture.State.Tracks[
+            fixture.SourcePath] =
+            new TrackState
+            {
+                SourcePath =
+                    fixture.SourcePath,
+                SourceSize =
+                    source.Length,
+                SourceLastWriteUtcTicks =
+                    source.LastWriteTimeUtc
+                        .Ticks,
+                QuickHash =
+                    QuickFileHash.Compute(
+                        fixture.SourcePath),
+                DestinationPath =
+                    fixture.DestinationPath,
+                Recognition =
+                    RecognitionState.NoMatch,
+                RecognitionCheckedAt =
+                    DateTimeOffset.UtcNow,
+                NeteaseMatchSuppressed = true,
+                MetadataCaptured = true,
+                MetadataSchemaVersion =
+                    TrackMetadata.CurrentSchemaVersion,
+                TitleCaptured = true,
+                Artist = "Artist",
+                AlbumArtist =
+                    "Album Artist",
+                Album = "Album",
+                ProcessedAt =
+                    DateTimeOffset.UtcNow,
+            };
+
+        FakeRecognizer recognizer =
+            new(
+                TrackRecognitionResult.Matched(
+                    123));
+        FakeLyricsProvider lyricsProvider =
+            new(
+                LyricsLookupResult.NoLyrics());
+        FakeLyricsWriter writer =
+            new(
+                LyricsProbeStatus.Missing);
+
+        SyncExecutionSummary summary =
+            await fixture.ExecuteAsync(
+                recognizer,
+                lyricsProvider,
+                writer);
+
+        Equal(1, summary.NoMatch);
+        Equal(0, recognizer.CallCount);
+        Equal(0, lyricsProvider.CallCount);
+
+        TrackState persisted =
+            await fixture.LoadTrackStateAsync();
+        True(persisted.NeteaseMatchSuppressed);
+        Equal<long?>(null, persisted.NeteaseSongId);
         Equal(
-            "Different Artist",
-            warning.MatchedArtist
-                ?? string.Empty);
+            SyncRecipe.For(
+                fixture.Settings),
+            persisted.RecipeVersion);
     }
 
     private static async Task LyricsWritePersistsEnrichmentStateAsync()

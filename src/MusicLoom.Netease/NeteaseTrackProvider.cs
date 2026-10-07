@@ -56,7 +56,8 @@ public sealed class NeteaseTrackProvider :
             first.TrackId,
             first.Name,
             first.Artist,
-            first.Album);
+            first.Album,
+            first.CoverUrl);
     }
 
     public async Task<IReadOnlyList<NeteaseMatchCandidate>>

@@ -286,6 +286,90 @@ public sealed class NeteaseClient : IDisposable
         return candidates;
     }
 
+    public async Task<NeteaseMatchCandidate?>
+        GetSongAsync(
+            long songId,
+            CancellationToken cancellationToken = default)
+    {
+        string ids =
+            Uri.EscapeDataString(
+                $"[{songId}]");
+
+        using HttpRequestMessage request =
+            new(
+                HttpMethod.Get,
+                $"{Host}/api/song/detail/?id={songId}&ids={ids}");
+        request.Headers.Referrer =
+            new Uri(Host);
+        request.Headers.UserAgent.ParseAdd(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/MusicLoom");
+        request.Headers.TryAddWithoutValidation(
+            "Cookie",
+            _cookieHeader);
+        request.Headers.Accept.Add(
+            JsonMediaType);
+
+        using HttpResponseMessage response =
+            await _httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        await using Stream responseStream =
+            await response.Content.ReadAsStreamAsync(
+                cancellationToken);
+        using JsonDocument document =
+            await JsonDocument.ParseAsync(
+                responseStream,
+                cancellationToken:
+                    cancellationToken);
+
+        if (!document.RootElement.TryGetProperty(
+                "songs",
+                out JsonElement songs)
+            || songs.ValueKind
+                != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        JsonElement song =
+            songs.EnumerateArray()
+                .FirstOrDefault(
+                    candidate =>
+                        candidate.TryGetProperty(
+                            "id",
+                            out JsonElement id)
+                        && id.TryGetInt64(
+                            out long idValue)
+                        && idValue == songId);
+
+        if (song.ValueKind
+            == JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        return new NeteaseMatchCandidate(
+            songId,
+            ReadString(
+                song,
+                "name")
+                ?? $"#{songId}",
+            ReadArtists(
+                song),
+            ReadAlbum(
+                song),
+            Score: null,
+            CoverUrl:
+                ReadAlbumCoverUrl(
+                    song),
+            DurationMs:
+                ReadDurationMs(
+                    song));
+    }
+
     public static Uri GetPreviewUri(
         long songId) =>
         new(

@@ -4,6 +4,7 @@
     <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="OpenccNetLib" Version="1.7.0" />
     <PackageReference Include="System.IO.Hashing" Version="10.0.11" />
   </ItemGroup>
 </Project>

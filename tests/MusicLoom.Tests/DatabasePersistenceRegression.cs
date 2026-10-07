@@ -152,6 +152,9 @@ internal static class DatabasePersistenceRegression
                     NeteaseTrackName = "Matched title",
                     NeteaseTrackArtist = "Matched artist",
                     NeteaseTrackAlbum = "Matched album",
+                    NeteaseCoverUrl =
+                        "https://example.test/cover.jpg",
+                    NeteaseMatchConfirmed = true,
                     Lyrics = LyricsState.Written,
                     LyricsCheckedAt =
                         new DateTimeOffset(
@@ -221,6 +224,13 @@ internal static class DatabasePersistenceRegression
                 LyricsState.Written,
                 migratedTrack.Lyrics);
             Equal(
+                "https://example.test/cover.jpg",
+                migratedTrack.NeteaseCoverUrl
+                    ?? string.Empty);
+            Equal(
+                true,
+                migratedTrack.NeteaseMatchConfirmed);
+            Equal(
                 true,
                 migratedTrack.HasEmbeddedArt);
 
@@ -229,6 +239,10 @@ internal static class DatabasePersistenceRegression
                 {
                     NeteaseTrackName =
                         "Updated in SQLite",
+                    NeteaseSongId = null,
+                    NeteaseCoverUrl = null,
+                    NeteaseMatchConfirmed = false,
+                    NeteaseMatchSuppressed = true,
                     Lyrics =
                         LyricsState.NoLyrics,
                 };
@@ -253,6 +267,14 @@ internal static class DatabasePersistenceRegression
                 LyricsState.NoLyrics,
                 reloaded.Tracks[sourcePath]
                     .Lyrics);
+            Equal(
+                true,
+                reloaded.Tracks[sourcePath]
+                    .NeteaseMatchSuppressed);
+            Equal(
+                false,
+                reloaded.Tracks[sourcePath]
+                    .NeteaseMatchConfirmed);
             True(!File.Exists(
                 legacyStatePath));
             True(

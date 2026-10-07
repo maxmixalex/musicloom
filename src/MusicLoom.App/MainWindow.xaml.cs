@@ -79,11 +79,14 @@ public sealed partial class MainWindow : Window
     private LibraryDisplayItem? _playlistContextItem;
     private CancellationTokenSource? _operationCancellation;
     private CancellationTokenSource? _settingsSaveCancellation;
+    private CancellationTokenSource? _playbackTransitionCancellation;
     private bool _busy;
     private bool _loadingSettings = true;
     private bool _refreshingLocalizedChoices;
     private int _detailRequestId;
     private int _artworkGeneration;
+    private int _matchArtworkRequestId;
+    private double _playerTargetVolume;
     private string _uiLanguage =
         DetectSystemLanguage();
     private string _accentColor = "system";
@@ -174,8 +177,10 @@ public sealed partial class MainWindow : Window
     private void InitializePlayer()
     {
         _mediaPlayer.AutoPlay = false;
-        _mediaPlayer.Volume =
+        _playerTargetVolume =
             PlayerVolumeSlider.Value / 100.0;
+        _mediaPlayer.Volume =
+            _playerTargetVolume;
 
         _mediaPlayer.MediaOpened +=
             (_, _) =>
@@ -237,6 +242,8 @@ public sealed partial class MainWindow : Window
         WindowEventArgs args)
     {
         _playerTimer?.Stop();
+        _playbackTransitionCancellation
+            ?.Cancel();
         CloseMatchOverlay();
         _mediaPlayer.Dispose();
     }
@@ -246,11 +253,26 @@ public sealed partial class MainWindow : Window
         bool rebuildQueue = true,
         TimeSpan? startPosition = null)
     {
+        CancellationTokenSource transition =
+            BeginPlaybackTransition();
+
         try
         {
             StorageFile file =
                 await StorageFile.GetFileFromPathAsync(
                     item.Entry.SourcePath);
+
+            if (_mediaPlayer.Source is not null
+                && _mediaPlayer.Volume > 0.001)
+            {
+                await FadePlayerVolumeAsync(
+                    _mediaPlayer.Volume,
+                    fadeIn: false,
+                    transition.Token);
+            }
+
+            transition.Token
+                .ThrowIfCancellationRequested();
 
             if (rebuildQueue)
             {
@@ -263,6 +285,12 @@ public sealed partial class MainWindow : Window
                         item);
                 RefreshNowPlayingPlaylist();
             }
+
+            _playingLibraryItem
+                ?.SetPlaying(
+                    false);
+            item.SetPlaying(
+                true);
 
             _playingLibraryItem = item;
             _playingPreviewCandidate = null;
@@ -277,6 +305,7 @@ public sealed partial class MainWindow : Window
             _suppressPlaybackLyricFollow =
                 startPosition.HasValue;
 
+            _mediaPlayer.Volume = 0;
             _mediaPlayer.Source =
                 MediaSource.CreateFromStorageFile(
                     file);
@@ -303,7 +332,18 @@ public sealed partial class MainWindow : Window
                     initialPosition);
             }
 
+            transition.Token
+                .ThrowIfCancellationRequested();
+
             _mediaPlayer.Play();
+
+            await WaitForPlaybackStartAsync(
+                transition.Token);
+            await FadePlayerVolumeAsync(
+                0,
+                fadeIn: true,
+                transition.Token);
+
             _suppressPlaybackLyricFollow =
                 false;
             UpdatePlayerVisualState();
@@ -312,6 +352,11 @@ public sealed partial class MainWindow : Window
             {
                 UpdatePlaybackLyrics();
             }
+        }
+        catch (OperationCanceledException)
+        {
+            _suppressPlaybackLyricFollow =
+                false;
         }
         catch (Exception exception)
         {
@@ -323,83 +368,241 @@ public sealed partial class MainWindow : Window
                     "无法播放歌曲。"),
                 exception);
         }
+        finally
+        {
+            CompletePlaybackTransition(
+                transition);
+        }
     }
 
     private async Task PlayNetEasePreviewAsync(
         NeteaseMatchCandidate candidate,
         TimeSpan? startPosition = null)
     {
-        _playingLibraryItem = null;
-        _playingPreviewCandidate =
-            candidate;
-        _playbackQueue = [];
-        _playbackQueueIndex = -1;
-        RefreshNowPlayingPlaylist();
+        CancellationTokenSource transition =
+            BeginPlaybackTransition();
 
-        if (_activePlaybackLyric
-            is not null)
+        try
         {
-            _activePlaybackLyric.IsActive =
+            if (_mediaPlayer.Source is not null
+                && _mediaPlayer.Volume > 0.001)
+            {
+                await FadePlayerVolumeAsync(
+                    _mediaPlayer.Volume,
+                    fadeIn: false,
+                    transition.Token);
+            }
+
+            transition.Token
+                .ThrowIfCancellationRequested();
+
+            _playingLibraryItem
+                ?.SetPlaying(
+                    false);
+            _playingLibraryItem = null;
+            _playingPreviewCandidate =
+                candidate;
+            _playbackQueue = [];
+            _playbackQueueIndex = -1;
+            RefreshNowPlayingPlaylist();
+
+            if (_activePlaybackLyric
+                is not null)
+            {
+                _activePlaybackLyric.IsActive =
+                    false;
+            }
+            _activePlaybackLyric = null;
+            _suppressPlaybackLyricFollow =
+                startPosition.HasValue;
+
+            _mediaPlayer.Volume = 0;
+            _mediaPlayer.Source =
+                MediaSource.CreateFromUri(
+                    NeteaseClient.GetPreviewUri(
+                        candidate.TrackId));
+
+            PlayerTitleText.Text =
+                string.IsNullOrWhiteSpace(
+                    candidate.Artist)
+                    ? candidate.Name
+                    : $"{candidate.Artist} - {candidate.Name}";
+            PlayerMetadataText.Text =
+                candidate.Album;
+
+            if (!string.IsNullOrWhiteSpace(
+                    candidate.CoverUrl)
+                && Uri.TryCreate(
+                    candidate.CoverUrl,
+                    UriKind.Absolute,
+                    out Uri? coverUri))
+            {
+                PlayerArtworkImage.Source =
+                    new BitmapImage
+                    {
+                        DecodePixelWidth = 144,
+                        UriSource = coverUri,
+                    };
+                PlayerArtworkPlaceholder.Visibility =
+                    Visibility.Collapsed;
+            }
+            else
+            {
+                PlayerArtworkImage.Source = null;
+                PlayerArtworkPlaceholder.Visibility =
+                    Visibility.Visible;
+            }
+
+            ConfigureAuxiliaryLongText();
+
+            if (startPosition
+                is TimeSpan initialPosition)
+            {
+                await SeekPlayerWhenReadyAsync(
+                    initialPosition);
+            }
+
+            transition.Token
+                .ThrowIfCancellationRequested();
+
+            _mediaPlayer.Play();
+
+            await WaitForPlaybackStartAsync(
+                transition.Token);
+            await FadePlayerVolumeAsync(
+                0,
+                fadeIn: true,
+                transition.Token);
+
+            _suppressPlaybackLyricFollow =
+                false;
+            UpdatePlayerVisualState();
+
+            if (startPosition.HasValue)
+            {
+                UpdatePlaybackLyrics();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _suppressPlaybackLyricFollow =
                 false;
         }
-        _activePlaybackLyric = null;
-        _suppressPlaybackLyricFollow =
-            startPosition.HasValue;
-
-        _mediaPlayer.Source =
-            MediaSource.CreateFromUri(
-                NeteaseClient.GetPreviewUri(
-                    candidate.TrackId));
-
-        PlayerTitleText.Text =
-            string.IsNullOrWhiteSpace(
-                candidate.Artist)
-                ? candidate.Name
-                : $"{candidate.Artist} - {candidate.Name}";
-        PlayerMetadataText.Text =
-            candidate.Album;
-
-        if (!string.IsNullOrWhiteSpace(
-                candidate.CoverUrl)
-            && Uri.TryCreate(
-                candidate.CoverUrl,
-                UriKind.Absolute,
-                out Uri? coverUri))
+        catch (Exception exception)
         {
-            PlayerArtworkImage.Source =
-                new BitmapImage
-                {
-                    DecodePixelWidth = 144,
-                    UriSource = coverUri,
-                };
-            PlayerArtworkPlaceholder.Visibility =
-                Visibility.Collapsed;
+            _suppressPlaybackLyricFollow =
+                false;
+            HandleUiException(
+                L(
+                    "Could not play the NetEase preview.",
+                    "无法播放网易云试听。"),
+                exception);
         }
-        else
+        finally
         {
-            PlayerArtworkImage.Source = null;
-            PlayerArtworkPlaceholder.Visibility =
-                Visibility.Visible;
+            CompletePlaybackTransition(
+                transition);
         }
+    }
 
-        ConfigureAuxiliaryLongText();
+    private CancellationTokenSource
+        BeginPlaybackTransition()
+    {
+        _playbackTransitionCancellation
+            ?.Cancel();
 
-        if (startPosition
-            is TimeSpan initialPosition)
+        CancellationTokenSource current =
+            new();
+        _playbackTransitionCancellation =
+            current;
+        return current;
+    }
+
+    private async Task FadePlayerVolumeAsync(
+        double startVolume,
+        bool fadeIn,
+        CancellationToken cancellationToken)
+    {
+        const int Steps = 12;
+        TimeSpan delay =
+            TimeSpan.FromMilliseconds(
+                15);
+
+        for (int step = 1;
+            step <= Steps;
+            step++)
         {
-            await SeekPlayerWhenReadyAsync(
-                initialPosition);
+            cancellationToken
+                .ThrowIfCancellationRequested();
+
+            double progress =
+                step / (double)Steps;
+            double target =
+                fadeIn
+                    ? _playerTargetVolume
+                    : 0;
+            _mediaPlayer.Volume =
+                Math.Clamp(
+                    startVolume
+                    + (target - startVolume)
+                    * progress,
+                    0,
+                    1);
+
+            await Task.Delay(
+                delay,
+                cancellationToken);
         }
+    }
 
-        _mediaPlayer.Play();
-        _suppressPlaybackLyricFollow =
-            false;
-        UpdatePlayerVisualState();
-
-        if (startPosition.HasValue)
+    private async Task WaitForPlaybackStartAsync(
+        CancellationToken cancellationToken)
+    {
+        for (int attempt = 0;
+            attempt < 80;
+            attempt++)
         {
-            UpdatePlaybackLyrics();
+            cancellationToken
+                .ThrowIfCancellationRequested();
+
+            MediaPlaybackState state =
+                _mediaPlayer
+                    .PlaybackSession
+                    .PlaybackState;
+
+            if (state
+                is MediaPlaybackState.Playing
+                or MediaPlaybackState.Paused)
+            {
+                return;
+            }
+
+            await Task.Delay(
+                15,
+                cancellationToken);
         }
+    }
+
+    private void CompletePlaybackTransition(
+        CancellationTokenSource transition)
+    {
+        if (ReferenceEquals(
+                _playbackTransitionCancellation,
+                transition))
+        {
+            _playbackTransitionCancellation =
+                null;
+            try
+            {
+                _mediaPlayer.Volume =
+                    _playerTargetVolume;
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        transition.Dispose();
     }
 
     private LibraryDisplayItem[]
@@ -753,8 +956,15 @@ public sealed partial class MainWindow : Window
                 0,
                 1);
 
-        _mediaPlayer.Volume =
+        _playerTargetVolume =
             volume;
+
+        if (_playbackTransitionCancellation
+            is null)
+        {
+            _mediaPlayer.Volume =
+                volume;
+        }
 
         if (PlayerVolumeIcon is null)
         {
@@ -791,6 +1001,55 @@ public sealed partial class MainWindow : Window
         LibraryList.SelectedItem =
             item;
         LibraryList.ScrollIntoView(
+            item);
+    }
+
+    private async void LibraryList_DoubleTapped(
+        object sender,
+        DoubleTappedRoutedEventArgs e)
+    {
+        LibraryDisplayItem? item =
+            (e.OriginalSource
+                as FrameworkElement)
+                ?.DataContext
+            as LibraryDisplayItem
+            ?? LibraryList.SelectedItem
+                as LibraryDisplayItem;
+
+        if (item is null)
+        {
+            return;
+        }
+
+        LibraryList.SelectedItem =
+            item;
+        e.Handled = true;
+        await PlayLibraryItemAsync(
+            item);
+    }
+
+    private async void PlaylistTracksList_DoubleTapped(
+        object sender,
+        DoubleTappedRoutedEventArgs e)
+    {
+        LibraryDisplayItem? item =
+            (e.OriginalSource
+                as FrameworkElement)
+                ?.DataContext
+            as LibraryDisplayItem
+            ?? PlaylistTracksList
+                .SelectedItem
+                as LibraryDisplayItem;
+
+        if (item is null)
+        {
+            return;
+        }
+
+        PlaylistTracksList.SelectedItem =
+            item;
+        e.Handled = true;
+        await PlayLibraryItemAsync(
             item);
     }
 
@@ -1414,41 +1673,8 @@ public sealed partial class MainWindow : Window
             _state = state;
             _plan = plan;
 
-            if (plan.ErrorCount > 0)
-            {
-                string[] errors =
-                    plan.Entries
-                        .Where(static entry =>
-                            entry.Status
-                                == PlanEntryStatus.Error)
-                        .Select(entry =>
-                            $"{Path.GetFileName(entry.SourcePath)} · {entry.Detail}")
-                        .ToArray();
-
-                foreach (string error
-                    in errors)
-                {
-                    AppDiagnostics.Log(
-                        $"Scan error before sync: {error}");
-                }
-
-                ShowInfo(
-                    InfoBarSeverity.Error,
-                    L(
-                        "Sync blocked",
-                        "同步已阻止"),
-                    errors.Length > 0
-                        ? L(
-                            $"{plan.ErrorCount:N0} scan errors. First: {errors[0]}",
-                            $"{plan.ErrorCount:N0} 个扫描错误。第一个：{errors[0]}")
-                        : L(
-                            "The library has scan errors.",
-                            "音乐库存在扫描错误。"));
-
-                return;
-            }
-
-            if (plan.PendingCount == 0)
+            if (plan.PendingCount == 0
+                && plan.ErrorCount == 0)
             {
                 ShowInfo(
                     InfoBarSeverity.Success,
@@ -1463,6 +1689,24 @@ public sealed partial class MainWindow : Window
                     L(
                         "Library is up to date.",
                         "音乐库已经是最新。"));
+                return;
+            }
+
+            bool confirmed =
+                await ConfirmSyncPlanAsync(
+                    plan,
+                    state);
+
+            if (!confirmed)
+            {
+                SetOperationStatus(
+                    plan.ErrorCount > 0
+                        ? L(
+                            "Sync blocked by scan errors.",
+                            "同步被扫描错误阻止。")
+                        : L(
+                            "Sync cancelled.",
+                            "同步已取消。"));
                 return;
             }
 
@@ -1728,6 +1972,211 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task<bool> ConfirmSyncPlanAsync(
+        LibraryPlan plan,
+        StateDocument state)
+    {
+        TrackSyncWarning[] warnings =
+            plan.Entries
+                .Select(entry =>
+                    state.Tracks.TryGetValue(
+                        entry.SourcePath,
+                        out TrackState? trackState)
+                        ? SyncExecutor
+                            .DetectMatchWarning(
+                                entry,
+                                trackState)
+                        : null)
+                .OfType<TrackSyncWarning>()
+                .ToArray();
+
+        PlanEntry[] errors =
+            plan.Entries
+                .Where(static entry =>
+                    entry.Status
+                        == PlanEntryStatus.Error)
+                .ToArray();
+
+        TextBlock summary = new()
+        {
+            Text =
+                L(
+                    $"{plan.PendingTrackCount:N0} tracks pending · {plan.AudioCopyCount:N0} audio copies · {plan.CoverWriteCount:N0} covers · {plan.PlaylistWriteCount:N0} playlists · {warnings.Length:N0} warnings · {errors.Length:N0} errors",
+                    $"{plan.PendingTrackCount:N0} 首歌曲待处理 · {plan.AudioCopyCount:N0} 个音频复制 · {plan.CoverWriteCount:N0} 个封面 · {plan.PlaylistWriteCount:N0} 个播放列表 · {warnings.Length:N0} 个警告 · {errors.Length:N0} 个错误"),
+            TextWrapping =
+                TextWrapping.WrapWholeWords,
+        };
+
+        StackPanel issues = new()
+        {
+            Spacing = 8,
+        };
+
+        foreach (TrackSyncWarning warning
+            in warnings)
+        {
+            issues.Children.Add(
+                new TextBlock
+                {
+                    Text =
+                        $"⚠ {Path.GetFileName(warning.SourcePath)} · " +
+                        FormatTrackMatchWarning(
+                            warning),
+                    TextWrapping =
+                        TextWrapping.WrapWholeWords,
+                    Foreground =
+                        new SolidColorBrush(
+                            Color.FromArgb(
+                                255,
+                                202,
+                                116,
+                                0)),
+                });
+        }
+
+        foreach (PlanEntry error
+            in errors)
+        {
+            issues.Children.Add(
+                new TextBlock
+                {
+                    Text =
+                        $"✕ {Path.GetFileName(error.SourcePath)} · " +
+                        (error.Detail
+                            ?? L(
+                                "Unknown scan error.",
+                                "未知扫描错误。")),
+                    TextWrapping =
+                        TextWrapping.WrapWholeWords,
+                    Foreground =
+                        new SolidColorBrush(
+                            Color.FromArgb(
+                                255,
+                                196,
+                                43,
+                                28)),
+                });
+        }
+
+        if (warnings.Length > 0)
+        {
+            issues.Children.Insert(
+                0,
+                new TextBlock
+                {
+                    Text =
+                        L(
+                            "Warning tracks are skipped until you manually confirm their NetEase match.",
+                            "警告歌曲会被跳过，直到你手动确认其网易云匹配。"),
+                    TextWrapping =
+                        TextWrapping.WrapWholeWords,
+                    Foreground =
+                        Application.Current.Resources[
+                            "TextFillColorSecondaryBrush"]
+                        as Brush,
+                });
+        }
+
+        ScrollViewer issueScroller =
+            new()
+            {
+                MaxHeight = 320,
+                VerticalScrollBarVisibility =
+                    ScrollBarVisibility.Auto,
+                Content = issues,
+            };
+
+        Button cancelButton = new()
+        {
+            Content =
+                L("Cancel", "取消"),
+        };
+
+        Button syncButton = new()
+        {
+            Content =
+                errors.Length > 0
+                    ? L(
+                        "Resolve errors first",
+                        "请先解决错误")
+                    : L(
+                        "Sync now",
+                        "立即同步"),
+            IsEnabled =
+                errors.Length == 0,
+            Style =
+                Application.Current.Resources[
+                    "AccentButtonStyle"]
+                as Style,
+        };
+
+        StackPanel footer = new()
+        {
+            Orientation =
+                Orientation.Horizontal,
+            HorizontalAlignment =
+                HorizontalAlignment.Right,
+            Spacing = 8,
+        };
+        footer.Children.Add(
+            cancelButton);
+        footer.Children.Add(
+            syncButton);
+
+        StackPanel content = new()
+        {
+            Spacing = 14,
+        };
+        content.Children.Add(
+            summary);
+
+        if (warnings.Length > 0
+            || errors.Length > 0)
+        {
+            content.Children.Add(
+                issueScroller);
+        }
+
+        content.Children.Add(
+            footer);
+
+        TaskCompletionSource<bool>
+            completion =
+                new(
+                    TaskCreationOptions
+                        .RunContinuationsAsynchronously);
+
+        cancelButton.Click +=
+            (_, _) =>
+            {
+                completion.TrySetResult(
+                    false);
+                CloseMatchOverlay();
+            };
+
+        syncButton.Click +=
+            (_, _) =>
+            {
+                completion.TrySetResult(
+                    true);
+                CloseMatchOverlay();
+            };
+
+        CloseMatchOverlay();
+        ShowAppOverlay(
+            L(
+                "Confirm synchronization",
+                "确认同步"),
+            content,
+            maxWidth: 760,
+            maxHeight: 620,
+            onClosed: () =>
+                completion.TrySetResult(
+                    false));
+
+        return await completion.Task;
+    }
+
     private void UpdateLiveSyncRow(
         SyncExecutionProgress progress)
     {
@@ -1756,6 +2205,7 @@ public sealed partial class MainWindow : Window
                     progress.NeteaseTrackName,
                     progress.NeteaseTrackArtist,
                     progress.NeteaseTrackAlbum,
+                    progress.NeteaseCoverUrl,
                     progress.Warning);
 
             if (ReferenceEquals(
@@ -1779,7 +2229,15 @@ public sealed partial class MainWindow : Window
                 liveMatch.Warning;
         }
 
-        if (progress.Stage == "complete")
+        if (progress.Stage == "match"
+            && warning is not null)
+        {
+            item.SetStatus(
+                "warning",
+                StatusLabel(
+                    "warning"));
+        }
+        else if (progress.Stage == "complete")
         {
             item.SetStatus(
                 warning is null
@@ -1814,8 +2272,9 @@ public sealed partial class MainWindow : Window
                     "同步中"));
         }
 
-        if (progress.Stage == "complete"
-            && warning is not null)
+        if (warning is not null
+            && progress.Stage
+                is "match" or "complete")
         {
             SetTrackSyncState(
                 item.Entry.SourcePath,
@@ -2479,6 +2938,15 @@ public sealed partial class MainWindow : Window
         MusicLoomSettings settings,
         LibraryPlan plan)
     {
+        string? playingSource =
+            _playingLibraryItem
+                ?.Entry.SourcePath;
+        string[] queueSources =
+            _playbackQueue
+                .Select(static item =>
+                    item.Entry.SourcePath)
+                .ToArray();
+
         _allLibraryItems.Clear();
         int artworkGeneration =
             ++_artworkGeneration;
@@ -2527,8 +2995,49 @@ public sealed partial class MainWindow : Window
             displayItem.ApplyLongTextMode(
                 CurrentLongTextMode);
 
+            if (playingSource is not null
+                && string.Equals(
+                    playingSource,
+                    entry.SourcePath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                displayItem.SetPlaying(
+                    true);
+                _playingLibraryItem =
+                    displayItem;
+            }
+
             _allLibraryItems.Add(
                 displayItem);
+        }
+
+        if (queueSources.Length > 0)
+        {
+            Dictionary<string, LibraryDisplayItem>
+                bySource =
+                    _allLibraryItems
+                        .ToDictionary(
+                            static item =>
+                                item.Entry.SourcePath,
+                            StringComparer.OrdinalIgnoreCase);
+
+            _playbackQueue =
+                queueSources
+                    .Select(source =>
+                        bySource.TryGetValue(
+                            source,
+                            out LibraryDisplayItem? item)
+                            ? item
+                            : null)
+                    .OfType<LibraryDisplayItem>()
+                    .ToArray();
+
+            _playbackQueueIndex =
+                _playingLibraryItem is null
+                    ? -1
+                    : Array.IndexOf(
+                        _playbackQueue,
+                        _playingLibraryItem);
         }
 
         LibraryEmptyPanel.Visibility =
@@ -2540,8 +3049,7 @@ public sealed partial class MainWindow : Window
 
         SyncButton.IsEnabled =
             !_busy
-            && plan.PendingCount > 0
-            && plan.ErrorCount == 0;
+            && plan.PendingCount > 0;
 
         _ = LoadArtworkThumbnailsAsync(
             settings,
@@ -2814,17 +3322,17 @@ public sealed partial class MainWindow : Window
             return "error";
         }
 
-        if (entry.Status
-            != PlanEntryStatus.Unchanged)
+        if (GetStoredMatchWarning(
+                entry)
+            is not null)
         {
-            return "pending";
+            return "warning";
         }
 
-        return GetStoredMatchWarning(
-                entry)
-            is null
+        return entry.Status
+            == PlanEntryStatus.Unchanged
                 ? "synced"
-                : "warning";
+                : "pending";
     }
 
     private TrackSyncWarning? GetStoredMatchWarning(
@@ -6185,6 +6693,12 @@ public sealed partial class MainWindow : Window
                 candidate.Artist,
             NeteaseTrackAlbum =
                 candidate.Album,
+            NeteaseCoverUrl =
+                candidate.CoverUrl,
+            NeteaseMatchSuppressed =
+                false,
+            NeteaseMatchConfirmed =
+                true,
             Lyrics =
                 LyricsState.Unknown,
             LyricsCheckedAt = null,
@@ -6222,13 +6736,205 @@ public sealed partial class MainWindow : Window
                 "下次同步会使用所选的网易云歌曲。"));
     }
 
+    private async void ConfirmMatchButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_selectedLibraryItem
+            is LibraryDisplayItem item)
+        {
+            await ConfirmNeteaseMatchAsync(
+                item);
+        }
+    }
+
+    private async void SuppressMatchButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_selectedLibraryItem
+            is LibraryDisplayItem item)
+        {
+            await SuppressNeteaseMatchAsync(
+                item);
+        }
+    }
+
+    private async Task ConfirmNeteaseMatchAsync(
+        LibraryDisplayItem item)
+    {
+        if (_state is null
+            || _stateStore is null
+            || !_state.Tracks.TryGetValue(
+                item.Entry.SourcePath,
+                out TrackState? state)
+            || state.NeteaseSongId is null
+            || SyncExecutor.DetectMatchWarning(
+                item.Entry,
+                state)
+                is null)
+        {
+            return;
+        }
+
+        TrackState updated =
+            state with
+            {
+                NeteaseMatchConfirmed = true,
+                NeteaseMatchSuppressed = false,
+                Lyrics = LyricsState.Unknown,
+                LyricsCheckedAt = null,
+                LyricsFingerprint = null,
+                RecipeVersion = string.Empty,
+                ProcessedAt =
+                    DateTimeOffset.UtcNow,
+            };
+
+        _state.Tracks[
+            item.Entry.SourcePath] =
+            updated;
+        _liveNeteaseMatches.Remove(
+            item.Entry.SourcePath);
+
+        await _stateStore.SaveAsync(
+            _state);
+
+        MarkTrackForEnrichmentSync(
+            item,
+            L(
+                "NetEase match was manually confirmed. Lyrics are ready to synchronize.",
+                "已手动确认网易云匹配，歌词可以继续同步。"));
+        RefreshCurrentMatchCard(
+            item);
+
+        ShowInfo(
+            InfoBarSeverity.Success,
+            L(
+                "Match confirmed",
+                "匹配已确认"),
+            L(
+                "The warning is cleared. This track is now pending synchronization.",
+                "警告已清除，这首歌曲现在处于待同步状态。"));
+    }
+
+    private async Task SuppressNeteaseMatchAsync(
+        LibraryDisplayItem item)
+    {
+        if (_state is null
+            || _stateStore is null)
+        {
+            return;
+        }
+
+        FileInfo source =
+            new(
+                item.Entry.SourcePath);
+        ulong quickHash =
+            await Task.Run(
+                () =>
+                    QuickFileHash.Compute(
+                        item.Entry.SourcePath));
+
+        _state.Tracks.TryGetValue(
+            item.Entry.SourcePath,
+            out TrackState? previous);
+
+        TrackMetadata metadata =
+            item.Entry.Metadata
+            ?? new TrackMetadata(
+                null,
+                null,
+                null,
+                false,
+                item.Title);
+
+        TrackState updated =
+            previous
+            ?? new TrackState
+            {
+                SourcePath =
+                    item.Entry.SourcePath,
+                DestinationPath =
+                    item.Entry.DestinationPath,
+            };
+
+        updated =
+            updated with
+            {
+                SourceSize =
+                    source.Length,
+                SourceLastWriteUtcTicks =
+                    source.LastWriteTimeUtc
+                        .Ticks,
+                QuickHash = quickHash,
+                Recognition =
+                    RecognitionState.NoMatch,
+                RecognitionCheckedAt =
+                    DateTimeOffset.UtcNow,
+                NeteaseSongId = null,
+                NeteaseTrackName = null,
+                NeteaseTrackArtist = null,
+                NeteaseTrackAlbum = null,
+                NeteaseCoverUrl = null,
+                NeteaseMatchSuppressed = true,
+                NeteaseMatchConfirmed = false,
+                Lyrics =
+                    LyricsState.NoLyrics,
+                LyricsCheckedAt =
+                    DateTimeOffset.UtcNow,
+                LyricsFingerprint = null,
+                RecipeVersion =
+                    string.Empty,
+                MetadataCaptured = true,
+                MetadataSchemaVersion =
+                    TrackMetadata.CurrentSchemaVersion,
+                TitleCaptured = true,
+                Title = metadata.Title,
+                Artist = metadata.Artist,
+                AlbumArtist =
+                    metadata.AlbumArtist,
+                Album = metadata.Album,
+                HasEmbeddedArt =
+                    metadata.HasEmbeddedArt,
+                ProcessedAt =
+                    DateTimeOffset.UtcNow,
+            };
+
+        _state.Tracks[
+            item.Entry.SourcePath] =
+            updated;
+        _liveNeteaseMatches.Remove(
+            item.Entry.SourcePath);
+
+        await _stateStore.SaveAsync(
+            _state);
+
+        MarkTrackForEnrichmentSync(
+            item,
+            L(
+                "This track is explicitly marked as having no NetEase match.",
+                "这首歌曲已明确标记为没有网易云匹配。"));
+        RefreshCurrentMatchCard(
+            item);
+
+        ShowInfo(
+            InfoBarSeverity.Success,
+            L(
+                "NetEase match cleared",
+                "网易云匹配已置空"),
+            L(
+                "Automatic recognition is disabled for this track until you choose a match manually.",
+                "在你手动选择匹配前，这首歌曲不会再次触发自动识别。"));
+    }
+
     private bool HasCachedMatch(
         string sourcePath) =>
         _state is not null
         && _state.Tracks.TryGetValue(
             sourcePath,
             out TrackState? state)
-        && state.NeteaseSongId.HasValue;
+        && state.NeteaseSongId.HasValue
+        && !state.NeteaseMatchSuppressed;
 
     private void MarkTrackForEnrichmentSync(
         LibraryDisplayItem item,
@@ -6368,17 +7074,20 @@ public sealed partial class MainWindow : Window
     private void RefreshCurrentMatchCard(
         LibraryDisplayItem? item)
     {
+        int artworkRequest =
+            ++_matchArtworkRequestId;
+
         CurrentMatchArtworkImage.Source =
-            item?.Artwork;
+            null;
         CurrentMatchArtworkPlaceholder.Visibility =
-            item?.Artwork is null
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            Visibility.Visible;
 
         long? songId = null;
         string? trackName = null;
         string? artist = null;
         string? album = null;
+        string? coverUrl = null;
+        bool suppressed = false;
 
         if (item is not null
             && _liveNeteaseMatches.TryGetValue(
@@ -6389,22 +7098,76 @@ public sealed partial class MainWindow : Window
             trackName = live.Name;
             artist = live.Artist;
             album = live.Album;
+            coverUrl = live.CoverUrl;
         }
         else if (item is not null
             && _state is not null
             && _state.Tracks.TryGetValue(
                 item.Entry.SourcePath,
-                out TrackState? state)
-            && state.NeteaseSongId
-                is long cachedSongId)
+                out TrackState? state))
         {
-            songId = cachedSongId;
-            trackName =
-                state.NeteaseTrackName;
-            artist =
-                state.NeteaseTrackArtist;
-            album =
-                state.NeteaseTrackAlbum;
+            suppressed =
+                state.NeteaseMatchSuppressed;
+
+            if (state.NeteaseSongId
+                is long cachedSongId)
+            {
+                songId = cachedSongId;
+                trackName =
+                    state.NeteaseTrackName;
+                artist =
+                    state.NeteaseTrackArtist;
+                album =
+                    state.NeteaseTrackAlbum;
+                coverUrl =
+                    state.NeteaseCoverUrl;
+            }
+        }
+
+        TrackSyncWarning? warning =
+            item is null
+                ? null
+                : GetStoredMatchWarning(
+                    item.Entry);
+
+        ConfirmMatchButton.Visibility =
+            warning is null
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        ConfirmMatchButton.IsEnabled =
+            !_busy
+            && warning is not null;
+        SuppressMatchButton.Visibility =
+            item is null
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        SuppressMatchButton.IsEnabled =
+            !_busy
+            && item is not null
+            && !suppressed;
+
+        if (item is not null
+            && suppressed)
+        {
+            CurrentMatchTitleText.Text =
+                L(
+                    "No NetEase match",
+                    "没有网易云匹配");
+            CurrentMatchArtistText.Text =
+                L(
+                    "Automatic recognition is disabled for this track.",
+                    "这首歌曲已禁用自动识别。");
+            CurrentMatchAlbumText.Text =
+                string.Empty;
+            CurrentMatchIdText.Text =
+                string.Empty;
+            CurrentMatchOpenLink.Visibility =
+                Visibility.Collapsed;
+            CurrentMatchOpenLink.NavigateUri =
+                null;
+            RefreshMatchedLyricsButton.IsEnabled =
+                false;
+            return;
         }
 
         if (item is null
@@ -6449,6 +7212,102 @@ public sealed partial class MainWindow : Window
             !_busy
             && HasCachedMatch(
                 item.Entry.SourcePath);
+
+        if (!string.IsNullOrWhiteSpace(
+                coverUrl)
+            && Uri.TryCreate(
+                coverUrl,
+                UriKind.Absolute,
+                out Uri? coverUri))
+        {
+            CurrentMatchArtworkImage.Source =
+                new BitmapImage
+                {
+                    DecodePixelWidth = 108,
+                    UriSource = coverUri,
+                };
+            CurrentMatchArtworkPlaceholder.Visibility =
+                Visibility.Collapsed;
+        }
+        else if (!_busy)
+        {
+            _ =
+                LoadCurrentMatchArtworkAsync(
+                    item,
+                    id,
+                    artworkRequest);
+        }
+    }
+
+    private async Task LoadCurrentMatchArtworkAsync(
+        LibraryDisplayItem item,
+        long songId,
+        int requestId)
+    {
+        try
+        {
+            using NeteaseClient client =
+                new();
+            NeteaseMatchCandidate? song =
+                await client.GetSongAsync(
+                    songId);
+
+            if (song is null
+                || string.IsNullOrWhiteSpace(
+                    song.CoverUrl)
+                || requestId
+                    != _matchArtworkRequestId
+                || _selectedLibraryItem
+                    is not LibraryDisplayItem selected
+                || !string.Equals(
+                    selected.Entry.SourcePath,
+                    item.Entry.SourcePath,
+                    StringComparison.OrdinalIgnoreCase)
+                || !Uri.TryCreate(
+                    song.CoverUrl,
+                    UriKind.Absolute,
+                    out Uri? coverUri))
+            {
+                return;
+            }
+
+            CurrentMatchArtworkImage.Source =
+                new BitmapImage
+                {
+                    DecodePixelWidth = 108,
+                    UriSource = coverUri,
+                };
+            CurrentMatchArtworkPlaceholder.Visibility =
+                Visibility.Collapsed;
+
+            if (_state is not null
+                && _stateStore is not null
+                && _state.Tracks.TryGetValue(
+                    item.Entry.SourcePath,
+                    out TrackState? state)
+                && state.NeteaseSongId
+                    == songId
+                && string.IsNullOrWhiteSpace(
+                    state.NeteaseCoverUrl))
+            {
+                _state.Tracks[
+                    item.Entry.SourcePath] =
+                    state with
+                    {
+                        NeteaseCoverUrl =
+                            song.CoverUrl,
+                    };
+
+                await _stateStore.SaveAsync(
+                    _state);
+            }
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Could not load NetEase artwork.",
+                exception);
+        }
     }
 
     private void LibraryList_RightTapped(
@@ -6495,6 +7354,18 @@ public sealed partial class MainWindow : Window
             hasItem;
         ContextFindMatchItem.IsEnabled =
             hasItem;
+        bool canConfirm =
+            item is not null
+            && GetStoredMatchWarning(
+                item.Entry)
+                is not null;
+        ContextConfirmMatchItem.Visibility =
+            canConfirm
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        ContextConfirmMatchItem.IsEnabled =
+            canConfirm
+            && !_busy;
         ContextOpenDestinationItem.IsEnabled =
             hasDestination;
         ContextCopyDestinationItem.IsEnabled =
@@ -6587,6 +7458,20 @@ public sealed partial class MainWindow : Window
             LibraryList.SelectedItem =
                 item;
             await ShowMatchDialogAsync(
+                item);
+        }
+    }
+
+    private async void ContextConfirmMatchItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (GetContextItem()
+            is LibraryDisplayItem item)
+        {
+            LibraryList.SelectedItem =
+                item;
+            await ConfirmNeteaseMatchAsync(
                 item);
         }
     }
@@ -8065,7 +8950,6 @@ public sealed partial class MainWindow : Window
                 || _plan is
                     {
                         PendingCount: > 0,
-                        ErrorCount: 0,
                     });
 
         CancelButton.Visibility =
@@ -8092,6 +8976,41 @@ public sealed partial class MainWindow : Window
             !busy
             && _selectedLibraryItem
                 is not null;
+
+        TrackSyncWarning? selectedWarning =
+            _selectedLibraryItem is
+                LibraryDisplayItem selected
+                    ? GetStoredMatchWarning(
+                        selected.Entry)
+                    : null;
+
+        ConfirmMatchButton.IsEnabled =
+            !busy
+            && selectedWarning
+                is not null;
+
+        bool selectedSuppressed =
+            _selectedLibraryItem is
+                LibraryDisplayItem selectedItem
+            && _state is not null
+            && _state.Tracks.TryGetValue(
+                selectedItem.Entry.SourcePath,
+                out TrackState? selectedState)
+            && selectedState
+                .NeteaseMatchSuppressed;
+
+        SuppressMatchButton.IsEnabled =
+            !busy
+            && _selectedLibraryItem
+                is not null
+            && !selectedSuppressed;
+
+        RefreshMatchedLyricsButton.IsEnabled =
+            !busy
+            && _selectedLibraryItem is
+                LibraryDisplayItem selectedMatch
+            && HasCachedMatch(
+                selectedMatch.Entry.SourcePath);
 
         LibraryProgressPanel.Visibility =
             busy
@@ -8466,6 +9385,14 @@ public sealed partial class MainWindow : Window
             L(
                 "Find or change match…",
                 "查找或更改匹配……");
+        ConfirmMatchButtonText.Text =
+            L(
+                "Confirm match",
+                "确认匹配");
+        SuppressMatchButtonText.Text =
+            L(
+                "No NetEase match",
+                "置空网易云匹配");
         RefreshMatchedLyricsButtonText.Text =
             L(
                 "Update lyrics",
@@ -8538,6 +9465,10 @@ public sealed partial class MainWindow : Window
             L(
                 "Find NetEase match…",
                 "查找网易云匹配……");
+        ContextConfirmMatchItem.Text =
+            L(
+                "Confirm NetEase match",
+                "确认网易云匹配");
 
         PlaylistsTitleText.Text =
             L(
@@ -9012,6 +9943,7 @@ public sealed partial class MainWindow : Window
         string? Name,
         string? Artist,
         string? Album,
+        string? CoverUrl,
         TrackSyncWarning? Warning);
 
     private sealed record TrackSyncViewState(

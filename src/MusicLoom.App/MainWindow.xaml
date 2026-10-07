@@ -210,6 +210,7 @@
                     Visibility="Collapsed"
                     SelectionMode="Single"
                     SelectionChanged="LibraryList_SelectionChanged"
+                    DoubleTapped="LibraryList_DoubleTapped"
                     RightTapped="LibraryList_RightTapped"
                     HorizontalContentAlignment="Stretch"
                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -226,6 +227,7 @@
                       <MenuFlyoutItem x:Name="ContextCopyDestinationItem" Text="Copy destination path" Click="ContextCopyDestinationItem_Click" />
                       <MenuFlyoutSeparator />
                       <MenuFlyoutItem x:Name="ContextFindMatchItem" Text="Find NetEase match…" Click="ContextFindMatchItem_Click" />
+                      <MenuFlyoutItem x:Name="ContextConfirmMatchItem" Text="Confirm NetEase match" Visibility="Collapsed" Click="ContextConfirmMatchItem_Click" />
                     </MenuFlyout>
                   </ListView.ContextFlyout>
 
@@ -256,48 +258,55 @@
 
                   <ListView.ItemTemplate>
                     <DataTemplate>
-                      <Grid MinHeight="62" Padding="12,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                          <ColumnDefinition Width="44" />
-                          <ColumnDefinition Width="*" />
-                          <ColumnDefinition Width="28" />
-                        </Grid.ColumnDefinitions>
+                      <Border
+                          Margin="2,0"
+                          CornerRadius="7"
+                          Background="{Binding RowBackground}"
+                          BorderBrush="{Binding RowBorderBrush}"
+                          BorderThickness="{Binding RowBorderThickness}">
+                        <Grid MinHeight="62" Padding="12,8" ColumnSpacing="12">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="44" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="28" />
+                          </Grid.ColumnDefinitions>
 
-                        <Border
-                            Width="44"
-                            Height="44"
-                            CornerRadius="6"
-                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                          <Image Source="{Binding Artwork}" Stretch="Uniform" />
-                        </Border>
+                          <Border
+                              Width="44"
+                              Height="44"
+                              CornerRadius="6"
+                              Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                            <Image Source="{Binding Artwork}" Stretch="Uniform" />
+                          </Border>
 
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                          <TextBlock
-                              Text="{Binding Title}"
-                              FontWeight="SemiBold"
-                              TextWrapping="{Binding RowTextWrapping}"
-                              TextTrimming="{Binding RowTextTrimming}"
-                              MaxLines="{Binding RowMaxLines}"
-                              ToolTipService.ToolTip="{Binding TitleToolTip}" />
-                          <TextBlock
-                              Text="{Binding ArtistAlbum}"
-                              FontSize="12"
-                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                              TextWrapping="{Binding RowTextWrapping}"
-                              TextTrimming="{Binding RowTextTrimming}"
-                              MaxLines="{Binding RowMaxLines}"
-                              ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
-                        </StackPanel>
+                          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock
+                                Text="{Binding Title}"
+                                FontWeight="SemiBold"
+                                TextWrapping="{Binding RowTextWrapping}"
+                                TextTrimming="{Binding RowTextTrimming}"
+                                MaxLines="{Binding RowMaxLines}"
+                                ToolTipService.ToolTip="{Binding TitleToolTip}" />
+                            <TextBlock
+                                Text="{Binding ArtistAlbum}"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                TextWrapping="{Binding RowTextWrapping}"
+                                TextTrimming="{Binding RowTextTrimming}"
+                                MaxLines="{Binding RowMaxLines}"
+                                ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
+                          </StackPanel>
 
-                        <FontIcon
-                            Grid.Column="2"
-                            Glyph="{Binding StatusGlyph}"
-                            FontSize="14"
-                            Foreground="{Binding StatusBrush}"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Center"
-                            ToolTipService.ToolTip="{Binding StatusText}" />
-                      </Grid>
+                          <FontIcon
+                              Grid.Column="2"
+                              Glyph="{Binding StatusGlyph}"
+                              FontSize="14"
+                              Foreground="{Binding StatusBrush}"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Center"
+                              ToolTipService.ToolTip="{Binding StatusText}" />
+                        </Grid>
+                      </Border>
                     </DataTemplate>
                   </ListView.ItemTemplate>
                 </ListView>
@@ -712,12 +721,24 @@
                                 FontSize="11"
                                 TextTrimming="CharacterEllipsis"
                                 Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                          </StackPanel>
+                          <StackPanel
+                              Grid.Column="2"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Right"
+                              Spacing="2">
+                            <TextBlock
+                                x:Name="CurrentMatchIdText"
+                                Text=""
+                                FontSize="11"
+                                HorizontalAlignment="Right"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <HyperlinkButton
                                 x:Name="CurrentMatchOpenLink"
                                 Visibility="Collapsed"
                                 Padding="0"
                                 FontSize="11"
-                                HorizontalAlignment="Left">
+                                HorizontalAlignment="Right">
                               <StackPanel Orientation="Horizontal" Spacing="4">
                                 <TextBlock
                                     x:Name="CurrentMatchOpenLinkText"
@@ -727,13 +748,6 @@
                               </StackPanel>
                             </HyperlinkButton>
                           </StackPanel>
-                          <TextBlock
-                              x:Name="CurrentMatchIdText"
-                              Grid.Column="2"
-                              Text=""
-                              FontSize="11"
-                              VerticalAlignment="Center"
-                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Grid>
                       </Border>
                       <TextBlock
@@ -750,6 +764,23 @@
                           <StackPanel Orientation="Horizontal" Spacing="7">
                             <SymbolIcon Symbol="Find" />
                             <TextBlock x:Name="OpenMatchDialogButtonText" Text="Find or change match…" />
+                          </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="ConfirmMatchButton"
+                            Visibility="Collapsed"
+                            Click="ConfirmMatchButton_Click">
+                          <StackPanel Orientation="Horizontal" Spacing="7">
+                            <SymbolIcon Symbol="Accept" />
+                            <TextBlock x:Name="ConfirmMatchButtonText" Text="Confirm match" />
+                          </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="SuppressMatchButton"
+                            Click="SuppressMatchButton_Click">
+                          <StackPanel Orientation="Horizontal" Spacing="7">
+                            <FontIcon Glyph="&#xE711;" />
+                            <TextBlock x:Name="SuppressMatchButtonText" Text="No NetEase match" />
                           </StackPanel>
                         </Button>
                         <Button
@@ -1093,6 +1124,7 @@
                 <ListView
                     x:Name="PlaylistTracksList"
                     Grid.Row="3"
+                    DoubleTapped="PlaylistTracksList_DoubleTapped"
                     RightTapped="PlaylistTracksList_RightTapped"
                     HorizontalContentAlignment="Stretch"
                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -1120,45 +1152,52 @@
                   </ListView.ItemContainerStyle>
                   <ListView.ItemTemplate>
                     <DataTemplate>
-                      <Grid MinHeight="62" Padding="12,8" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                          <ColumnDefinition Width="44" />
-                          <ColumnDefinition Width="*" />
-                          <ColumnDefinition Width="28" />
-                        </Grid.ColumnDefinitions>
-                        <Border
-                            Width="44"
-                            Height="44"
-                            CornerRadius="6"
-                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                          <Image Source="{Binding Artwork}" Stretch="Uniform" />
-                        </Border>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                          <TextBlock
-                              Text="{Binding Title}"
-                              FontWeight="SemiBold"
-                              TextWrapping="{Binding RowTextWrapping}"
-                              TextTrimming="{Binding RowTextTrimming}"
-                              MaxLines="{Binding RowMaxLines}"
-                              ToolTipService.ToolTip="{Binding TitleToolTip}" />
-                          <TextBlock
-                              Text="{Binding ArtistAlbum}"
-                              FontSize="12"
-                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                              TextWrapping="{Binding RowTextWrapping}"
-                              TextTrimming="{Binding RowTextTrimming}"
-                              MaxLines="{Binding RowMaxLines}"
-                              ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
-                        </StackPanel>
-                        <FontIcon
-                            Grid.Column="2"
-                            Glyph="{Binding StatusGlyph}"
-                            FontSize="14"
-                            Foreground="{Binding StatusBrush}"
-                            ToolTipService.ToolTip="{Binding StatusText}"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Center" />
-                      </Grid>
+                      <Border
+                          Margin="2,0"
+                          CornerRadius="7"
+                          Background="{Binding RowBackground}"
+                          BorderBrush="{Binding RowBorderBrush}"
+                          BorderThickness="{Binding RowBorderThickness}">
+                        <Grid MinHeight="62" Padding="12,8" ColumnSpacing="12">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="44" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="28" />
+                          </Grid.ColumnDefinitions>
+                          <Border
+                              Width="44"
+                              Height="44"
+                              CornerRadius="6"
+                              Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                            <Image Source="{Binding Artwork}" Stretch="Uniform" />
+                          </Border>
+                          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock
+                                Text="{Binding Title}"
+                                FontWeight="SemiBold"
+                                TextWrapping="{Binding RowTextWrapping}"
+                                TextTrimming="{Binding RowTextTrimming}"
+                                MaxLines="{Binding RowMaxLines}"
+                                ToolTipService.ToolTip="{Binding TitleToolTip}" />
+                            <TextBlock
+                                Text="{Binding ArtistAlbum}"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                TextWrapping="{Binding RowTextWrapping}"
+                                TextTrimming="{Binding RowTextTrimming}"
+                                MaxLines="{Binding RowMaxLines}"
+                                ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
+                          </StackPanel>
+                          <FontIcon
+                              Grid.Column="2"
+                              Glyph="{Binding StatusGlyph}"
+                              FontSize="14"
+                              Foreground="{Binding StatusBrush}"
+                              ToolTipService.ToolTip="{Binding StatusText}"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Center" />
+                        </Grid>
+                      </Border>
                     </DataTemplate>
                   </ListView.ItemTemplate>
                 </ListView>

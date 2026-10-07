@@ -51,6 +51,14 @@ public sealed record TrackState
     public string? NeteaseTrackName { get; init; }
     public string? NeteaseTrackArtist { get; init; }
     public string? NeteaseTrackAlbum { get; init; }
+    public string? NeteaseCoverUrl { get; init; }
+
+    // Explicit user decisions are distinct from a temporary automatic
+    // recognition result. Suppressed matches must never be auto-recognized
+    // again until the user selects a match, while confirmed mismatches are
+    // allowed to proceed without warning.
+    public bool NeteaseMatchSuppressed { get; init; }
+    public bool NeteaseMatchConfirmed { get; init; }
 
     public LyricsState Lyrics { get; init; }
     public DateTimeOffset? LyricsCheckedAt { get; init; }

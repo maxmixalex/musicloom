@@ -13,19 +13,22 @@ public sealed record TrackRecognitionResult(
     long? TrackId = null,
     string? TrackName = null,
     string? Artist = null,
-    string? Album = null)
+    string? Album = null,
+    string? CoverUrl = null)
 {
     public static TrackRecognitionResult Matched(
         long trackId,
         string? trackName = null,
         string? artist = null,
-        string? album = null) =>
+        string? album = null,
+        string? coverUrl = null) =>
         new(
             TrackRecognitionStatus.Matched,
             trackId,
             trackName,
             artist,
-            album);
+            album,
+            coverUrl);
 
     public static TrackRecognitionResult NoMatch() =>
         new(TrackRecognitionStatus.NoMatch);

@@ -13,6 +13,7 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
     private ImageSource? _artwork;
     private string _kind;
     private string _statusText;
+    private bool _isPlaying;
     private TextWrapping _rowTextWrapping =
         TextWrapping.NoWrap;
     private TextTrimming _rowTextTrimming =
@@ -91,6 +92,59 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
 
     public string? SubtitleToolTip =>
         _subtitleToolTip;
+
+    public bool IsPlaying =>
+        _isPlaying;
+
+    public Brush RowBackground =>
+        Kind switch
+        {
+            "error" =>
+                new SolidColorBrush(
+                    Color.FromArgb(
+                        34, 196, 43, 28)),
+            "warning" =>
+                new SolidColorBrush(
+                    Color.FromArgb(
+                        32, 202, 116, 0)),
+            _ when _isPlaying =>
+                Application.Current.Resources[
+                    "AccentFillColorTertiaryBrush"]
+                as Brush
+                ?? new SolidColorBrush(
+                    Color.FromArgb(
+                        28, 0, 120, 212)),
+            _ =>
+                new SolidColorBrush(
+                    Color.FromArgb(
+                        0, 0, 0, 0)),
+        };
+
+    public Brush RowBorderBrush =>
+        _isPlaying
+            ? Application.Current.Resources[
+                "AccentFillColorDefaultBrush"]
+                as Brush
+                ?? new SolidColorBrush(
+                    Color.FromArgb(
+                        255, 0, 120, 212))
+            : Kind switch
+            {
+                "error" =>
+                    StatusBrush,
+                "warning" =>
+                    StatusBrush,
+                _ =>
+                    new SolidColorBrush(
+                        Color.FromArgb(
+                            0, 0, 0, 0)),
+            };
+
+    public Thickness RowBorderThickness =>
+        _isPlaying
+        || Kind is "warning" or "error"
+            ? new Thickness(1)
+            : new Thickness(0);
 
     public Brush StatusBrush => Kind switch
     {
@@ -171,7 +225,32 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
                 nameof(StatusBrush));
             OnPropertyChanged(
                 nameof(StatusGlyph));
+            OnPropertyChanged(
+                nameof(RowBackground));
+            OnPropertyChanged(
+                nameof(RowBorderBrush));
+            OnPropertyChanged(
+                nameof(RowBorderThickness));
         }
+    }
+
+    public void SetPlaying(
+        bool isPlaying)
+    {
+        if (_isPlaying == isPlaying)
+        {
+            return;
+        }
+
+        _isPlaying = isPlaying;
+        OnPropertyChanged(
+            nameof(IsPlaying));
+        OnPropertyChanged(
+            nameof(RowBackground));
+        OnPropertyChanged(
+            nameof(RowBorderBrush));
+        OnPropertyChanged(
+            nameof(RowBorderThickness));
     }
 
     public void ApplyLongTextMode(

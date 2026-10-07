@@ -5,6 +5,7 @@ using MusicLoom.Core.Enrichment;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.Scanning;
 using MusicLoom.Core.State;
+using OpenccNetLib;
 
 namespace MusicLoom.Core.Synchronization;
 
@@ -42,10 +43,19 @@ public sealed record SyncExecutionProgress(
     string? NeteaseTrackName = null,
     string? NeteaseTrackArtist = null,
     string? NeteaseTrackAlbum = null,
-    TrackSyncWarning? Warning = null);
+    TrackSyncWarning? Warning = null,
+    string? NeteaseCoverUrl = null);
 
 public sealed class SyncExecutor
 {
+    private static readonly object
+        ChineseConverterLock = new();
+    private static readonly Opencc
+        SimplifiedChineseConverter =
+            new(
+                OpenccConfig.T2S,
+                isFrozen: true);
+
     private readonly LocalLibraryMaterializer _materializer;
     private readonly ITrackRecognizer _recognizer;
     private readonly ITrackLyricsProvider _lyricsProvider;
@@ -309,6 +319,29 @@ public sealed class SyncExecutor
                 }
 
                 long? songId = partial.NeteaseSongId;
+                if (songId is null
+                    && partial.NeteaseMatchSuppressed)
+                {
+                    partial = partial with
+                    {
+                        Recognition =
+                            RecognitionState.NoMatch,
+                        RecognitionCheckedAt =
+                            DateTimeOffset.UtcNow,
+                        Lyrics =
+                            LyricsState.NoLyrics,
+                        LyricsCheckedAt =
+                            DateTimeOffset.UtcNow,
+                    };
+                    noMatch++;
+                    await CompleteAsync(
+                        entry,
+                        partial,
+                        expectedRecipe,
+                        index + 1);
+                    continue;
+                }
+
                 if (songId is null)
                 {
                     stage = "recognize";
@@ -334,6 +367,9 @@ public sealed class SyncExecutor
                         NeteaseTrackName = recognition.TrackName,
                         NeteaseTrackArtist = recognition.Artist,
                         NeteaseTrackAlbum = recognition.Album,
+                        NeteaseCoverUrl = recognition.CoverUrl,
+                        NeteaseMatchSuppressed = false,
+                        NeteaseMatchConfirmed = false,
                     };
 
                     if (recognition.Status == TrackRecognitionStatus.NoMatch
@@ -375,7 +411,31 @@ public sealed class SyncExecutor
                         partial.NeteaseTrackName,
                         partial.NeteaseTrackArtist,
                         partial.NeteaseTrackAlbum,
-                        matchWarning));
+                        matchWarning,
+                        partial.NeteaseCoverUrl));
+
+                if (matchWarning is not null)
+                {
+                    // A suspicious automatic match is a review gate, not an
+                    // error. Persist the recognition result but deliberately
+                    // leave the recipe incomplete so manual confirmation turns
+                    // the row into Pending and the next sync can continue with
+                    // lyric retrieval/write without recopying audio.
+                    updatedState.Tracks[
+                        entry.SourcePath] =
+                        partial with
+                        {
+                            RecipeVersion =
+                                string.Empty,
+                            ProcessedAt =
+                                DateTimeOffset.UtcNow,
+                        };
+
+                    await stateStore.SaveAsync(
+                        updatedState,
+                        cancellationToken);
+                    continue;
+                }
 
                 stage = "fetch-lyrics";
                 progress?.Report(new SyncExecutionProgress(
@@ -552,6 +612,8 @@ public sealed class SyncExecutor
             state);
 
         if (state.NeteaseSongId is null
+            || state.NeteaseMatchSuppressed
+            || state.NeteaseMatchConfirmed
             || entry.Metadata is null)
         {
             return null;
@@ -577,7 +639,7 @@ public sealed class SyncExecutor
                 recordedArtist)
             && HasComparableValue(
                 state.NeteaseTrackArtist)
-            && !MetadataValuesEqual(
+            && !ArtistsCompatible(
                 recordedArtist!,
                 state.NeteaseTrackArtist!);
 
@@ -612,14 +674,83 @@ public sealed class SyncExecutor
                 right),
             StringComparison.Ordinal);
 
+    private static bool ArtistsCompatible(
+        string recorded,
+        string matched)
+    {
+        if (MetadataValuesEqual(
+                recorded,
+                matched))
+        {
+            return true;
+        }
+
+        HashSet<string> recordedArtists =
+            SplitArtists(
+                recorded);
+        HashSet<string> matchedArtists =
+            SplitArtists(
+                matched);
+
+        if (recordedArtists.Count == 0
+            || matchedArtists.Count == 0)
+        {
+            return false;
+        }
+
+        // NetEase frequently credits fewer performers than the local tag.
+        // Treat that documented subset as compatible, but not the reverse.
+        return matchedArtists.IsSubsetOf(
+            recordedArtists);
+    }
+
+    private static HashSet<string> SplitArtists(
+        string value)
+    {
+        char[] separators =
+        [
+            ';', '；',
+            '/', '／',
+            '・', '·',
+            ',', '，',
+            '&', '＆',
+        ];
+
+        return value
+            .Split(
+                separators,
+                StringSplitOptions
+                    .RemoveEmptyEntries
+                | StringSplitOptions
+                    .TrimEntries)
+            .Select(
+                NormalizeMetadataValue)
+            .Where(
+                static part =>
+                    part.Length > 0)
+            .ToHashSet(
+                StringComparer.Ordinal);
+    }
+
     private static string NormalizeMetadataValue(
         string value)
     {
+        string normalized =
+            value.Normalize(
+                NormalizationForm.FormKC);
+
+        lock (ChineseConverterLock)
+        {
+            normalized =
+                SimplifiedChineseConverter
+                    .Convert(
+                        normalized);
+        }
+
         StringBuilder builder = new();
 
         foreach (char character
-            in value.Normalize(
-                NormalizationForm.FormKC))
+            in normalized)
         {
             if (char.IsLetterOrDigit(
                     character))
@@ -705,6 +836,17 @@ public sealed class SyncExecutor
             NeteaseTrackAlbum = sourceUnchanged
                 ? previous?.NeteaseTrackAlbum
                 : null,
+            NeteaseCoverUrl = sourceUnchanged
+                ? previous?.NeteaseCoverUrl
+                : null,
+            NeteaseMatchSuppressed =
+                sourceUnchanged
+                && previous?.NeteaseMatchSuppressed
+                    == true,
+            NeteaseMatchConfirmed =
+                sourceUnchanged
+                && previous?.NeteaseMatchConfirmed
+                    == true,
             Lyrics = canReuseEnrichment
                 ? previous?.Lyrics ?? LyricsState.Unknown
                 : LyricsState.Unknown,

@@ -182,7 +182,8 @@ public class StateStore
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(settings);
 
-        if (!settings.Organizer.Lyrics.Enabled)
+        if (!settings.Organizer.Lyrics.Enabled
+            || state.NeteaseMatchSuppressed)
         {
             return true;
         }

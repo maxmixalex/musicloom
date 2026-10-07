@@ -6,7 +6,7 @@ namespace MusicLoom.App;
 
 internal sealed class SqliteStateStore : StateStore
 {
-    private const int DatabaseSchemaVersion = 1;
+    private const int DatabaseSchemaVersion = 2;
     private readonly string? _legacyJsonPath;
 
     public SqliteStateStore(
@@ -101,7 +101,10 @@ internal sealed class SqliteStateStore : StateStore
                 album_artist,
                 album,
                 has_embedded_art,
-                processed_at
+                processed_at,
+                netease_cover_url,
+                netease_match_suppressed,
+                netease_match_confirmed
             FROM sync_tracks;
             """;
 
@@ -212,6 +215,16 @@ internal sealed class SqliteStateStore : StateStore
                             reader,
                             25)
                         ?? DateTimeOffset.MinValue,
+                    NeteaseCoverUrl =
+                        ReadString(
+                            reader,
+                            26),
+                    NeteaseMatchSuppressed =
+                        reader.GetInt32(27)
+                            != 0,
+                    NeteaseMatchConfirmed =
+                        reader.GetInt32(28)
+                            != 0,
                 };
 
             state.Tracks[sourcePath] =
@@ -294,7 +307,10 @@ internal sealed class SqliteStateStore : StateStore
                     album_artist,
                     album,
                     has_embedded_art,
-                    processed_at
+                    processed_at,
+                    netease_cover_url,
+                    netease_match_suppressed,
+                    netease_match_confirmed
                 ) VALUES (
                     $source,
                     $sourceSize,
@@ -321,7 +337,10 @@ internal sealed class SqliteStateStore : StateStore
                     $albumArtist,
                     $album,
                     $embeddedArt,
-                    $processedAt
+                    $processedAt,
+                    $neteaseCoverUrl,
+                    $neteaseSuppressed,
+                    $neteaseConfirmed
                 );
                 """;
 
@@ -434,6 +453,20 @@ internal sealed class SqliteStateStore : StateStore
                         .ToString(
                             "O",
                             CultureInfo.InvariantCulture));
+                insert.Parameters.AddWithValue(
+                    "$neteaseCoverUrl",
+                    DbValue(
+                        track.NeteaseCoverUrl));
+                insert.Parameters.AddWithValue(
+                    "$neteaseSuppressed",
+                    track.NeteaseMatchSuppressed
+                        ? 1
+                        : 0);
+                insert.Parameters.AddWithValue(
+                    "$neteaseConfirmed",
+                    track.NeteaseMatchConfirmed
+                        ? 1
+                        : 0);
 
                 await insert.ExecuteNonQueryAsync(
                     cancellationToken);
@@ -522,7 +555,10 @@ internal sealed class SqliteStateStore : StateStore
                 album_artist TEXT NULL,
                 album TEXT NULL,
                 has_embedded_art INTEGER NOT NULL,
-                processed_at TEXT NOT NULL
+                processed_at TEXT NOT NULL,
+                netease_cover_url TEXT NULL,
+                netease_match_suppressed INTEGER NOT NULL DEFAULT 0,
+                netease_match_confirmed INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE INDEX IF NOT EXISTS idx_sync_tracks_netease
@@ -530,6 +566,68 @@ internal sealed class SqliteStateStore : StateStore
             """;
 
         await command.ExecuteNonQueryAsync(
+            cancellationToken);
+
+        // CREATE TABLE IF NOT EXISTS does not evolve an existing v1 table.
+        // Add v2 columns lazily so installed databases keep their state.
+        await EnsureColumnAsync(
+            connection,
+            "netease_cover_url",
+            "TEXT NULL",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "netease_match_suppressed",
+            "INTEGER NOT NULL DEFAULT 0",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "netease_match_confirmed",
+            "INTEGER NOT NULL DEFAULT 0",
+            cancellationToken);
+    }
+
+    private static async Task EnsureColumnAsync(
+        SqliteConnection connection,
+        string columnName,
+        string definition,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteCommand inspect =
+            connection.CreateCommand();
+        inspect.CommandText =
+            "PRAGMA table_info(sync_tracks);";
+
+        await using SqliteDataReader reader =
+            await inspect.ExecuteReaderAsync(
+                cancellationToken);
+
+        bool exists = false;
+        while (await reader.ReadAsync(
+            cancellationToken))
+        {
+            if (string.Equals(
+                    reader.GetString(1),
+                    columnName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                exists = true;
+                break;
+            }
+        }
+
+        await reader.DisposeAsync();
+
+        if (exists)
+        {
+            return;
+        }
+
+        await using SqliteCommand alter =
+            connection.CreateCommand();
+        alter.CommandText =
+            $"ALTER TABLE sync_tracks ADD COLUMN {columnName} {definition};";
+        await alter.ExecuteNonQueryAsync(
             cancellationToken);
     }
 
