@@ -4828,10 +4828,10 @@ public sealed partial class MainWindow : Window
                         + ".txt");
 
                 string playlistBase =
-                    settings.Path
-                        .DestinationPlaylistBase
-                        .Replace('\\', '/')
-                        .TrimEnd('/');
+                    PlaylistMapper
+                        .NormalizeDestinationBase(
+                            settings.Path
+                                .DestinationPlaylistBase);
 
                 string[] expectedLines =
                     tracks
@@ -4852,7 +4852,10 @@ public sealed partial class MainWindow : Window
                                         '/');
 
                             return
-                                $"{playlistBase}/{relative}";
+                                string.IsNullOrEmpty(
+                                    playlistBase)
+                                    ? relative
+                                    : $"{playlistBase}/{relative}";
                         })
                         .ToArray();
 
@@ -4957,8 +4960,8 @@ public sealed partial class MainWindow : Window
         PlaylistMetaText.Text =
             playlist.IsVirtual
                 ? L(
-                    $"{playlist.TrackCount:N0} tracks · Not in any playlist",
-                    $"{playlist.TrackCount:N0} 首歌曲 · 不属于任何音乐列表")
+                    $"{playlist.TrackCount:N0} tracks",
+                    $"{playlist.TrackCount:N0} 首歌曲")
                 : playlist.IsReady
                     ? L(
                         $"{playlist.TrackCount:N0} tracks · Ready",
@@ -5662,6 +5665,8 @@ public sealed partial class MainWindow : Window
                 LibraryDatabase
                     .GetStorageSizeBytes(
                         DatabasePath));
+        DatabasePathText.Text =
+            DatabasePath;
     }
 
     private async void ClearDatabaseButton_Click(
@@ -6474,12 +6479,14 @@ public sealed partial class MainWindow : Window
                 "手机上的播放列表路径");
         DatabaseSettingTitle.Text =
             L(
-                "Local database",
+                "LOCAL DATABASE",
                 "本地数据库");
         ClearDatabaseButton.Content =
             L(
-                "Clear database",
+                "Clear entire database",
                 "完全清空数据库");
+        DatabasePathText.Text =
+            DatabasePath;
 
         FetchLyricsSettingTitle.Text =
             L(
