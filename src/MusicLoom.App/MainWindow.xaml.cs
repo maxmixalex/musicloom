@@ -102,6 +102,10 @@ public sealed partial class MainWindow : Window
     private int _playbackQueueIndex = -1;
     private bool _updatingPlayerProgress;
     private LyricDisplayLine? _activePlaybackLyric;
+    private readonly HashSet<LyricDisplayLine>
+        _matchDialogLyricLines = [];
+    private NeteaseMatchCandidate?
+        _activeMatchDialogCandidate;
     private byte[]? _currentArtworkBytes;
     private string _lyricsDisplayMode =
         LyricsDisplayModes.PreferOriginal;
@@ -551,7 +555,15 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (_activePlaybackLyric
+            is not null)
+        {
+            _activePlaybackLyric.IsActive =
+                false;
+        }
+
         _activePlaybackLyric = active;
+        active.IsActive = true;
         LyricsList.SelectedItem =
             active;
         LyricsList.ScrollIntoView(
@@ -3224,6 +3236,14 @@ public sealed partial class MainWindow : Window
 
     private void RenderLyrics()
     {
+        if (_activePlaybackLyric
+            is not null)
+        {
+            _activePlaybackLyric.IsActive =
+                false;
+            _activePlaybackLyric = null;
+        }
+
         LyricDisplayLine[] detected =
             BuildLyricLines(
                 _currentLyricsRaw,
@@ -3259,6 +3279,10 @@ public sealed partial class MainWindow : Window
                 selectedIndex;
         }
 
+        LyricsModeBox.Visibility =
+            hasLyrics && hasTranslation
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         LyricsModeBox.IsEnabled =
             hasLyrics && hasTranslation;
         CopyAllLyricsButton.IsEnabled =
@@ -3416,48 +3440,30 @@ public sealed partial class MainWindow : Window
                     "Copy as LRC",
                     "复制为 LRC");
         }
+
+        if (menu.Items.Count > 2
+            && menu.Items[2]
+                is MenuFlyoutItem seekItem)
+        {
+            seekItem.Text =
+                L(
+                    "Play from here",
+                    "跳转到当前位置播放");
+        }
     }
 
-    private void LyricsList_PointerReleased(
+
+
+    private async void SeekLyricLineItem_Click(
         object sender,
-        PointerRoutedEventArgs e)
+        RoutedEventArgs e)
     {
-        if (_playingLibraryItem is null
-            || _selectedLibraryItem is null
-            || !ReferenceEquals(
-                _playingLibraryItem,
-                _selectedLibraryItem))
-        {
-            return;
-        }
-
-        Microsoft.UI.Input.PointerPoint point =
-            e.GetCurrentPoint(
-                LyricsList);
-
-        if (point.Properties
-                .PointerUpdateKind
-            != Microsoft.UI.Input
-                .PointerUpdateKind
-                .LeftButtonReleased)
-        {
-            return;
-        }
-
         LyricDisplayLine? line =
-            VisualTreeHelper
-                .FindElementsInHostCoordinates(
-                    point.Position,
-                    LyricsList)
-                .OfType<FrameworkElement>()
-                .Select(
-                    static element =>
-                        element.DataContext
-                            as LyricDisplayLine)
-                .FirstOrDefault(
-                    static candidate =>
-                        candidate?.Timestamp
-                            is not null);
+            (sender as MenuFlyoutItem)
+                ?.Tag
+                as LyricDisplayLine
+            ?? LyricsList.SelectedItem
+                as LyricDisplayLine;
 
         if (line?.Timestamp
             is not TimeSpan timestamp)
@@ -3465,17 +3471,77 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _mediaPlayer
-            .PlaybackSession
-            .Position = timestamp;
+        if (_matchDialogLyricLines.Contains(
+                line)
+            && _activeMatchDialogCandidate
+                is NeteaseMatchCandidate
+                    candidate)
+        {
+            if (_playingPreviewCandidate
+                    ?.TrackId
+                != candidate.TrackId)
+            {
+                await PlayNetEasePreviewAsync(
+                    candidate);
+            }
+        }
+        else if (_selectedLibraryItem
+            is LibraryDisplayItem selected)
+        {
+            if (!ReferenceEquals(
+                    selected,
+                    _playingLibraryItem))
+            {
+                await PlayLibraryItemAsync(
+                    selected);
+            }
+        }
+
+        await SeekPlayerWhenReadyAsync(
+            timestamp);
+        _mediaPlayer.Play();
+
+        if (_activePlaybackLyric
+            is not null)
+        {
+            _activePlaybackLyric.IsActive =
+                false;
+        }
 
         _activePlaybackLyric = line;
-        LyricsList.SelectedItem = line;
-        LyricsList.ScrollIntoView(
-            line,
-            ScrollIntoViewAlignment.Leading);
+        line.IsActive = true;
+    }
 
-        e.Handled = true;
+    private async Task SeekPlayerWhenReadyAsync(
+        TimeSpan position)
+    {
+        if (_mediaPlayer.Source is null)
+        {
+            return;
+        }
+
+        for (int attempt = 0;
+            attempt < 30;
+            attempt++)
+        {
+            TimeSpan duration =
+                _mediaPlayer
+                    .PlaybackSession
+                    .NaturalDuration;
+
+            if (duration > TimeSpan.Zero)
+            {
+                _mediaPlayer
+                    .PlaybackSession
+                    .Position =
+                        position <= duration
+                            ? position
+                            : duration;
+                return;
+            }
+
+            await Task.Delay(50);
+        }
     }
 
     private void LyricsList_RightTapped(
@@ -4253,59 +4319,36 @@ public sealed partial class MainWindow : Window
     private void CoverButton_PointerEntered(
         object sender,
         PointerRoutedEventArgs e) =>
-        AnimateCoverScale(1.07);
+        AnimateCoverOpacity(0.9);
 
     private void CoverButton_PointerExited(
         object sender,
         PointerRoutedEventArgs e) =>
-        AnimateCoverScale(1.0);
+        AnimateCoverOpacity(1.0);
 
-    private void AnimateCoverScale(
+    private void AnimateCoverOpacity(
         double target)
     {
-        CubicEase ease = new()
-        {
-            EasingMode =
-                EasingMode.EaseOut,
-        };
-
-        DoubleAnimation x = new()
+        DoubleAnimation animation = new()
         {
             To = target,
             Duration =
                 new Duration(
                     TimeSpan.FromMilliseconds(
-                        180)),
-            EasingFunction = ease,
-            EnableDependentAnimation = true,
-        };
-        DoubleAnimation y = new()
-        {
-            To = target,
-            Duration =
-                new Duration(
-                    TimeSpan.FromMilliseconds(
-                        180)),
-            EasingFunction = ease,
+                        120)),
             EnableDependentAnimation = true,
         };
 
         Storyboard.SetTarget(
-            x,
-            CoverScaleTransform);
+            animation,
+            CoverImage);
         Storyboard.SetTargetProperty(
-            x,
-            "ScaleX");
-        Storyboard.SetTarget(
-            y,
-            CoverScaleTransform);
-        Storyboard.SetTargetProperty(
-            y,
-            "ScaleY");
+            animation,
+            "Opacity");
 
         Storyboard storyboard = new();
-        storyboard.Children.Add(x);
-        storyboard.Children.Add(y);
+        storyboard.Children.Add(
+            animation);
         storyboard.Begin();
     }
 
