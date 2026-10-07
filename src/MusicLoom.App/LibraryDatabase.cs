@@ -358,6 +358,63 @@ internal static class LibraryDatabase
         return new LibraryPlan(entries);
     }
 
+    public static long GetStorageSizeBytes(
+        string path)
+    {
+        long total = 0;
+
+        foreach (string candidate
+            in new[]
+            {
+                path,
+                path + "-wal",
+                path + "-shm",
+            })
+        {
+            try
+            {
+                FileInfo file = new(candidate);
+                if (file.Exists)
+                {
+                    total += file.Length;
+                }
+            }
+            catch
+            {
+                // Size reporting is diagnostic UI only.
+            }
+        }
+
+        return total;
+    }
+
+    public static async Task ClearAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        SqliteConnection.ClearAllPools();
+
+        foreach (string candidate
+            in new[]
+            {
+                path,
+                path + "-wal",
+                path + "-shm",
+            })
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (File.Exists(candidate))
+            {
+                File.Delete(candidate);
+            }
+        }
+
+        await InitializeAsync(
+            path,
+            cancellationToken);
+    }
+
     private static async Task SetMetaAsync(
         SqliteConnection connection,
         SqliteTransaction? transaction,
