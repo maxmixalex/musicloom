@@ -5199,26 +5199,26 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OpenSourceButton_Click(
+    private async void OpenSourceButton_Click(
         object sender,
         RoutedEventArgs e) =>
-        TryOpenConfiguredDirectory(
+        await TryOpenConfiguredDirectoryAsync(
             SourcePathBox.Text);
 
-    private void OpenDestinationSettingButton_Click(
+    private async void OpenDestinationSettingButton_Click(
         object sender,
         RoutedEventArgs e) =>
-        TryOpenConfiguredDirectory(
+        await TryOpenConfiguredDirectoryAsync(
             DestinationPathBox.Text);
 
-    private void OpenPlaylistButton_Click(
+    private async void OpenPlaylistButton_Click(
         object sender,
         RoutedEventArgs e) =>
-        TryOpenConfiguredDirectory(
+        await TryOpenConfiguredDirectoryAsync(
             PlaylistSourcePathBox.Text);
 
-    private static void
-        TryOpenConfiguredDirectory(
+    private async Task
+        TryOpenConfiguredDirectoryAsync(
             string path)
     {
         if (string.IsNullOrWhiteSpace(
@@ -5227,20 +5227,35 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        string full =
-            Path.GetFullPath(path);
-
-        if (!Directory.Exists(full))
+        try
         {
-            return;
-        }
+            string full =
+                Path.GetFullPath(path);
 
-        Process.Start(
-            new ProcessStartInfo
+            if (!Directory.Exists(full))
             {
-                FileName = full,
-                UseShellExecute = true,
-            });
+                return;
+            }
+
+            bool launched =
+                await Windows.System.Launcher
+                    .LaunchFolderPathAsync(
+                        full);
+
+            if (!launched)
+            {
+                throw new InvalidOperationException(
+                    $"Windows could not open '{full}'.");
+            }
+        }
+        catch (Exception exception)
+        {
+            HandleUiException(
+                L(
+                    "Could not open the configured folder.",
+                    "无法打开已配置的目录。"),
+                exception);
+        }
     }
 
     private void SettingsControl_Changed(
