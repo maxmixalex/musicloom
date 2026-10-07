@@ -16,6 +16,8 @@ List<(string Name, Action Test)> tests =
     ("AFP fixed PCM peak positions match original WASM", FingerprintFixedPcm),
     ("LRC parser preserves repeated timestamps", LrcRepeatedTimestamps),
     ("LRC merge aligns translations within 200 ms", LrcMerge),
+    ("LRC merge keeps translations with nearest originals", LrcMergeNearestNeighbor),
+    ("NetEase candidate ranking balances duration and metadata", NeteaseCandidateRanking),
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
     ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),
@@ -115,6 +117,86 @@ static void LrcMerge()
     Equal(2, merged.Lines.Count);
     Equal(TimeSpan.FromSeconds(1), merged.Lines[1].Timestamp);
     Equal("translated", merged.Lines[1].Text);
+}
+
+static void LrcMergeNearestNeighbor()
+{
+    LrcDocument original =
+        LrcDocument.Parse(
+            "[00:01.000]first\n[00:01.350]second");
+    LrcDocument translated =
+        LrcDocument.Parse(
+            "[00:01.340]第二句\n[00:01.050]作曲：Someone");
+
+    LrcDocument merged =
+        LrcDocument.Merge(
+            original,
+            translated);
+
+    LrcLine translatedSecond =
+        merged.Lines.First(
+            static line =>
+                line.Text == "第二句");
+
+    Equal(
+        TimeSpan.FromMilliseconds(1350),
+        translatedSecond.Timestamp);
+
+    LrcLine credit =
+        merged.Lines.First(
+            static line =>
+                line.Text == "作曲：Someone");
+
+    Equal(
+        TimeSpan.FromMilliseconds(1050),
+        credit.Timestamp);
+}
+
+static void NeteaseCandidateRanking()
+{
+    NeteaseMatchCandidate[] candidates =
+    [
+        new(
+            1,
+            "Completely Different",
+            "Other Artist",
+            "Other Album",
+            Score: 0.99,
+            DurationMs: 200_100),
+        new(
+            2,
+            "Target Song",
+            "Target Artist",
+            "Target Album",
+            Score: 0.75,
+            DurationMs: 201_000),
+        new(
+            3,
+            "Target Song",
+            "Target Artist",
+            "Target Album",
+            Score: 0.999,
+            DurationMs: 260_000),
+    ];
+
+    IReadOnlyList<NeteaseMatchCandidate>
+        ranked =
+            NeteaseCandidateRanker.Rank(
+                candidates,
+                localDurationMs: 200_500,
+                title: "Target Song",
+                artist: "Target Artist",
+                album: "Target Album");
+
+    Equal(
+        2L,
+        ranked[0].TrackId);
+    Equal(
+        1L,
+        ranked[1].TrackId);
+    Equal(
+        3L,
+        ranked[2].TrackId);
 }
 
 static void Layout()
