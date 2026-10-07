@@ -105,6 +105,7 @@ public sealed partial class MainWindow : Window
         _matchDialogLyricLines = [];
     private NeteaseMatchCandidate?
         _activeMatchDialogCandidate;
+    private ListView? _matchLyricsPreviewList;
     private Window? _matchWindow;
     private readonly Dictionary<long, SymbolIcon>
         _neteasePreviewIcons = [];
@@ -538,14 +539,39 @@ public sealed partial class MainWindow : Window
 
     private void UpdatePlaybackLyrics()
     {
-        if (_playingLibraryItem is null
-            || _selectedLibraryItem is null
-            || !ReferenceEquals(
+        IEnumerable<LyricDisplayLine> source;
+        ListView targetList;
+
+        if (_playingPreviewCandidate is not null
+            && _activeMatchDialogCandidate
+                is NeteaseMatchCandidate match
+            && match.TrackId
+                == _playingPreviewCandidate.TrackId
+            && _matchLyricsPreviewList
+                is ListView previewList
+            && _matchDialogLyricLines.Count
+                > 0)
+        {
+            source =
+                _matchDialogLyricLines;
+            targetList =
+                previewList;
+        }
+        else if (_playingLibraryItem is not null
+            && _selectedLibraryItem is not null
+            && ReferenceEquals(
                 _playingLibraryItem,
                 _selectedLibraryItem)
-            || LyricsList.ItemsSource
-                is not IEnumerable<LyricDisplayLine>
-                    source)
+            && LyricsList.ItemsSource
+                is IEnumerable<LyricDisplayLine>
+                    libraryLines)
+        {
+            source =
+                libraryLines;
+            targetList =
+                LyricsList;
+        }
+        else
         {
             return;
         }
@@ -582,9 +608,9 @@ public sealed partial class MainWindow : Window
 
         _activePlaybackLyric = active;
         active.IsActive = true;
-        LyricsList.SelectedItem =
+        targetList.SelectedItem =
             active;
-        LyricsList.ScrollIntoView(
+        targetList.ScrollIntoView(
             active,
             ScrollIntoViewAlignment.Leading);
     }
@@ -5000,6 +5026,9 @@ public sealed partial class MainWindow : Window
             ItemTemplate =
                 LyricsList.ItemTemplate,
         };
+        _matchLyricsPreviewList =
+            lyricsPreview;
+
         lyricsPreview.ItemsSource =
             new[]
             {
@@ -5311,6 +5340,7 @@ public sealed partial class MainWindow : Window
 
                 _neteasePreviewIcons.Clear();
                 _matchDialogLyricLines.Clear();
+                _matchLyricsPreviewList = null;
                 _activeMatchDialogCandidate =
                     null;
 
