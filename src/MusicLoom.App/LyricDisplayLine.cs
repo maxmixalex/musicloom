@@ -1,14 +1,57 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Microsoft.UI.Xaml;
 using MusicLoom.Core.Configuration;
 
 namespace MusicLoom.App;
 
-internal sealed record LyricDisplayLine(
-    string Original,
-    string? Translation,
-    string DisplayMode,
-    TimeSpan? Timestamp = null)
+internal sealed class LyricDisplayLine :
+    INotifyPropertyChanged
 {
+    private bool _isActive;
+
+    public LyricDisplayLine(
+        string original,
+        string? translation,
+        string displayMode,
+        TimeSpan? timestamp = null)
+    {
+        Original = original;
+        Translation = translation;
+        DisplayMode = displayMode;
+        Timestamp = timestamp;
+    }
+
+    public string Original { get; }
+    public string? Translation { get; }
+    public string DisplayMode { get; }
+    public TimeSpan? Timestamp { get; }
+
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (_isActive == value)
+            {
+                return;
+            }
+
+            _isActive = value;
+            OnPropertyChanged();
+            OnPropertyChanged(
+                nameof(PrimaryFontSize));
+            OnPropertyChanged(
+                nameof(SecondaryFontSize));
+        }
+    }
+
+    public double PrimaryFontSize =>
+        IsActive ? 20 : 16;
+
+    public double SecondaryFontSize =>
+        IsActive ? 15 : 13;
+
     public string TimestampText
     {
         get
@@ -83,4 +126,14 @@ internal sealed record LyricDisplayLine(
             SecondaryText)
             ? Visibility.Collapsed
             : Visibility.Visible;
+
+    public event PropertyChangedEventHandler?
+        PropertyChanged;
+
+    private void OnPropertyChanged(
+        [CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(
+            this,
+            new PropertyChangedEventArgs(
+                propertyName));
 }
