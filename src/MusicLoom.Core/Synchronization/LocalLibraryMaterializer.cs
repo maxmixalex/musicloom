@@ -26,7 +26,8 @@ public sealed record LocalMaterializeSummary(
     int SkippedCovers,
     int WrittenPlaylists,
     int SkippedPlaylists,
-    IReadOnlyList<LocalMaterializeError> Errors);
+    IReadOnlyList<LocalMaterializeError> Errors,
+    int DeletedCovers = 0);
 
 public sealed record LocalMaterializeProgress(
     int Processed,
@@ -98,6 +99,7 @@ public sealed class LocalLibraryMaterializer
         int copiedTracks = 0;
         int skippedTracks = 0;
         int copiedCovers = 0;
+        int deletedCovers = 0;
         int skippedCovers =
             covers.Count
             - coverWork.Length;
@@ -203,7 +205,21 @@ public sealed class LocalLibraryMaterializer
 
             try
             {
-                if (FilesAreIdentical(
+                if (cover.DeleteDestination)
+                {
+                    if (File.Exists(
+                            cover.DestinationPath))
+                    {
+                        File.Delete(
+                            cover.DestinationPath);
+                        deletedCovers++;
+                    }
+                    else
+                    {
+                        skippedCovers++;
+                    }
+                }
+                else if (FilesAreIdentical(
                         cover.SourcePath,
                         cover.DestinationPath))
                 {
@@ -251,7 +267,9 @@ public sealed class LocalLibraryMaterializer
                         processed,
                         totalWork,
                         cover.SourcePath,
-                        "copy-cover"));
+                        cover.DeleteDestination
+                            ? "delete-cover"
+                            : "copy-cover"));
             }
         }
 
@@ -323,7 +341,8 @@ public sealed class LocalLibraryMaterializer
             skippedCovers,
             writtenPlaylists,
             skippedPlaylists,
-            errors.ToArray());
+            errors.ToArray(),
+            deletedCovers);
     }
 
     private static async Task<bool> PlaylistMatchesAsync(
