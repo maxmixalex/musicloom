@@ -292,6 +292,148 @@ internal static class AncillaryPlanningRegression
                     "A resized/re-encoded WMP Folder.jpg cache was treated as intentional artwork.");
             }
 
+            string legacyEmbeddedDirectory =
+                Path.Combine(
+                    sourceRoot,
+                    "wmp-embedded-legacy");
+            Directory.CreateDirectory(
+                legacyEmbeddedDirectory);
+
+            string legacyEmbeddedAlbumArt =
+                Path.Combine(
+                    legacyEmbeddedDirectory,
+                    "AlbumArt.jpg");
+            string legacyEmbeddedFolder =
+                Path.Combine(
+                    legacyEmbeddedDirectory,
+                    "Folder.jpg");
+
+            await File.WriteAllBytesAsync(
+                legacyEmbeddedAlbumArt,
+                [91, 92, 93, 94, 95]);
+            await File.WriteAllBytesAsync(
+                legacyEmbeddedFolder,
+                [101, 102, 103]);
+
+            // Simulate a library copied between machines where WMP file
+            // attributes/timestamps were lost long after the cache was made.
+            File.SetLastWriteTimeUtc(
+                legacyEmbeddedAlbumArt,
+                DateTime.UtcNow
+                    .AddDays(-30));
+            File.SetLastWriteTimeUtc(
+                legacyEmbeddedFolder,
+                DateTime.UtcNow
+                    .AddDays(-5));
+
+            TrackMetadata embeddedMetadata =
+                metadata with
+                {
+                    HasEmbeddedArt = true,
+                };
+
+            if (AlbumArtLocator.Find(
+                    legacyEmbeddedDirectory,
+                    embeddedMetadata,
+                    onlyExplicit: false)
+                is not null)
+            {
+                throw new InvalidOperationException(
+                    "Legacy WMP Folder.jpg beside embedded artwork must not be promoted to Cover.jpg.");
+            }
+
+            string legacyTrack =
+                Path.Combine(
+                    legacyEmbeddedDirectory,
+                    "legacy-track.mp3");
+            await File.WriteAllBytesAsync(
+                legacyTrack,
+                [111, 112, 113, 114]);
+
+            MusicFile legacyFile =
+                new(
+                    legacyTrack,
+                    legacyEmbeddedDirectory,
+                    embeddedMetadata.Artist,
+                    embeddedMetadata.AlbumArtist,
+                    "Legacy WMP Album",
+                    HasEmbeddedArt: true);
+
+            string legacyDestination =
+                LibraryLayout.GetDestinationPath(
+                    legacyFile,
+                    destinationRoot);
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(
+                    legacyDestination)!);
+            File.Copy(
+                legacyTrack,
+                legacyDestination);
+
+            string legacyStaleCover =
+                Path.Combine(
+                    Path.GetDirectoryName(
+                        legacyDestination)!,
+                    "Cover.jpg");
+            File.Copy(
+                legacyEmbeddedFolder,
+                legacyStaleCover);
+            File.SetLastWriteTimeUtc(
+                legacyStaleCover,
+                File.GetLastWriteTimeUtc(
+                    legacyEmbeddedFolder));
+
+            PlanEntry legacyEntry =
+                new(
+                    legacyTrack,
+                    legacyDestination,
+                    PlanEntryStatus.Unchanged,
+                    embeddedMetadata with
+                    {
+                        Album =
+                            "Legacy WMP Album",
+                    },
+                    NeedsAudioCopy: false);
+
+            MusicLoomSettings legacyCleanupSettings =
+                new()
+                {
+                    Path =
+                        new PathSettings
+                        {
+                            SourceDirectory =
+                                sourceRoot,
+                            DestinationDirectory =
+                                destinationRoot,
+                            SourcePlaylistDirectory =
+                                string.Empty,
+                            DestinationPlaylistBase =
+                                "/storage/emulated/0/Music/",
+                        },
+                    Organizer =
+                        new OrganizerSettings
+                        {
+                            Lyrics =
+                                new LyricsSettings
+                                {
+                                    Enabled = false,
+                                },
+                        },
+                };
+
+            AncillaryPlan legacyCleanup =
+                await AncillaryPlanner.BuildAsync(
+                    legacyCleanupSettings,
+                    [legacyEntry]);
+
+            Equal(
+                1,
+                legacyCleanup.Covers.Count);
+            Equal(
+                true,
+                legacyCleanup.Covers[0]
+                    .DeleteDestination);
+
             string standaloneDirectory =
                 Path.Combine(
                     sourceRoot,
