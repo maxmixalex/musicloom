@@ -171,6 +171,65 @@ internal static class AncillaryPlanningRegression
             Equal(1, summary.CopiedCovers);
             Equal(1, summary.WrittenPlaylists);
 
+            string wmpDirectory =
+                Path.Combine(
+                    sourceRoot,
+                    "wmp-cache");
+            Directory.CreateDirectory(
+                wmpDirectory);
+
+            string wmpFolder =
+                Path.Combine(
+                    wmpDirectory,
+                    "Folder.jpg");
+            await File.WriteAllBytesAsync(
+                Path.Combine(
+                    wmpDirectory,
+                    "AlbumArt.jpg"),
+                [30, 31, 32]);
+            await File.WriteAllBytesAsync(
+                Path.Combine(
+                    wmpDirectory,
+                    "AlbumArtSmall.jpg"),
+                [33, 34, 35]);
+            await File.WriteAllBytesAsync(
+                wmpFolder,
+                [36, 37, 38]);
+
+            string? wmpResult =
+                AlbumArtLocator.Find(
+                    wmpDirectory,
+                    metadata,
+                    onlyExplicit: false);
+
+            if (wmpResult is not null)
+            {
+                throw new InvalidOperationException(
+                    "WMP AlbumArt cache must not promote Folder.jpg to Cover.jpg.");
+            }
+
+            string standaloneDirectory =
+                Path.Combine(
+                    sourceRoot,
+                    "standalone-folder");
+            Directory.CreateDirectory(
+                standaloneDirectory);
+            string standaloneFolder =
+                Path.Combine(
+                    standaloneDirectory,
+                    "Folder.jpg");
+            await File.WriteAllBytesAsync(
+                standaloneFolder,
+                [40, 41, 42]);
+
+            Equal(
+                standaloneFolder,
+                AlbumArtLocator.Find(
+                    standaloneDirectory,
+                    metadata,
+                    onlyExplicit: false)
+                ?? string.Empty);
+
             CountingReader finalReader = new();
             LibraryPlan finalPlan =
                 await new LibraryScanner(finalReader)
