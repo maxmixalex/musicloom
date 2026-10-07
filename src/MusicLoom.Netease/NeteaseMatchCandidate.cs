@@ -6,7 +6,8 @@ public sealed record NeteaseMatchCandidate(
     string Artist,
     string Album,
     double? Score,
-    string? CoverUrl = null)
+    string? CoverUrl = null,
+    long? DurationMs = null)
 {
     public override string ToString()
     {
