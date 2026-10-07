@@ -3382,13 +3382,13 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        Windows.UI.Input.PointerPoint point =
+        Microsoft.UI.Input.PointerPoint point =
             e.GetCurrentPoint(
                 LyricsList);
 
         if (point.Properties
                 .PointerUpdateKind
-            != Windows.UI.Input
+            != Microsoft.UI.Input
                 .PointerUpdateKind
                 .LeftButtonReleased)
         {
