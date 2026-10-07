@@ -3,10 +3,17 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <ProjectReference Include="../../src/MusicLoom.Core/MusicLoom.Core.csproj" />
     <ProjectReference Include="../../src/MusicLoom.Metadata/MusicLoom.Metadata.csproj" />
     <ProjectReference Include="../../src/MusicLoom.Tagging/MusicLoom.Tagging.csproj" />
     <ProjectReference Include="../../src/MusicLoom.AudioFingerprint/MusicLoom.AudioFingerprint.csproj" />
     <ProjectReference Include="../../src/MusicLoom.Netease/MusicLoom.Netease.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../src/MusicLoom.App/LibraryDatabase.cs"
+             Link="AppPersistence/LibraryDatabase.cs" />
+    <Compile Include="../../src/MusicLoom.App/SqliteStateStore.cs"
+             Link="AppPersistence/SqliteStateStore.cs" />
   </ItemGroup>
 </Project>
