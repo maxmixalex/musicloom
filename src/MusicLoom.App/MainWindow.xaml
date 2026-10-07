@@ -402,7 +402,25 @@
                         </TextBlock.RenderTransform>
                       </TextBlock>
                     </ScrollViewer>
-                    <TextBlock x:Name="TrackArtistText" Text="" FontSize="16" TextWrapping="Wrap" />
+                    <ScrollViewer
+                        x:Name="TrackArtistViewport"
+                        HorizontalContentAlignment="Stretch"
+                        HorizontalScrollBarVisibility="Hidden"
+                        VerticalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Disabled"
+                        VerticalScrollMode="Disabled"
+                        ZoomMode="Disabled"
+                        IsTabStop="False">
+                      <TextBlock
+                          x:Name="TrackArtistText"
+                          Text=""
+                          FontSize="16"
+                          TextWrapping="NoWrap">
+                        <TextBlock.RenderTransform>
+                          <TranslateTransform x:Name="TrackArtistTranslateTransform" />
+                        </TextBlock.RenderTransform>
+                      </TextBlock>
+                    </ScrollViewer>
                     <ScrollViewer
                         x:Name="TrackAlbumViewport"
                         HorizontalContentAlignment="Stretch"
@@ -1337,11 +1355,25 @@
                           x:Name="DiagnosticsLogSettingTitle"
                           Text="Diagnostic log"
                           FontWeight="SemiBold" />
-                      <TextBlock
-                          x:Name="DiagnosticsLogPathText"
-                          Text=""
-                          TextTrimming="CharacterEllipsis"
-                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <ScrollViewer
+                          x:Name="DiagnosticsLogPathViewport"
+                          HorizontalContentAlignment="Stretch"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Disabled"
+                          HorizontalScrollMode="Disabled"
+                          VerticalScrollMode="Disabled"
+                          ZoomMode="Disabled"
+                          IsTabStop="False">
+                        <TextBlock
+                            x:Name="DiagnosticsLogPathText"
+                            Text=""
+                            TextWrapping="NoWrap"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                          <TextBlock.RenderTransform>
+                            <TranslateTransform x:Name="DiagnosticsLogPathTranslateTransform" />
+                          </TextBlock.RenderTransform>
+                        </TextBlock>
+                      </ScrollViewer>
                     </StackPanel>
 
                     <StackPanel
@@ -1489,18 +1521,46 @@
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
               <StackPanel Spacing="1">
-                <TextBlock
-                    x:Name="PlayerTitleText"
-                    Text="Nothing playing"
-                    FontSize="15"
-                    FontWeight="SemiBold"
-                    TextTrimming="CharacterEllipsis" />
-                <TextBlock
-                    x:Name="PlayerMetadataText"
-                    Text=""
-                    FontSize="12"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    TextTrimming="CharacterEllipsis" />
+                <ScrollViewer
+                    x:Name="PlayerTitleViewport"
+                    HorizontalContentAlignment="Stretch"
+                    HorizontalScrollBarVisibility="Hidden"
+                    VerticalScrollBarVisibility="Disabled"
+                    HorizontalScrollMode="Disabled"
+                    VerticalScrollMode="Disabled"
+                    ZoomMode="Disabled"
+                    IsTabStop="False">
+                  <TextBlock
+                      x:Name="PlayerTitleText"
+                      Text="Nothing playing"
+                      FontSize="15"
+                      FontWeight="SemiBold"
+                      TextWrapping="NoWrap">
+                    <TextBlock.RenderTransform>
+                      <TranslateTransform x:Name="PlayerTitleTranslateTransform" />
+                    </TextBlock.RenderTransform>
+                  </TextBlock>
+                </ScrollViewer>
+                <ScrollViewer
+                    x:Name="PlayerMetadataViewport"
+                    HorizontalContentAlignment="Stretch"
+                    HorizontalScrollBarVisibility="Hidden"
+                    VerticalScrollBarVisibility="Disabled"
+                    HorizontalScrollMode="Disabled"
+                    VerticalScrollMode="Disabled"
+                    ZoomMode="Disabled"
+                    IsTabStop="False">
+                  <TextBlock
+                      x:Name="PlayerMetadataText"
+                      Text=""
+                      FontSize="12"
+                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                      TextWrapping="NoWrap">
+                    <TextBlock.RenderTransform>
+                      <TranslateTransform x:Name="PlayerMetadataTranslateTransform" />
+                    </TextBlock.RenderTransform>
+                  </TextBlock>
+                </ScrollViewer>
               </StackPanel>
               <TextBlock
                   x:Name="PlayerTimeText"
