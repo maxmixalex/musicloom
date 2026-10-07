@@ -340,6 +340,10 @@ internal static class AncillaryPlanningRegression
                     "Stale WMP-derived Cover.jpg was not deleted.");
             }
 
+            // Keep the original warm-scan assertion focused on the original
+            // library fixture rather than this synthetic cleanup-only track.
+            File.Delete(wmpTrack);
+
             CountingReader finalReader = new();
             LibraryPlan finalPlan =
                 await new LibraryScanner(finalReader)
