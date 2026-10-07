@@ -347,21 +347,24 @@
                       Padding="0"
                       Background="Transparent"
                       BorderThickness="0"
-                      RenderTransformOrigin="0.5,0.5"
                       Click="CoverButton_Click"
                       PointerEntered="CoverButton_PointerEntered"
                       PointerExited="CoverButton_PointerExited"
                       ToolTipService.ToolTip="Open artwork">
-                    <Button.RenderTransform>
-                      <ScaleTransform x:Name="CoverScaleTransform" ScaleX="1" ScaleY="1" />
-                    </Button.RenderTransform>
                     <Border
                         Width="132"
                         Height="132"
                         CornerRadius="9"
-                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                        Background="Transparent">
                       <Grid>
-                        <Image x:Name="CoverImage" Stretch="Uniform" />
+                        <Image
+                            x:Name="CoverImage"
+                            Stretch="Uniform"
+                            RenderTransformOrigin="0.5,0.5">
+                          <Image.RenderTransform>
+                            <ScaleTransform x:Name="CoverScaleTransform" ScaleX="1" ScaleY="1" />
+                          </Image.RenderTransform>
+                        </Image>
                         <TextBlock
                             x:Name="CoverPlaceholderText"
                             Text="No artwork"
