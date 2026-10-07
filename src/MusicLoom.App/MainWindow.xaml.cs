@@ -6250,6 +6250,14 @@ public sealed partial class MainWindow : Window
     {
         _playlists.Clear();
         _playlists.AddRange(playlists);
+
+        foreach (PlaylistDisplayItem playlist
+            in _playlists)
+        {
+            playlist.ApplyLongTextMode(
+                CurrentLongTextMode);
+        }
+
         PlaylistsList.ItemsSource =
             _playlists.ToArray();
 
@@ -6670,6 +6678,32 @@ public sealed partial class MainWindow : Window
             {
                 item.ApplyLongTextMode(
                     CurrentLongTextMode);
+            }
+
+            PlaylistDisplayItem?
+                selectedPlaylist =
+                    PlaylistsList.SelectedItem
+                        as PlaylistDisplayItem;
+
+            foreach (PlaylistDisplayItem playlist
+                in _playlists)
+            {
+                playlist.ApplyLongTextMode(
+                    CurrentLongTextMode);
+            }
+
+            if (_playlists.Count > 0)
+            {
+                PlaylistsList.ItemsSource =
+                    _playlists.ToArray();
+
+                if (selectedPlaylist is not null
+                    && _playlists.Contains(
+                        selectedPlaylist))
+                {
+                    PlaylistsList.SelectedItem =
+                        selectedPlaylist;
+                }
             }
 
             if (_selectedLibraryItem is not null)
