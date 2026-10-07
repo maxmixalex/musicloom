@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace MusicLoom.App;
 
-internal static partial class ExplorerIntegration
+internal static class ExplorerIntegration
 {
     public static bool TryRevealFile(
         string path,
@@ -101,24 +101,23 @@ internal static partial class ExplorerIntegration
         }
     }
 
-    [LibraryImport(
+    [DllImport(
         "shell32.dll",
         EntryPoint = "ILCreateFromPathW",
-        StringMarshalling =
-            StringMarshalling.Utf16)]
-    private static partial IntPtr
+        CharSet = CharSet.Unicode)]
+    private static extern IntPtr
         ILCreateFromPathW(
             string path);
 
-    [LibraryImport(
+    [DllImport(
         "shell32.dll")]
-    private static partial IntPtr
+    private static extern IntPtr
         ILFindLastID(
             IntPtr pidl);
 
-    [LibraryImport(
+    [DllImport(
         "shell32.dll")]
-    private static partial int
+    private static extern int
         SHOpenFolderAndSelectItems(
             IntPtr pidlFolder,
             uint cidl,
@@ -128,9 +127,9 @@ internal static partial class ExplorerIntegration
             IntPtr[] apidl,
             uint flags);
 
-    [LibraryImport(
+    [DllImport(
         "shell32.dll")]
-    private static partial void
+    private static extern void
         ILFree(
             IntPtr pidl);
 }
