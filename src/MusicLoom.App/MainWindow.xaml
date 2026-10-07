@@ -6,6 +6,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives"
+    xmlns:local="using:MusicLoom.App"
     mc:Ignorable="d"
     Title="MusicLoom">
 
@@ -342,53 +343,49 @@
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="132" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="72" />
                   </Grid.ColumnDefinitions>
 
-                  <StackPanel
+                  <Button
+                      x:Name="CoverButton"
                       Grid.Column="0"
-                      Spacing="8"
-                      HorizontalAlignment="Center">
-                    <Button
-                        x:Name="CoverButton"
+                      Width="132"
+                      Height="132"
+                      Padding="0"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      RenderTransformOrigin="0.5,0.5"
+                      Click="CoverButton_Click"
+                      PointerEntered="CoverButton_PointerEntered"
+                      PointerExited="CoverButton_PointerExited"
+                      ToolTipService.ToolTip="Open artwork">
+                    <Button.Resources>
+                      <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="Transparent" />
+                      <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="Transparent" />
+                      <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                      <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                    </Button.Resources>
+                    <Button.RenderTransform>
+                      <ScaleTransform x:Name="CoverScaleTransform" ScaleX="1" ScaleY="1" />
+                    </Button.RenderTransform>
+                    <Border
                         Width="132"
                         Height="132"
-                        Padding="0"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Click="CoverButton_Click"
-                        PointerEntered="CoverButton_PointerEntered"
-                        PointerExited="CoverButton_PointerExited"
-                        ToolTipService.ToolTip="Open artwork">
-                      <Border
-                          Width="132"
-                          Height="132"
-                          CornerRadius="9"
-                          Background="Transparent">
-                        <Grid>
-                          <Image
-                              x:Name="CoverImage"
-                              Stretch="Uniform" />
-                          <TextBlock
-                              x:Name="CoverPlaceholderText"
-                              Text="No artwork"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center"
-                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </Grid>
-                      </Border>
-                    </Button>
-                    <Button
-                        x:Name="DetailPlayButton"
-                        Width="48"
-                        Height="42"
-                        Padding="0"
-                        HorizontalAlignment="Center"
-                        Click="DetailPlayButton_Click"
-                        ToolTipService.ToolTip="Play track">
-                      <SymbolIcon x:Name="DetailPlayIcon" Symbol="Play" />
-                    </Button>
-                  </StackPanel>
+                        CornerRadius="9"
+                        Background="Transparent">
+                      <Grid>
+                        <Image
+                            x:Name="CoverImage"
+                            Stretch="Uniform" />
+                        <TextBlock
+                            x:Name="CoverPlaceholderText"
+                            Text="No artwork"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      </Grid>
+                    </Border>
+                  </Button>
 
                   <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5">
                     <ScrollViewer
@@ -456,6 +453,19 @@
                       <TextBlock x:Name="TrackStatusText" Text="" FontSize="12" VerticalAlignment="Center" />
                     </StackPanel>
                   </StackPanel>
+
+                  <Button
+                      x:Name="DetailPlayButton"
+                      Grid.Column="2"
+                      Width="48"
+                      Height="48"
+                      Padding="0"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Click="DetailPlayButton_Click"
+                      ToolTipService.ToolTip="Play track">
+                    <SymbolIcon x:Name="DetailPlayIcon" Symbol="Play" />
+                  </Button>
 
                   <Button
                       x:Name="CloseDetailButton"
