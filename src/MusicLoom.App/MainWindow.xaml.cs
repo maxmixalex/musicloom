@@ -5726,6 +5726,18 @@ public sealed partial class MainWindow : Window
             StatusLabel(
                 "pending"));
 
+        if (ReferenceEquals(
+                item,
+                _selectedLibraryItem))
+        {
+            TrackStatusText.Text =
+                item.StatusText;
+            TrackStatusIcon.Glyph =
+                item.StatusGlyph;
+            TrackStatusIcon.Foreground =
+                item.StatusBrush;
+        }
+
         SetTrackSyncState(
             item.Entry.SourcePath,
             L(
@@ -6024,10 +6036,12 @@ public sealed partial class MainWindow : Window
     private static async Task OpenInExplorerAsync(
         string path)
     {
+        Exception? shellError = null;
+
         if (File.Exists(path)
             && ExplorerIntegration.TryRevealFile(
                 path,
-                out Exception? shellError))
+                out shellError))
         {
             return;
         }
