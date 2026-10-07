@@ -1,6 +1,7 @@
 using MusicLoom.AudioFingerprint;
 using MusicLoom.Core.Enrichment;
 using MusicLoom.Core.Lyrics;
+using MusicLoom.Metadata;
 
 namespace MusicLoom.Netease;
 
@@ -34,7 +35,16 @@ public sealed class NeteaseTrackProvider :
             return TrackRecognitionResult.NoMatch();
         }
 
-        NeteaseMatchCandidate first = candidates[0];
+        double? durationMs =
+            TryReadDurationMs(
+                audioFilePath);
+
+        NeteaseMatchCandidate first =
+            NeteaseCandidateRanker
+                .Rank(
+                    candidates,
+                    durationMs)
+                [0];
         return TrackRecognitionResult.Matched(
             first.TrackId,
             first.Name,
@@ -42,14 +52,44 @@ public sealed class NeteaseTrackProvider :
             first.Album);
     }
 
-    public Task<IReadOnlyList<NeteaseMatchCandidate>>
+    public async Task<IReadOnlyList<NeteaseMatchCandidate>>
         FindCandidatesAsync(
             string audioFilePath,
-            CancellationToken cancellationToken = default) =>
-        _client.MatchFileCandidatesAsync(
-            _decoder,
-            audioFilePath,
-            cancellationToken);
+            CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<NeteaseMatchCandidate> candidates =
+            await _client.MatchFileCandidatesAsync(
+                _decoder,
+                audioFilePath,
+                cancellationToken);
+
+        return NeteaseCandidateRanker.Rank(
+            candidates,
+            TryReadDurationMs(
+                audioFilePath));
+    }
+
+    private static double? TryReadDurationMs(
+        string audioFilePath)
+    {
+        try
+        {
+            double duration =
+                AtlTrackInspector
+                    .ReadDurationMs(
+                        audioFilePath);
+
+            return double.IsFinite(
+                    duration)
+                && duration > 0
+                    ? duration
+                    : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     public async Task<LyricsLookupResult> GetLyricsAsync(
         long trackId,
