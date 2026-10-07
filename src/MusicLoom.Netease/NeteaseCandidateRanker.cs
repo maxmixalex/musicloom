@@ -16,23 +16,29 @@ public static class NeteaseCandidateRanker
             candidates);
 
         return candidates
-            .OrderBy(candidate =>
+            .OrderByDescending(candidate =>
+                candidate.Score
+                    ?? double.MinValue)
+            .ThenBy(candidate =>
                 DurationBucket(
                     localDurationMs,
                     candidate.DurationMs))
-            .ThenByDescending(candidate =>
-                MetadataScore(
-                    candidate,
-                    title,
-                    artist,
-                    album))
             .ThenBy(candidate =>
                 DurationDistance(
                     localDurationMs,
                     candidate.DurationMs))
             .ThenByDescending(candidate =>
-                candidate.Score
-                    ?? double.MinValue)
+                SimilarityScore(
+                    title,
+                    candidate.Name))
+            .ThenByDescending(candidate =>
+                SimilarityScore(
+                    artist,
+                    candidate.Artist))
+            .ThenByDescending(candidate =>
+                SimilarityScore(
+                    album,
+                    candidate.Album))
             .ThenBy(candidate =>
                 candidate.TrackId)
             .ToArray();
@@ -92,29 +98,6 @@ public static class NeteaseCandidateRanker
 
         return Math.Abs(
             candidate - local);
-    }
-
-    private static int MetadataScore(
-        NeteaseMatchCandidate candidate,
-        string? title,
-        string? artist,
-        string? album)
-    {
-        int score = 0;
-
-        score += SimilarityScore(
-            title,
-            candidate.Name)
-            * 5;
-        score += SimilarityScore(
-            artist,
-            candidate.Artist)
-            * 3;
-        score += SimilarityScore(
-            album,
-            candidate.Album);
-
-        return score;
     }
 
     private static int SimilarityScore(
