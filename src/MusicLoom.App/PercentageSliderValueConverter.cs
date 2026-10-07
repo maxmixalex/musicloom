@@ -2,7 +2,7 @@ using Microsoft.UI.Xaml.Data;
 
 namespace MusicLoom.App;
 
-internal sealed class PercentageSliderValueConverter :
+public sealed class PercentageSliderValueConverter :
     IValueConverter
 {
     public object Convert(
