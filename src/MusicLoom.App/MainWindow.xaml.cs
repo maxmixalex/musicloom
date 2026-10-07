@@ -5315,7 +5315,7 @@ public sealed partial class MainWindow : Window
         Grid root = new()
         {
             Width = 1140,
-            Height = 580,
+            Height = 500,
             ColumnSpacing = 12,
             HorizontalAlignment =
                 HorizontalAlignment.Center,
