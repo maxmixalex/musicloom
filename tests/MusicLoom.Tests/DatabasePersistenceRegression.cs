@@ -20,6 +20,8 @@ internal static class DatabasePersistenceRegression
         {
             string databasePath =
                 Path.Combine(root, "musicloom.db");
+            string configPath =
+                Path.Combine(root, "config.toml");
 
             MusicLoomSettings expectedSettings =
                 new()
@@ -62,15 +64,13 @@ internal static class DatabasePersistenceRegression
                         },
                 };
 
-            await LibraryDatabase.SaveSettingsAsync(
-                databasePath,
+            await TomlSettingsStore.SaveAsync(
+                configPath,
                 expectedSettings);
 
             MusicLoomSettings actualSettings =
-                await LibraryDatabase.LoadSettingsAsync(
-                    databasePath)
-                ?? throw new InvalidOperationException(
-                    "SQLite settings were not loaded.");
+                await TomlSettingsStore.LoadAsync(
+                    configPath);
 
             Equal(
                 expectedSettings.Path.SourceDirectory,
@@ -90,6 +90,14 @@ internal static class DatabasePersistenceRegression
             Equal(
                 expectedSettings.Ui.LyricsDisplayMode,
                 actualSettings.Ui.LyricsDisplayMode);
+            True(File.Exists(
+                configPath));
+            True(
+                (await File.ReadAllTextAsync(
+                    configPath))
+                .Contains(
+                    "[organizer.lyrics]",
+                    StringComparison.Ordinal));
 
             string legacyStatePath =
                 Path.Combine(root, "state.json");
@@ -242,6 +250,15 @@ internal static class DatabasePersistenceRegression
                     databasePath));
             True(!File.Exists(
                 databasePath));
+            True(File.Exists(
+                configPath));
+
+            MusicLoomSettings afterClear =
+                await TomlSettingsStore.LoadAsync(
+                    configPath);
+            Equal(
+                expectedSettings.Path.SourceDirectory,
+                afterClear.Path.SourceDirectory);
         }
         finally
         {
