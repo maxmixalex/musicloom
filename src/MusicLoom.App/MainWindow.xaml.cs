@@ -4625,6 +4625,26 @@ public sealed partial class MainWindow : Window
     private async Task ShowMatchDialogAsync(
         LibraryDisplayItem item)
     {
+        double? localDurationMs = null;
+        try
+        {
+            double duration =
+                await Task.Run(
+                    () =>
+                        AtlTrackInspector
+                            .ReadDurationMs(
+                                item.Entry.SourcePath));
+
+            if (double.IsFinite(duration)
+                && duration > 0)
+            {
+                localDurationMs = duration;
+            }
+        }
+        catch
+        {
+        }
+
         TextBox artistBox = new()
         {
             Header =
@@ -4650,9 +4670,7 @@ public sealed partial class MainWindow : Window
         TextBox albumBox = new()
         {
             Header =
-                L(
-                    "Album (optional)",
-                    "专辑（可选）"),
+                L("Album", "专辑"),
             Text =
                 item.Album.Contains(
                     L(
@@ -4691,10 +4709,9 @@ public sealed partial class MainWindow : Window
         TextBlock status = new()
         {
             Foreground =
-                (Microsoft.UI.Xaml.Media.Brush)
-                    Application.Current
-                        .Resources[
-                            "TextFillColorSecondaryBrush"],
+                Application.Current.Resources[
+                    "TextFillColorSecondaryBrush"]
+                as Microsoft.UI.Xaml.Media.Brush,
             TextWrapping =
                 TextWrapping.Wrap,
         };
@@ -4705,7 +4722,16 @@ public sealed partial class MainWindow : Window
                 ListViewSelectionMode.Single,
             HorizontalContentAlignment =
                 HorizontalAlignment.Stretch,
+            Padding =
+                new Thickness(
+                    6,
+                    0,
+                    14,
+                    0),
         };
+        ScrollViewer.SetVerticalScrollBarVisibility(
+            results,
+            ScrollBarVisibility.Auto);
 
         ListView lyricsPreview = new()
         {
@@ -4775,6 +4801,7 @@ public sealed partial class MainWindow : Window
                         1,
                         GridUnitType.Star),
             });
+
         TextBlock candidatesHeading = new()
         {
             Text =
@@ -4817,6 +4844,7 @@ public sealed partial class MainWindow : Window
                         1,
                         GridUnitType.Star),
             });
+
         TextBlock lyricsHeading = new()
         {
             Text =
@@ -4845,9 +4873,8 @@ public sealed partial class MainWindow : Window
             lyricsPreview);
 
         Border WrapColumn(
-            UIElement child)
-        {
-            Border border = new()
+            UIElement child) =>
+            new()
             {
                 Padding =
                     new Thickness(12),
@@ -4859,37 +4886,36 @@ public sealed partial class MainWindow : Window
                     Application.Current
                         .Resources[
                             "CardStrokeColorDefaultBrush"]
-                        as Microsoft.UI.Xaml.Media
-                            .Brush,
+                        as Microsoft.UI.Xaml.Media.Brush,
                 Background =
                     Application.Current
                         .Resources[
                             "CardBackgroundFillColorDefaultBrush"]
-                        as Microsoft.UI.Xaml.Media
-                            .Brush,
+                        as Microsoft.UI.Xaml.Media.Brush,
                 Child = child,
             };
 
-            return border;
-        }
-
         Grid root = new()
         {
-            Width = 1120,
-            Height = 560,
+            Width = 1140,
+            Height = 580,
             ColumnSpacing = 12,
+            HorizontalAlignment =
+                HorizontalAlignment.Center,
+            VerticalAlignment =
+                VerticalAlignment.Center,
         };
         root.ColumnDefinitions.Add(
             new ColumnDefinition
             {
                 Width =
-                    new GridLength(280),
+                    new GridLength(270),
             });
         root.ColumnDefinitions.Add(
             new ColumnDefinition
             {
                 Width =
-                    new GridLength(420),
+                    new GridLength(500),
             });
         root.ColumnDefinitions.Add(
             new ColumnDefinition
@@ -4938,17 +4964,22 @@ public sealed partial class MainWindow : Window
             DefaultButton =
                 ContentDialogButton.Primary,
             IsPrimaryButtonEnabled = false,
-            MinWidth = 1180,
-            MaxWidth = 1180,
+            Width = 1200,
+            MinWidth = 1200,
+            MaxWidth = 1200,
+            HorizontalAlignment =
+                HorizontalAlignment.Center,
+            VerticalAlignment =
+                VerticalAlignment.Center,
             Content = root,
         };
 
         dialog.Resources[
             "ContentDialogMinWidth"] =
-                1180d;
+                1200d;
         dialog.Resources[
             "ContentDialogMaxWidth"] =
-                1240d;
+                1200d;
 
         NeteaseMatchCandidate?
             GetSelectedCandidate()
@@ -4984,20 +5015,20 @@ public sealed partial class MainWindow : Window
 
             Grid row = new()
             {
-                MinHeight = 64,
+                MinHeight = 76,
                 Padding =
                     new Thickness(
-                        8,
+                        16,
                         7,
                         8,
                         7),
-                ColumnSpacing = 10,
+                ColumnSpacing = 12,
             };
             row.ColumnDefinitions.Add(
                 new ColumnDefinition
                 {
                     Width =
-                        new GridLength(48),
+                        new GridLength(52),
                 });
             row.ColumnDefinitions.Add(
                 new ColumnDefinition
@@ -5011,21 +5042,20 @@ public sealed partial class MainWindow : Window
                 new ColumnDefinition
                 {
                     Width =
-                        new GridLength(92),
+                        new GridLength(178),
                 });
 
             Border cover = new()
             {
-                Width = 48,
-                Height = 48,
+                Width = 52,
+                Height = 52,
                 CornerRadius =
                     new CornerRadius(6),
                 Background =
                     Application.Current
                         .Resources[
                             "CardBackgroundFillColorSecondaryBrush"]
-                        as Microsoft.UI.Xaml.Media
-                            .Brush,
+                        as Microsoft.UI.Xaml.Media.Brush,
                 Child =
                     new Image
                     {
@@ -5060,22 +5090,37 @@ public sealed partial class MainWindow : Window
             text.Children.Add(
                 new TextBlock
                 {
-                    Text =
-                        string.IsNullOrWhiteSpace(
-                            candidate.Album)
-                            ? candidate.Artist
-                            : $"{candidate.Artist} · {candidate.Album}",
+                    Text = candidate.Artist,
                     FontSize = 12,
                     Foreground =
                         Application.Current
                             .Resources[
                                 "TextFillColorSecondaryBrush"]
-                            as Microsoft.UI.Xaml.Media
-                                .Brush,
+                            as Microsoft.UI.Xaml.Media.Brush,
                     TextTrimming =
                         TextTrimming
                             .CharacterEllipsis,
                 });
+            if (!string.IsNullOrWhiteSpace(
+                    candidate.Album))
+            {
+                text.Children.Add(
+                    new TextBlock
+                    {
+                        Text =
+                            candidate.Album,
+                        FontSize = 11,
+                        Foreground =
+                            Application.Current
+                                .Resources[
+                                    "TextFillColorTertiaryBrush"]
+                                as Microsoft.UI.Xaml.Media.Brush,
+                        TextTrimming =
+                            TextTrimming
+                                .CharacterEllipsis,
+                    });
+            }
+
             Grid.SetColumn(
                 text,
                 1);
@@ -5083,34 +5128,58 @@ public sealed partial class MainWindow : Window
 
             StackPanel metadata = new()
             {
-                Spacing = 2,
+                Spacing = 3,
                 HorizontalAlignment =
                     HorizontalAlignment.Right,
                 VerticalAlignment =
                     VerticalAlignment.Center,
             };
+
             metadata.Children.Add(
                 new TextBlock
                 {
                     Text =
-                        $"#{candidate.TrackId}",
+                        candidate.DurationMs
+                            is long duration
+                                ? $"#{candidate.TrackId} · {FormatNetEaseDuration(duration)}"
+                                : $"#{candidate.TrackId}",
                     FontSize = 11,
                     Foreground =
                         Application.Current
                             .Resources[
                                 "TextFillColorSecondaryBrush"]
-                            as Microsoft.UI.Xaml.Media
-                                .Brush,
+                            as Microsoft.UI.Xaml.Media.Brush,
                     HorizontalAlignment =
                         HorizontalAlignment.Right,
                 });
+
+            StackPanel linkContent =
+                new()
+                {
+                    Orientation =
+                        Orientation.Horizontal,
+                    Spacing = 4,
+                };
+            linkContent.Children.Add(
+                new TextBlock
+                {
+                    Text =
+                        L(
+                            "Open in NetEase Music",
+                            "在网易云音乐中打开"),
+                });
+            linkContent.Children.Add(
+                new FontIcon
+                {
+                    Glyph = "\uE8A7",
+                    FontSize = 11,
+                });
+
             metadata.Children.Add(
                 new HyperlinkButton
                 {
                     Content =
-                        L(
-                            "NetEase",
-                            "网易云"),
+                        linkContent,
                     Padding =
                         new Thickness(0),
                     HorizontalAlignment =
@@ -5119,6 +5188,30 @@ public sealed partial class MainWindow : Window
                         new Uri(
                             $"https://music.163.com/#/song?id={candidate.TrackId}"),
                 });
+
+            Button previewButton =
+                new()
+                {
+                    HorizontalAlignment =
+                        HorizontalAlignment.Right,
+                    Padding =
+                        new Thickness(
+                            8,
+                            2,
+                            8,
+                            2),
+                    Content =
+                        L(
+                            "Preview",
+                            "试听"),
+                };
+            previewButton.Click +=
+                async (_, _) =>
+                    await PlayNetEasePreviewAsync(
+                        candidate);
+            metadata.Children.Add(
+                previewButton);
+
             Grid.SetColumn(
                 metadata,
                 2);
@@ -5132,9 +5225,9 @@ public sealed partial class MainWindow : Window
                     new Thickness(0),
                 Margin =
                     new Thickness(
-                        0,
+                        6,
                         1,
-                        0,
+                        12,
                         1),
                 HorizontalContentAlignment =
                     HorizontalAlignment.Stretch,
@@ -5165,8 +5258,19 @@ public sealed partial class MainWindow : Window
                     candidates =
                         await request;
 
+                IReadOnlyList<
+                    NeteaseMatchCandidate>
+                    ranked =
+                        NeteaseCandidateRanker
+                            .Rank(
+                                candidates,
+                                localDurationMs,
+                                titleBox.Text,
+                                artistBox.Text,
+                                albumBox.Text);
+
                 foreach (NeteaseMatchCandidate
-                    candidate in candidates)
+                    candidate in ranked)
                 {
                     results.Items.Add(
                         CreateCandidateRow(
@@ -5174,15 +5278,15 @@ public sealed partial class MainWindow : Window
                 }
 
                 status.Text =
-                    candidates.Count == 0
+                    ranked.Count == 0
                         ? L(
                             "No matches found.",
                             "没有找到匹配。")
                         : L(
-                            $"{candidates.Count:N0} matches found.",
-                            $"找到 {candidates.Count:N0} 个匹配。");
+                            $"{ranked.Count:N0} matches found · best duration match selected first.",
+                            $"找到 {ranked.Count:N0} 个匹配 · 已优先按时长选择。");
 
-                if (candidates.Count > 0)
+                if (ranked.Count > 0)
                 {
                     results.SelectedIndex = 0;
                 }
@@ -5327,6 +5431,24 @@ public sealed partial class MainWindow : Window
                 item,
                 selected);
         }
+    }
+
+    private static string FormatNetEaseDuration(
+        long durationMs)
+    {
+        TimeSpan duration =
+            TimeSpan.FromMilliseconds(
+                Math.Max(
+                    0,
+                    durationMs));
+
+        return duration.TotalHours >= 1
+            ? duration.ToString(
+                @"h\:mm\:ss",
+                CultureInfo.InvariantCulture)
+            : duration.ToString(
+                @"m\:ss",
+                CultureInfo.InvariantCulture);
     }
 
     private async Task SaveManualMatchAsync(
