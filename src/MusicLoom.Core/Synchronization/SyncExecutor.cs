@@ -13,6 +13,15 @@ public sealed record TrackSyncError(
     string Stage,
     string Message);
 
+public sealed record TrackSyncWarning(
+    string SourcePath,
+    string? RecordedTitle,
+    string? MatchedTitle,
+    string? RecordedArtist,
+    string? MatchedArtist,
+    bool TitleMismatch,
+    bool ArtistMismatch);
+
 public sealed record SyncExecutionSummary(
     LocalMaterializeSummary Local,
     int CompletedTracks,
@@ -21,13 +30,19 @@ public sealed record SyncExecutionSummary(
     int NoMatch,
     int NoLyrics,
     int UnsupportedLyrics,
+    IReadOnlyList<TrackSyncWarning> Warnings,
     IReadOnlyList<TrackSyncError> Errors);
 
 public sealed record SyncExecutionProgress(
     int Processed,
     int Total,
     string SourcePath,
-    string Stage);
+    string Stage,
+    long? NeteaseSongId = null,
+    string? NeteaseTrackName = null,
+    string? NeteaseTrackArtist = null,
+    string? NeteaseTrackAlbum = null,
+    TrackSyncWarning? Warning = null);
 
 public sealed class SyncExecutor
 {
@@ -102,6 +117,7 @@ public sealed class SyncExecutor
                 },
                 error.Message))
             .ToList();
+        List<TrackSyncWarning> warnings = [];
 
         HashSet<string> failedTrackSources = local.Errors
             .Where(static error =>
@@ -338,6 +354,29 @@ public sealed class SyncExecutor
                     };
                 }
 
+                TrackSyncWarning? matchWarning =
+                    DetectMatchWarning(
+                        entry,
+                        partial);
+
+                if (matchWarning is not null)
+                {
+                    warnings.Add(
+                        matchWarning);
+                }
+
+                progress?.Report(
+                    new SyncExecutionProgress(
+                        index,
+                        work.Length,
+                        entry.SourcePath,
+                        "match",
+                        partial.NeteaseSongId,
+                        partial.NeteaseTrackName,
+                        partial.NeteaseTrackArtist,
+                        partial.NeteaseTrackAlbum,
+                        matchWarning));
+
                 stage = "fetch-lyrics";
                 progress?.Report(new SyncExecutionProgress(
                     index,
@@ -465,6 +504,7 @@ public sealed class SyncExecutor
             noMatch,
             noLyrics,
             unsupportedLyrics,
+            warnings,
             errors);
 
         async Task CompleteAsync(
@@ -500,6 +540,97 @@ public sealed class SyncExecutor
                     cancellationToken);
             }
         }
+    }
+
+    public static TrackSyncWarning? DetectMatchWarning(
+        PlanEntry entry,
+        TrackState state)
+    {
+        ArgumentNullException.ThrowIfNull(
+            entry);
+        ArgumentNullException.ThrowIfNull(
+            state);
+
+        if (state.NeteaseSongId is null
+            || entry.Metadata is null)
+        {
+            return null;
+        }
+
+        string? recordedTitle =
+            entry.Metadata.Title;
+        string? recordedArtist =
+            entry.Metadata.AlbumArtist
+            ?? entry.Metadata.Artist;
+
+        bool titleMismatch =
+            HasComparableValue(
+                recordedTitle)
+            && HasComparableValue(
+                state.NeteaseTrackName)
+            && !MetadataValuesEqual(
+                recordedTitle!,
+                state.NeteaseTrackName!);
+
+        bool artistMismatch =
+            HasComparableValue(
+                recordedArtist)
+            && HasComparableValue(
+                state.NeteaseTrackArtist)
+            && !MetadataValuesEqual(
+                recordedArtist!,
+                state.NeteaseTrackArtist!);
+
+        if (!titleMismatch
+            && !artistMismatch)
+        {
+            return null;
+        }
+
+        return new TrackSyncWarning(
+            entry.SourcePath,
+            recordedTitle,
+            state.NeteaseTrackName,
+            recordedArtist,
+            state.NeteaseTrackArtist,
+            titleMismatch,
+            artistMismatch);
+    }
+
+    private static bool HasComparableValue(
+        string? value) =>
+        !string.IsNullOrWhiteSpace(
+            value);
+
+    private static bool MetadataValuesEqual(
+        string left,
+        string right) =>
+        string.Equals(
+            NormalizeMetadataValue(
+                left),
+            NormalizeMetadataValue(
+                right),
+            StringComparison.Ordinal);
+
+    private static string NormalizeMetadataValue(
+        string value)
+    {
+        StringBuilder builder = new();
+
+        foreach (char character
+            in value.Normalize(
+                NormalizationForm.FormKC))
+        {
+            if (char.IsLetterOrDigit(
+                    character))
+            {
+                builder.Append(
+                    char.ToLowerInvariant(
+                        character));
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static TrackState BuildPartialState(

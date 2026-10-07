@@ -120,6 +120,7 @@
               <ComboBoxItem x:Name="LibraryFilterAllItem" Content="All tracks" Tag="all" />
               <ComboBoxItem x:Name="LibraryFilterPendingItem" Content="Pending" Tag="pending" />
               <ComboBoxItem x:Name="LibraryFilterSyncedItem" Content="Synced" Tag="synced" />
+              <ComboBoxItem x:Name="LibraryFilterWarningsItem" Content="Warnings" Tag="warning" />
               <ComboBoxItem x:Name="LibraryFilterErrorsItem" Content="Errors" Tag="error" />
             </ComboBox>
 
@@ -149,6 +150,10 @@
               <StackPanel Orientation="Horizontal" Spacing="5">
                 <FontIcon x:Name="PendingSummaryIcon" Glyph="&#xE823;" FontSize="12" Foreground="#CA7400" ToolTipService.ToolTip="Pending" />
                 <TextBlock x:Name="PendingCountText" Text="0" FontWeight="SemiBold" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <FontIcon x:Name="WarningSummaryIcon" Glyph="&#xE7BA;" FontSize="12" Foreground="#CA7400" ToolTipService.ToolTip="Warnings" />
+                <TextBlock x:Name="WarningCountText" Text="0" FontWeight="SemiBold" />
               </StackPanel>
               <StackPanel Orientation="Horizontal" Spacing="5">
                 <FontIcon x:Name="ErrorSummaryIcon" Glyph="&#xEA39;" FontSize="12" Foreground="#C42B1C" ToolTipService.ToolTip="Errors" />
@@ -707,6 +712,20 @@
                                 FontSize="11"
                                 TextTrimming="CharacterEllipsis"
                                 Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            <HyperlinkButton
+                                x:Name="CurrentMatchOpenLink"
+                                Visibility="Collapsed"
+                                Padding="0"
+                                FontSize="11"
+                                HorizontalAlignment="Left">
+                              <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock
+                                    x:Name="CurrentMatchOpenLinkText"
+                                    Text="Open in NetEase Music"
+                                    FontSize="11" />
+                                <FontIcon Glyph="&#xE8A7;" FontSize="10" />
+                              </StackPanel>
+                            </HyperlinkButton>
                           </StackPanel>
                           <TextBlock
                               x:Name="CurrentMatchIdText"
@@ -888,32 +907,39 @@
                   HorizontalContentAlignment="Stretch">
                 <ListView.ItemTemplate>
                   <DataTemplate>
-                    <Grid Padding="14,10" ColumnSpacing="10">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="24" />
-                      </Grid.ColumnDefinitions>
-                      <TextBlock
-                          Text="{Binding Name}"
-                          FontWeight="SemiBold"
-                          TextWrapping="{Binding NameTextWrapping}"
-                          TextTrimming="{Binding NameTextTrimming}"
-                          MaxLines="{Binding NameMaxLines}"
-                          ToolTipService.ToolTip="{Binding NameToolTip}" />
-                      <TextBlock
-                          Grid.Column="1"
-                          Text="{Binding CountText}"
-                          VerticalAlignment="Center"
-                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                      <FontIcon
-                          Grid.Column="2"
-                          Glyph="{Binding StatusGlyph}"
-                          Foreground="{Binding StatusBrush}"
-                          FontSize="13"
-                          VerticalAlignment="Center"
-                          HorizontalAlignment="Center" />
-                    </Grid>
+                    <StackPanel>
+                      <Grid Padding="14,10" ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                          <ColumnDefinition Width="24" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Text="{Binding Name}"
+                            FontWeight="SemiBold"
+                            TextWrapping="{Binding NameTextWrapping}"
+                            TextTrimming="{Binding NameTextTrimming}"
+                            MaxLines="{Binding NameMaxLines}"
+                            ToolTipService.ToolTip="{Binding NameToolTip}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Text="{Binding CountText}"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <FontIcon
+                            Grid.Column="2"
+                            Glyph="{Binding StatusGlyph}"
+                            Foreground="{Binding StatusBrush}"
+                            FontSize="13"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center" />
+                      </Grid>
+                      <Border
+                          Height="1"
+                          Margin="14,0,14,0"
+                          Background="{ThemeResource CardStrokeColorDefaultBrush}"
+                          Visibility="{Binding SeparatorVisibility}" />
+                    </StackPanel>
                   </DataTemplate>
                 </ListView.ItemTemplate>
               </ListView>
@@ -933,46 +959,65 @@
                   <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <StackPanel Spacing="2">
-                  <ScrollViewer
-                      x:Name="PlaylistTitleViewport"
-                      HorizontalContentAlignment="Stretch"
-                      HorizontalScrollBarVisibility="Hidden"
-                      VerticalScrollBarVisibility="Disabled"
-                      HorizontalScrollMode="Disabled"
-                      VerticalScrollMode="Disabled"
-                      ZoomMode="Disabled"
-                      IsTabStop="False">
-                    <TextBlock
-                        x:Name="PlaylistTitleText"
-                        Text="Select a playlist"
-                        FontSize="22"
-                        FontWeight="SemiBold"
-                        TextWrapping="NoWrap">
-                      <TextBlock.RenderTransform>
-                        <TranslateTransform x:Name="PlaylistTitleTranslateTransform" />
-                      </TextBlock.RenderTransform>
-                    </TextBlock>
-                  </ScrollViewer>
-                  <ScrollViewer
-                      x:Name="PlaylistMetaViewport"
-                      HorizontalContentAlignment="Stretch"
-                      HorizontalScrollBarVisibility="Hidden"
-                      VerticalScrollBarVisibility="Disabled"
-                      HorizontalScrollMode="Disabled"
-                      VerticalScrollMode="Disabled"
-                      ZoomMode="Disabled"
-                      IsTabStop="False">
-                    <TextBlock
-                        x:Name="PlaylistMetaText"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        TextWrapping="NoWrap">
-                      <TextBlock.RenderTransform>
-                        <TranslateTransform x:Name="PlaylistMetaTranslateTransform" />
-                      </TextBlock.RenderTransform>
-                    </TextBlock>
-                  </ScrollViewer>
-                </StackPanel>
+                <Grid ColumnSpacing="12">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Spacing="2">
+                    <ScrollViewer
+                        x:Name="PlaylistTitleViewport"
+                        HorizontalContentAlignment="Stretch"
+                        HorizontalScrollBarVisibility="Hidden"
+                        VerticalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Disabled"
+                        VerticalScrollMode="Disabled"
+                        ZoomMode="Disabled"
+                        IsTabStop="False">
+                      <TextBlock
+                          x:Name="PlaylistTitleText"
+                          Text="Select a playlist"
+                          FontSize="22"
+                          FontWeight="SemiBold"
+                          TextWrapping="NoWrap">
+                        <TextBlock.RenderTransform>
+                          <TranslateTransform x:Name="PlaylistTitleTranslateTransform" />
+                        </TextBlock.RenderTransform>
+                      </TextBlock>
+                    </ScrollViewer>
+                    <ScrollViewer
+                        x:Name="PlaylistMetaViewport"
+                        HorizontalContentAlignment="Stretch"
+                        HorizontalScrollBarVisibility="Hidden"
+                        VerticalScrollBarVisibility="Disabled"
+                        HorizontalScrollMode="Disabled"
+                        VerticalScrollMode="Disabled"
+                        ZoomMode="Disabled"
+                        IsTabStop="False">
+                      <TextBlock
+                          x:Name="PlaylistMetaText"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                          TextWrapping="NoWrap">
+                        <TextBlock.RenderTransform>
+                          <TranslateTransform x:Name="PlaylistMetaTranslateTransform" />
+                        </TextBlock.RenderTransform>
+                      </TextBlock>
+                    </ScrollViewer>
+                  </StackPanel>
+                  <Button
+                      x:Name="PlaylistHeaderPlayButton"
+                      Grid.Column="1"
+                      Width="40"
+                      Height="40"
+                      Padding="0"
+                      Visibility="Collapsed"
+                      VerticalAlignment="Center"
+                      HorizontalAlignment="Right"
+                      Click="PlaylistHeaderPlayButton_Click"
+                      ToolTipService.ToolTip="Play playlist">
+                    <SymbolIcon Symbol="Play" />
+                  </Button>
+                </Grid>
 
                 <Grid Grid.Row="1" Margin="0,12,0,8" ColumnSpacing="8">
                   <Grid.ColumnDefinitions>
@@ -1225,11 +1270,21 @@
                         Grid.Column="1"
                         HorizontalAlignment="Stretch"
                         VerticalAlignment="Center"
-                        Background="#C42B1C"
-                        Foreground="White"
                         BorderThickness="0"
                         Content="Clear database"
-                        Click="ClearDatabaseButton_Click" />
+                        Click="ClearDatabaseButton_Click">
+                      <Button.Resources>
+                        <SolidColorBrush x:Key="ButtonBackground" Color="#C42B1C" />
+                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#A4261E" />
+                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#8C1D18" />
+                        <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                        <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                        <SolidColorBrush x:Key="ButtonForegroundPressed" Color="White" />
+                        <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                        <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                        <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                      </Button.Resources>
+                    </Button>
                   </Grid>
                 </Border>
               </StackPanel>
@@ -1489,23 +1544,24 @@
             </StackPanel>
           </Grid>
         </ScrollViewer>
+      </Grid>
 
-        <Grid
-            x:Name="MatchOverlay"
-            Canvas.ZIndex="100"
-            Visibility="Collapsed">
+      <Grid
+          x:Name="MatchOverlay"
+          Grid.Row="0"
+          Grid.RowSpan="2"
+          Canvas.ZIndex="100"
+          Visibility="Collapsed">
           <Grid.Background>
             <SolidColorBrush Color="#66000000" />
           </Grid.Background>
           <Border
               x:Name="MatchDialogSurface"
-              Width="1200"
-              Height="640"
               MaxWidth="1200"
               MaxHeight="640"
               Margin="24"
-              HorizontalAlignment="Center"
-              VerticalAlignment="Center"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch"
               CornerRadius="12"
               BorderThickness="1"
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -1547,22 +1603,21 @@
                   Margin="18,0,18,18" />
             </Grid>
           </Border>
-        </Grid>
       </Grid>
 
       <Border
           x:Name="PlayerBar"
           Grid.Row="2"
-          Padding="18,12"
+          Padding="24,16"
           BorderThickness="0,1,0,0"
           BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
           Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
-        <Grid ColumnSpacing="14">
+        <Grid ColumnSpacing="22">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="72" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="138" />
+            <ColumnDefinition Width="142" />
           </Grid.ColumnDefinitions>
 
           <Button
@@ -1598,7 +1653,7 @@
               Grid.Column="1"
               Orientation="Horizontal"
               VerticalAlignment="Center"
-              Spacing="4">
+              Spacing="8">
             <Button
                 x:Name="PlayerPreviousButton"
                 Width="36"
@@ -1641,7 +1696,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <StackPanel Spacing="1">
+              <StackPanel Spacing="3">
                 <ScrollViewer
                     x:Name="PlayerTitleViewport"
                     HorizontalContentAlignment="Stretch"
@@ -1697,12 +1752,12 @@
                 Minimum="0"
                 Maximum="1"
                 Value="0"
-                Margin="0,3,0,0"
+                Margin="0,6,0,0"
                 ValueChanged="PlayerProgressSlider_ValueChanged" />
 
           </Grid>
 
-          <Grid Grid.Column="3" VerticalAlignment="Center" ColumnSpacing="8">
+          <Grid Grid.Column="3" VerticalAlignment="Center" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="108" />

@@ -102,6 +102,10 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
             new SolidColorBrush(
                 Color.FromArgb(
                     255, 196, 43, 28)),
+        "warning" =>
+            new SolidColorBrush(
+                Color.FromArgb(
+                    255, 202, 116, 0)),
         "syncing" =>
             new SolidColorBrush(
                 Color.FromArgb(
@@ -116,6 +120,7 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
     {
         "synced" => "\uE73E",
         "error" => "\uEA39",
+        "warning" => "\uE7BA",
         "syncing" => "\uE895",
         _ => "\uE823",
     };

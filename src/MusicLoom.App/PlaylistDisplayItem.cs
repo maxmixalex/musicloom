@@ -10,7 +10,9 @@ internal sealed record PlaylistDisplayItem(
     string DestinationPath,
     IReadOnlyList<LibraryDisplayItem> Tracks,
     bool IsReady,
-    bool IsVirtual = false)
+    bool IsVirtual = false,
+    bool IsNowPlaying = false,
+    bool ShowDividerAfter = false)
 {
     public TextWrapping NameTextWrapping { get; private set; } =
         TextWrapping.NoWrap;
@@ -22,6 +24,11 @@ internal sealed record PlaylistDisplayItem(
 
     public int TrackCount => Tracks.Count;
     public string CountText => $"{TrackCount:N0}";
+
+    public Visibility SeparatorVisibility =>
+        ShowDividerAfter
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     public string StatusGlyph =>
         IsVirtual

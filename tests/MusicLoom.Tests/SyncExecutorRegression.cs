@@ -20,6 +20,7 @@ internal static class SyncExecutorRegression
         await OverrideExistingSkipsProbeAsync();
         await UnsupportedLyricsUsesZeroProbeAsync();
         await NoMatchIsNonFatalAsync();
+        MatchWarningIgnoresAlbumAndFlagsTitleArtist();
         await LyricsWritePersistsEnrichmentStateAsync();
         await RetryableFailureKeepsWarmMetadataAndAvoidsRecopyAsync();
         await PeriodicCheckpointPersistsBeforeFinalSaveAsync();
@@ -179,6 +180,64 @@ internal static class SyncExecutorRegression
         Equal(
             SyncRecipe.For(fixture.Settings),
             state.RecipeVersion);
+    }
+
+    private static void MatchWarningIgnoresAlbumAndFlagsTitleArtist()
+    {
+        PlanEntry entry =
+            new(
+                "track.mp3",
+                "destination.mp3",
+                PlanEntryStatus.Unchanged,
+                new TrackMetadata(
+                    Artist: "Track Artist",
+                    AlbumArtist: "Album Artist",
+                    Album: "Local Album",
+                    HasEmbeddedArt: false,
+                    Title: "Local Title"));
+
+        TrackState matching =
+            new()
+            {
+                SourcePath = entry.SourcePath,
+                NeteaseSongId = 42,
+                NeteaseTrackName = "Local Title",
+                NeteaseTrackArtist = "Album Artist",
+                NeteaseTrackAlbum = "Different Album",
+            };
+
+        Equal<TrackSyncWarning?>(
+            null,
+            SyncExecutor.DetectMatchWarning(
+                entry,
+                matching));
+
+        TrackState mismatching =
+            matching with
+            {
+                NeteaseTrackName =
+                    "Different Title",
+                NeteaseTrackArtist =
+                    "Different Artist",
+            };
+
+        TrackSyncWarning warning =
+            SyncExecutor.DetectMatchWarning(
+                entry,
+                mismatching)
+            ?? throw new InvalidOperationException(
+                "Expected a metadata mismatch warning.");
+
+        True(warning.TitleMismatch);
+        True(warning.ArtistMismatch);
+        Equal(
+            "Local Title",
+            warning.RecordedTitle
+                ?? string.Empty);
+        Equal(
+            "Different Artist",
+            warning.MatchedArtist
+                ?? string.Empty);
     }
 
     private static async Task LyricsWritePersistsEnrichmentStateAsync()
