@@ -8,6 +8,8 @@ internal static class AppDiagnostics
     private const long RotateAtBytes = 5 * 1024 * 1024;
     private static readonly object Gate = new();
 
+    public static event Action<string>? LineWritten;
+
     public static string DataDirectory { get; } =
         Path.Combine(
             Environment.GetFolderPath(
@@ -31,14 +33,19 @@ internal static class AppDiagnostics
     {
         try
         {
+            string line =
+                $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}] {message}";
+
             lock (Gate)
             {
                 Directory.CreateDirectory(LogDirectory);
                 File.AppendAllText(
                     LogPath,
-                    $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}] {message}{Environment.NewLine}",
+                    line + Environment.NewLine,
                     Encoding.UTF8);
             }
+
+            LineWritten?.Invoke(line);
         }
         catch
         {
