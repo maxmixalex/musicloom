@@ -94,6 +94,7 @@
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="160" />
               <ColumnDefinition Width="170" />
+              <ColumnDefinition Width="105" />
               <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
@@ -129,8 +130,16 @@
               <ComboBoxItem x:Name="SortArtistItem" Content="Sort by artist" Tag="artist" />
             </ComboBox>
 
-            <StackPanel
+            <ComboBox
+                x:Name="LibrarySortDirectionBox"
                 Grid.Column="3"
+                SelectionChanged="LibrarySortDirectionBox_SelectionChanged">
+              <ComboBoxItem x:Name="LibrarySortAscendingItem" Content="Ascending" Tag="asc" />
+              <ComboBoxItem x:Name="LibrarySortDescendingItem" Content="Descending" Tag="desc" />
+            </ComboBox>
+
+            <StackPanel
+                Grid.Column="4"
                 Orientation="Horizontal"
                 VerticalAlignment="Center"
                 HorizontalAlignment="Right"
@@ -248,7 +257,7 @@
                             Height="44"
                             CornerRadius="6"
                             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                          <Image Source="{Binding Artwork}" Stretch="UniformToFill" />
+                          <Image Source="{Binding Artwork}" Stretch="Uniform" />
                         </Border>
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
@@ -352,7 +361,7 @@
                         CornerRadius="9"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                       <Grid>
-                        <Image x:Name="CoverImage" Stretch="UniformToFill" />
+                        <Image x:Name="CoverImage" Stretch="Uniform" />
                         <TextBlock
                             x:Name="CoverPlaceholderText"
                             Text="No artwork"
@@ -443,9 +452,10 @@
                         <RowDefinition Height="*" />
                       </Grid.RowDefinitions>
 
-                      <Grid Margin="2,0,2,10">
+                      <Grid Margin="2,0,2,10" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="170" />
                           <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock
@@ -453,50 +463,25 @@
                             VerticalAlignment="Center"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             TextWrapping="Wrap" />
-                        <DropDownButton
-                            x:Name="LyricsModeButton"
+                        <ComboBox
+                            x:Name="LyricsModeBox"
                             Grid.Column="1"
-                            Width="42"
-                            Height="36"
-                            Padding="0"
-                            Visibility="Collapsed"
-                            ToolTipService.ToolTip="Lyrics display">
-                          <FontIcon
-                              x:Name="LyricsModeIcon"
-                              Glyph="&#xE909;"
-                              FontSize="16" />
-                          <DropDownButton.Flyout>
-                            <MenuFlyout>
-                              <MenuFlyoutItem
-                                  x:Name="LyricsOriginalOnlyItem"
-                                  Text="Original only"
-                                  Tag="originalOnly"
-                                  Click="LyricsModeItem_Click">
-                                <MenuFlyoutItem.Icon>
-                                  <FontIcon Glyph="&#xE8C3;" />
-                                </MenuFlyoutItem.Icon>
-                              </MenuFlyoutItem>
-                              <MenuFlyoutItem
-                                  x:Name="LyricsPreferTranslationItem"
-                                  Text="Prefer translation"
-                                  Tag="preferTranslation"
-                                  Click="LyricsModeItem_Click">
-                                <MenuFlyoutItem.Icon>
-                                  <FontIcon Glyph="&#xE909;" />
-                                </MenuFlyoutItem.Icon>
-                              </MenuFlyoutItem>
-                              <MenuFlyoutItem
-                                  x:Name="LyricsPreferOriginalItem"
-                                  Text="Prefer original"
-                                  Tag="preferOriginal"
-                                  Click="LyricsModeItem_Click">
-                                <MenuFlyoutItem.Icon>
-                                  <FontIcon Glyph="&#xE8AB;" />
-                                </MenuFlyoutItem.Icon>
-                              </MenuFlyoutItem>
-                            </MenuFlyout>
-                          </DropDownButton.Flyout>
-                        </DropDownButton>
+                            HorizontalAlignment="Stretch"
+                            SelectionChanged="LyricsModeBox_SelectionChanged">
+                          <ComboBoxItem x:Name="LyricsOriginalOnlyItem" Content="Original only" Tag="originalOnly" />
+                          <ComboBoxItem x:Name="LyricsPreferTranslationItem" Content="Prefer translation" Tag="preferTranslation" />
+                          <ComboBoxItem x:Name="LyricsPreferOriginalItem" Content="Prefer original" Tag="preferOriginal" />
+                        </ComboBox>
+                        <Button
+                            x:Name="CopyAllLyricsButton"
+                            Grid.Column="2"
+                            Click="CopyAllLyricsButton_Click"
+                            ToolTipService.ToolTip="Copy full lyrics">
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                            <TextBlock x:Name="CopyAllLyricsButtonText" Text="Copy all" />
+                          </StackPanel>
+                        </Button>
                       </Grid>
 
                       <ListView
@@ -602,12 +587,20 @@
                   <TabViewItem x:Name="SyncTab" Header="Sync" IsClosable="False">
                     <ScrollViewer Padding="4,14,4,4">
                       <StackPanel Spacing="10">
-                        <TextBlock
-                            x:Name="TrackSyncStateText"
-                            Text="No sync information."
-                            FontSize="18"
-                            FontWeight="SemiBold"
-                            TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <FontIcon
+                              x:Name="TrackSyncTabStatusIcon"
+                              Glyph="&#xE823;"
+                              FontSize="16"
+                              VerticalAlignment="Center" />
+                          <TextBlock
+                              x:Name="TrackSyncStateText"
+                              Text="No sync information."
+                              FontSize="18"
+                              FontWeight="SemiBold"
+                              TextWrapping="Wrap"
+                              VerticalAlignment="Center" />
+                        </StackPanel>
                         <TextBlock
                             x:Name="TrackSyncTimeText"
                             Text=""
@@ -646,6 +639,12 @@
                           <RowDefinition Height="Auto" />
                           <RowDefinition Height="Auto" />
                           <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock x:Name="SourcePathHeadingText" Text="Source" FontWeight="SemiBold" />
@@ -657,20 +656,38 @@
                         <TextBlock x:Name="FormatHeadingText" Grid.Row="2" Text="Format" FontWeight="SemiBold" />
                         <TextBlock x:Name="TrackFormatText" Grid.Row="2" Grid.Column="1" />
 
-                        <TextBlock x:Name="SizeHeadingText" Grid.Row="3" Text="Source size" FontWeight="SemiBold" />
-                        <TextBlock x:Name="TrackSizeText" Grid.Row="3" Grid.Column="1" />
+                        <TextBlock x:Name="DurationHeadingText" Grid.Row="3" Text="Duration" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TrackDurationText" Grid.Row="3" Grid.Column="1" />
 
-                        <TextBlock x:Name="ModifiedHeadingText" Grid.Row="4" Text="Modified" FontWeight="SemiBold" />
-                        <TextBlock x:Name="TrackModifiedText" Grid.Row="4" Grid.Column="1" />
+                        <TextBlock x:Name="BitrateHeadingText" Grid.Row="4" Text="Bitrate" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TrackBitrateText" Grid.Row="4" Grid.Column="1" />
 
-                        <TextBlock x:Name="CreatedHeadingText" Grid.Row="5" Text="Created" FontWeight="SemiBold" />
-                        <TextBlock x:Name="TrackCreatedText" Grid.Row="5" Grid.Column="1" />
+                        <TextBlock x:Name="SampleRateHeadingText" Grid.Row="5" Text="Sample rate" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TrackSampleRateText" Grid.Row="5" Grid.Column="1" />
 
-                        <TextBlock x:Name="DestinationSizeHeadingText" Grid.Row="6" Text="Destination size" FontWeight="SemiBold" />
-                        <TextBlock x:Name="TrackDestinationSizeText" Grid.Row="6" Grid.Column="1" />
+                        <TextBlock x:Name="BitDepthHeadingText" Grid.Row="6" Text="Bit depth" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TrackBitDepthText" Grid.Row="6" Grid.Column="1" />
 
-                        <TextBlock x:Name="DestinationModifiedHeadingText" Grid.Row="7" Text="Destination modified" FontWeight="SemiBold" />
-                        <TextBlock x:Name="TrackDestinationModifiedText" Grid.Row="7" Grid.Column="1" />
+                        <TextBlock x:Name="ChannelsHeadingText" Grid.Row="7" Text="Channels" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TrackChannelsText" Grid.Row="7" Grid.Column="1" />
+
+                        <TextBlock x:Name="BitrateModeHeadingText" Grid.Row="8" Text="Bitrate mode" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TrackBitrateModeText" Grid.Row="8" Grid.Column="1" />
+
+                        <TextBlock x:Name="SizeHeadingText" Grid.Row="9" Text="Source size" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TrackSizeText" Grid.Row="9" Grid.Column="1" />
+
+                        <TextBlock x:Name="ModifiedHeadingText" Grid.Row="10" Text="Modified" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TrackModifiedText" Grid.Row="10" Grid.Column="1" />
+
+                        <TextBlock x:Name="CreatedHeadingText" Grid.Row="11" Text="Created" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TrackCreatedText" Grid.Row="11" Grid.Column="1" />
+
+                        <TextBlock x:Name="DestinationSizeHeadingText" Grid.Row="12" Text="Destination size" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TrackDestinationSizeText" Grid.Row="12" Grid.Column="1" />
+
+                        <TextBlock x:Name="DestinationModifiedHeadingText" Grid.Row="13" Text="Destination modified" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TrackDestinationModifiedText" Grid.Row="13" Grid.Column="1" />
                       </Grid>
                     </ScrollViewer>
                   </TabViewItem>
@@ -757,6 +774,7 @@
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="170" />
+                    <ColumnDefinition Width="105" />
                   </Grid.ColumnDefinitions>
                   <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
@@ -777,6 +795,13 @@
                     <ComboBoxItem x:Name="PlaylistSortTitleItem" Content="Sort by title" Tag="title" />
                     <ComboBoxItem x:Name="PlaylistSortAlbumItem" Content="Sort by album" Tag="album" />
                     <ComboBoxItem x:Name="PlaylistSortArtistItem" Content="Sort by artist" Tag="artist" />
+                  </ComboBox>
+                  <ComboBox
+                      x:Name="PlaylistSortDirectionBox"
+                      Grid.Column="2"
+                      SelectionChanged="PlaylistSortDirectionBox_SelectionChanged">
+                    <ComboBoxItem x:Name="PlaylistSortAscendingItem" Content="Ascending" Tag="asc" />
+                    <ComboBoxItem x:Name="PlaylistSortDescendingItem" Content="Descending" Tag="desc" />
                   </ComboBox>
                 </Grid>
 
@@ -850,7 +875,7 @@
                             Height="44"
                             CornerRadius="6"
                             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                          <Image Source="{Binding Artwork}" Stretch="UniformToFill" />
+                          <Image Source="{Binding Artwork}" Stretch="Uniform" />
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                           <TextBlock
@@ -959,26 +984,39 @@
                   </Grid>
                 </Border>
 
-                <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                  <Grid ColumnSpacing="14">
+                <Border Padding="20,16" CornerRadius="10" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <Grid ColumnSpacing="18">
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*" />
                       <ColumnDefinition Width="280" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Spacing="2">
+                    <StackPanel Spacing="5">
                       <TextBlock
                           x:Name="DatabaseSettingTitle"
-                          Text="Local database"
-                          FontWeight="SemiBold" />
+                          Text="LOCAL DATABASE"
+                          FontSize="12"
+                          CharacterSpacing="45"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                       <TextBlock
                           x:Name="DatabaseSizeText"
                           Text="0 B"
-                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                          FontSize="22"
+                          FontWeight="SemiBold" />
+                      <TextBlock
+                          x:Name="DatabasePathText"
+                          Text=""
+                          FontSize="12"
+                          TextWrapping="Wrap"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                     </StackPanel>
                     <Button
                         x:Name="ClearDatabaseButton"
                         Grid.Column="1"
                         HorizontalAlignment="Stretch"
+                        VerticalAlignment="Center"
+                        Background="#C42B1C"
+                        Foreground="White"
+                        BorderThickness="0"
                         Content="Clear database"
                         Click="ClearDatabaseButton_Click" />
                   </Grid>
