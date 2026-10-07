@@ -5,7 +5,15 @@ namespace MusicLoom.Metadata;
 
 public sealed record TrackInspection(
     byte[]? Artwork,
-    string? Lyrics);
+    string? Lyrics,
+    double DurationMs,
+    double Bitrate,
+    double SampleRate,
+    int BitDepth,
+    int Channels,
+    string ChannelArrangement,
+    bool IsVbr,
+    bool IsLossless);
 
 public static class AtlTrackInspector
 {
@@ -26,7 +34,16 @@ public static class AtlTrackInspector
         string? lyrics = ReadLyrics(track);
         return new TrackInspection(
             artwork,
-            lyrics);
+            lyrics,
+            track.DurationMs,
+            track.Bitrate,
+            track.SampleRate,
+            track.BitDepth,
+            track.ChannelsArrangement.NbChannels,
+            track.ChannelsArrangement.Description,
+            track.IsVBR,
+            AudioDataIOFactory.CF_LOSSLESS
+                == track.CodecFamily);
     }
 
     private static string? ReadLyrics(Track track)
