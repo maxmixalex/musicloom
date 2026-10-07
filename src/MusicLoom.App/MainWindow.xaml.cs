@@ -4032,6 +4032,13 @@ public sealed partial class MainWindow : Window
             Content = root,
         };
 
+        dialog.Resources[
+            "ContentDialogMinWidth"] =
+                1180d;
+        dialog.Resources[
+            "ContentDialogMaxWidth"] =
+                1240d;
+
         NeteaseMatchCandidate?
             GetSelectedCandidate()
         {
@@ -4114,7 +4121,7 @@ public sealed partial class MainWindow : Window
                         Source = bitmap,
                         Stretch =
                             Microsoft.UI.Xaml.Media
-                                .Stretch.UniformToFill,
+                                .Stretch.Uniform,
                     },
             };
             row.Children.Add(cover);
