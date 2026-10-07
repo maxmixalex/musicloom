@@ -71,6 +71,10 @@ public static class AncillaryPlanner
                 onlyExplicit);
             if (cover is null)
             {
+                AddStaleWmpCoverCleanup(
+                    covers,
+                    sourceDirectory,
+                    albumDirectory);
                 continue;
             }
 
@@ -87,6 +91,98 @@ public static class AncillaryPlanner
         }
 
         return covers;
+    }
+
+    private static void AddStaleWmpCoverCleanup(
+        List<CoverPlanEntry> covers,
+        string sourceDirectory,
+        string albumDirectory)
+    {
+        if (!Directory.Exists(sourceDirectory)
+            || !Directory.Exists(albumDirectory))
+        {
+            return;
+        }
+
+        bool hasWmpAlbumArt =
+            Directory.EnumerateFiles(
+                    sourceDirectory,
+                    "*",
+                    SearchOption.TopDirectoryOnly)
+                .Select(
+                    Path.GetFileNameWithoutExtension)
+                .Any(static stem =>
+                    stem is not null
+                    && stem.StartsWith(
+                        "AlbumArt",
+                        StringComparison.OrdinalIgnoreCase));
+
+        if (!hasWmpAlbumArt)
+        {
+            return;
+        }
+
+        string? folderCache =
+            Directory.EnumerateFiles(
+                    sourceDirectory,
+                    "*",
+                    SearchOption.TopDirectoryOnly)
+                .FirstOrDefault(
+                    static path =>
+                        string.Equals(
+                            Path.GetFileNameWithoutExtension(
+                                path),
+                            "Folder",
+                            StringComparison.OrdinalIgnoreCase));
+
+        if (folderCache is null)
+        {
+            return;
+        }
+
+        foreach (string destinationCover
+            in Directory.EnumerateFiles(
+                albumDirectory,
+                "Cover.*",
+                SearchOption.TopDirectoryOnly))
+        {
+            if (!FilesHaveSameContent(
+                    folderCache,
+                    destinationCover))
+            {
+                continue;
+            }
+
+            covers.Add(
+                new CoverPlanEntry(
+                    folderCache,
+                    destinationCover,
+                    NeedsWrite: true,
+                    DeleteDestination: true));
+        }
+    }
+
+    private static bool FilesHaveSameContent(
+        string leftPath,
+        string rightPath)
+    {
+        FileInfo left =
+            new(leftPath);
+        FileInfo right =
+            new(rightPath);
+
+        if (!left.Exists
+            || !right.Exists
+            || left.Length != right.Length)
+        {
+            return false;
+        }
+
+        return File.ReadAllBytes(leftPath)
+            .AsSpan()
+            .SequenceEqual(
+                File.ReadAllBytes(
+                    rightPath));
     }
 
     private static async Task<List<PlaylistPlanEntry>>
