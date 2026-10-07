@@ -34,6 +34,7 @@
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto" />
         <RowDefinition Height="*" />
+        <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
 
       <InfoBar
@@ -208,6 +209,10 @@
                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                   <ListView.ContextFlyout>
                     <MenuFlyout x:Name="TrackContextMenu" Opening="TrackContextMenu_Opening">
+                      <MenuFlyoutItem x:Name="ContextPlayItem" Text="Play" Click="ContextPlayItem_Click">
+                        <MenuFlyoutItem.Icon><SymbolIcon Symbol="Play" /></MenuFlyoutItem.Icon>
+                      </MenuFlyoutItem>
+                      <MenuFlyoutSeparator />
                       <MenuFlyoutItem x:Name="ContextOpenSourceItem" Text="Open source folder" Click="ContextOpenSourceItem_Click" />
                       <MenuFlyoutItem x:Name="ContextOpenDestinationItem" Text="Open destination folder" Click="ContextOpenDestinationItem_Click" />
                       <MenuFlyoutSeparator />
@@ -424,21 +429,36 @@
                     </StackPanel>
                   </StackPanel>
 
-                  <Button
-                      x:Name="CloseDetailButton"
+                  <StackPanel
                       Grid.Column="2"
-                      Width="32"
-                      Height="32"
                       Margin="0,-10,-10,0"
+                      Orientation="Horizontal"
+                      Spacing="4"
                       HorizontalAlignment="Right"
-                      VerticalAlignment="Top"
-                      Padding="0"
-                      Background="Transparent"
-                      BorderThickness="0"
-                      Click="CloseDetailButton_Click"
-                      ToolTipService.ToolTip="Close details">
-                    <FontIcon Glyph="&#xE711;" FontSize="12" />
-                  </Button>
+                      VerticalAlignment="Top">
+                    <Button
+                        x:Name="DetailPlayButton"
+                        Width="36"
+                        Height="32"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="DetailPlayButton_Click"
+                        ToolTipService.ToolTip="Play track">
+                      <SymbolIcon x:Name="DetailPlayIcon" Symbol="Play" />
+                    </Button>
+                    <Button
+                        x:Name="CloseDetailButton"
+                        Width="32"
+                        Height="32"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="CloseDetailButton_Click"
+                        ToolTipService.ToolTip="Close details">
+                      <FontIcon Glyph="&#xE711;" FontSize="12" />
+                    </Button>
+                  </StackPanel>
                 </Grid>
 
                 <TabView
@@ -940,6 +960,13 @@
                   <ListView.ContextFlyout>
                     <MenuFlyout>
                       <MenuFlyoutItem
+                          x:Name="PlaylistPlayItem"
+                          Text="Play"
+                          Click="PlaylistPlayItem_Click">
+                        <MenuFlyoutItem.Icon><SymbolIcon Symbol="Play" /></MenuFlyoutItem.Icon>
+                      </MenuFlyoutItem>
+                      <MenuFlyoutSeparator />
+                      <MenuFlyoutItem
                           x:Name="PlaylistShowInLibraryItem"
                           Text="Show in library"
                           Click="PlaylistShowInLibraryItem_Click" />
@@ -1355,6 +1382,160 @@
           </Grid>
         </ScrollViewer>
       </Grid>
+
+      <Border
+          x:Name="PlayerBar"
+          Grid.Row="2"
+          Padding="14,10"
+          BorderThickness="0,1,0,0"
+          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+          Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+        <Grid ColumnSpacing="14">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="72" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="230" />
+          </Grid.ColumnDefinitions>
+
+          <Button
+              x:Name="PlayerArtworkButton"
+              Width="72"
+              Height="72"
+              Padding="0"
+              Background="Transparent"
+              BorderThickness="0"
+              DoubleTapped="PlayerArtworkButton_DoubleTapped"
+              ToolTipService.ToolTip="Locate playing track">
+            <Border
+                Width="72"
+                Height="72"
+                CornerRadius="7"
+                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+              <Grid>
+                <Image
+                    x:Name="PlayerArtworkImage"
+                    Stretch="Uniform" />
+                <FontIcon
+                    x:Name="PlayerArtworkPlaceholder"
+                    Glyph="&#xE8D6;"
+                    FontSize="24"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+              </Grid>
+            </Border>
+          </Button>
+
+          <StackPanel
+              Grid.Column="1"
+              Orientation="Horizontal"
+              VerticalAlignment="Center"
+              Spacing="4">
+            <Button
+                x:Name="PlayerPreviousButton"
+                Width="36"
+                Height="36"
+                Padding="0"
+                Click="PlayerPreviousButton_Click"
+                ToolTipService.ToolTip="Previous">
+              <FontIcon Glyph="&#xE892;" FontSize="16" />
+            </Button>
+            <Button
+                x:Name="PlayerPlayPauseButton"
+                Width="44"
+                Height="44"
+                Padding="0"
+                Click="PlayerPlayPauseButton_Click"
+                ToolTipService.ToolTip="Play">
+              <SymbolIcon
+                  x:Name="PlayerPlayPauseIcon"
+                  Symbol="Play" />
+            </Button>
+            <Button
+                x:Name="PlayerNextButton"
+                Width="36"
+                Height="36"
+                Padding="0"
+                Click="PlayerNextButton_Click"
+                ToolTipService.ToolTip="Next">
+              <FontIcon Glyph="&#xE893;" FontSize="16" />
+            </Button>
+          </StackPanel>
+
+          <Grid Grid.Column="2" VerticalAlignment="Center">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid ColumnSpacing="12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Spacing="1">
+                <TextBlock
+                    x:Name="PlayerTitleText"
+                    Text="Nothing playing"
+                    FontSize="15"
+                    FontWeight="SemiBold"
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    x:Name="PlayerMetadataText"
+                    Text=""
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <TextBlock
+                  x:Name="PlayerTimeText"
+                  Grid.Column="1"
+                  Text="0:00 / 0:00"
+                  VerticalAlignment="Center"
+                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Grid>
+
+            <Slider
+                x:Name="PlayerProgressSlider"
+                Grid.Row="1"
+                Minimum="0"
+                Maximum="1"
+                Value="0"
+                Margin="0,3,0,0"
+                ValueChanged="PlayerProgressSlider_ValueChanged" />
+
+            <TextBlock
+                x:Name="PlayerHintText"
+                Grid.Row="2"
+                Text=""
+                FontSize="11"
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                TextTrimming="CharacterEllipsis" />
+          </Grid>
+
+          <Grid Grid.Column="3" VerticalAlignment="Center" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <FontIcon
+                x:Name="PlayerVolumeIcon"
+                Glyph="&#xE767;"
+                VerticalAlignment="Center"
+                FontSize="16" />
+            <Slider
+                x:Name="PlayerVolumeSlider"
+                Grid.Column="1"
+                Minimum="0"
+                Maximum="1"
+                Value="0.75"
+                StepFrequency="0.01"
+                ValueChanged="PlayerVolumeSlider_ValueChanged" />
+          </Grid>
+        </Grid>
+      </Border>
     </Grid>
   </NavigationView>
 </Window>
