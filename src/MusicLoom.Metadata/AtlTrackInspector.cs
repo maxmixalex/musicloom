@@ -23,6 +23,13 @@ public static class AtlTrackInspector
         ATL.Settings.DisplayValueSeparator = ';';
     }
 
+    public static double ReadDurationMs(
+        string path)
+    {
+        Track track = new(path);
+        return track.DurationMs;
+    }
+
     public static TrackInspection Read(string path)
     {
         Track track = new(path);
