@@ -1489,6 +1489,65 @@
             </StackPanel>
           </Grid>
         </ScrollViewer>
+
+        <Grid
+            x:Name="MatchOverlay"
+            Panel.ZIndex="100"
+            Visibility="Collapsed">
+          <Grid.Background>
+            <SolidColorBrush Color="#66000000" />
+          </Grid.Background>
+          <Border
+              x:Name="MatchDialogSurface"
+              Width="1200"
+              Height="640"
+              MaxWidth="1200"
+              MaxHeight="640"
+              Margin="24"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              CornerRadius="12"
+              BorderThickness="1"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+              Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+              </Grid.RowDefinitions>
+              <Grid
+                  Padding="18,14,12,10"
+                  ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    x:Name="MatchDialogTitleText"
+                    Text="Find NetEase match"
+                    FontSize="20"
+                    FontWeight="SemiBold"
+                    VerticalAlignment="Center" />
+                <Button
+                    x:Name="MatchDialogCloseButton"
+                    Grid.Column="1"
+                    Width="32"
+                    Height="32"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="MatchDialogCloseButton_Click"
+                    ToolTipService.ToolTip="Close">
+                  <FontIcon Glyph="&#xE711;" FontSize="12" />
+                </Button>
+              </Grid>
+              <ContentControl
+                  x:Name="MatchDialogHost"
+                  Grid.Row="1"
+                  Margin="18,0,18,18" />
+            </Grid>
+          </Border>
+        </Grid>
       </Grid>
 
       <Border
