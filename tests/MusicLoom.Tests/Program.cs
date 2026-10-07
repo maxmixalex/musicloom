@@ -33,6 +33,7 @@ List<(string Name, Action Test)> tests =
     ("Destination drift is rematerialized without touching source metadata", DestinationDriftRegression.Run),
     ("State recovery and materialization failures are isolated", ResilienceRegression.Run),
     ("Source hashing, metadata fallback, and lyric TTL stay safe", ParityRegression.Run),
+    ("SQLite settings and legacy state migration stay lossless", DatabasePersistenceRegression.Run),
 ];
 
 int failed = 0;
