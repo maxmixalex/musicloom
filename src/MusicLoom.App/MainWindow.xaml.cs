@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -3304,6 +3305,66 @@ public sealed partial class MainWindow : Window
                     "Copy as LRC",
                     "复制为 LRC");
         }
+    }
+
+    private void LyricsList_PointerReleased(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (_playingLibraryItem is null
+            || _selectedLibraryItem is null
+            || !ReferenceEquals(
+                _playingLibraryItem,
+                _selectedLibraryItem))
+        {
+            return;
+        }
+
+        Windows.UI.Input.PointerPoint point =
+            e.GetCurrentPoint(
+                LyricsList);
+
+        if (point.Properties
+                .PointerUpdateKind
+            != Windows.UI.Input
+                .PointerUpdateKind
+                .LeftButtonReleased)
+        {
+            return;
+        }
+
+        LyricDisplayLine? line =
+            VisualTreeHelper
+                .FindElementsInHostCoordinates(
+                    point.Position,
+                    LyricsList)
+                .OfType<FrameworkElement>()
+                .Select(
+                    static element =>
+                        element.DataContext
+                            as LyricDisplayLine)
+                .FirstOrDefault(
+                    static candidate =>
+                        candidate?.Timestamp
+                            is not null);
+
+        if (line?.Timestamp
+            is not TimeSpan timestamp)
+        {
+            return;
+        }
+
+        _mediaPlayer
+            .PlaybackSession
+            .Position = timestamp;
+
+        _activePlaybackLyric = line;
+        LyricsList.SelectedItem = line;
+        LyricsList.ScrollIntoView(
+            line,
+            ScrollIntoViewAlignment.Leading);
+
+        e.Handled = true;
     }
 
     private void LyricsList_RightTapped(
