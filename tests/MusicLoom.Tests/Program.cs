@@ -156,6 +156,39 @@ static void PlaylistParsing()
     ]);
     Equal(1, paths.Count);
     Equal("D:\\MUSIC\\Example.flac", paths[0]);
+
+    string source =
+        Path.GetFullPath(
+            Path.Combine(
+                "source",
+                "Example.flac"));
+    string destination =
+        Path.GetFullPath(
+            Path.Combine(
+                "destination",
+                "Artist",
+                "Album",
+                "Example.flac"));
+    string destinationRoot =
+        Path.GetFullPath(
+            "destination");
+
+    IReadOnlyList<string> mapped =
+        PlaylistMapper.Map(
+            [source],
+            new Dictionary<string, string>
+            {
+                [source] = destination,
+            },
+            destinationRoot,
+            "/storage/emulated/0/Custom Music///");
+
+    Equal(
+        1,
+        mapped.Count);
+    Equal(
+        "/storage/emulated/0/Custom Music/Artist/Album/Example.flac",
+        mapped[0]);
 }
 
 static void WarmScanSkipsMetadata()
