@@ -92,7 +92,8 @@ public sealed class NeteaseClient : IDisposable
                     artist,
                     album,
                     score,
-                    ReadAlbumCoverUrl(song)));
+                    ReadAlbumCoverUrl(song),
+                    ReadDurationMs(song)));
         }
 
         return candidates;
@@ -277,11 +278,18 @@ public sealed class NeteaseClient : IDisposable
                     ReadAlbum(song),
                     Score: null,
                     CoverUrl:
-                        ReadAlbumCoverUrl(song)));
+                        ReadAlbumCoverUrl(song),
+                    DurationMs:
+                        ReadDurationMs(song)));
         }
 
         return candidates;
     }
+
+    public static Uri GetPreviewUri(
+        long songId) =>
+        new(
+            $"{Host}/song/media/outer/url?id={songId}.mp3");
 
     public void Dispose()
     {
@@ -381,6 +389,57 @@ public sealed class NeteaseClient : IDisposable
             && property.TryGetDouble(out double value)
                 ? value
                 : null;
+    }
+
+    private static long? ReadDurationMs(
+        JsonElement song)
+    {
+        foreach (string propertyName
+            in new[]
+            {
+                "dt",
+                "duration",
+                "durationMs",
+            })
+        {
+            if (!song.TryGetProperty(
+                    propertyName,
+                    out JsonElement property))
+            {
+                continue;
+            }
+
+            if (property.TryGetInt64(
+                    out long integer))
+            {
+                return integer > 0
+                    ? integer
+                    : null;
+            }
+
+            if (property.TryGetDouble(
+                    out double floating)
+                && floating > 0)
+            {
+                return checked(
+                    (long)Math.Round(
+                        floating));
+            }
+
+            if (property.ValueKind
+                    == JsonValueKind.String
+                && long.TryParse(
+                    property.GetString(),
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out long parsed)
+                && parsed > 0)
+            {
+                return parsed;
+            }
+        }
+
+        return null;
     }
 
     private static string? ReadAlbumCoverUrl(
