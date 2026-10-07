@@ -2947,18 +2947,28 @@ public sealed partial class MainWindow : Window
                         TrackArtistText,
                         TrackArtistTranslateTransform,
                         mode);
-                _playerTitleScrollStoryboard =
-                    ConfigureAuxiliaryViewport(
-                        PlayerTitleViewport,
-                        PlayerTitleText,
-                        PlayerTitleTranslateTransform,
-                        mode);
-                _playerMetadataScrollStoryboard =
-                    ConfigureAuxiliaryViewport(
-                        PlayerMetadataViewport,
-                        PlayerMetadataText,
-                        PlayerMetadataTranslateTransform,
-                        mode);
+                if (_mediaPlayer.Source is null)
+                {
+                    PlayerTitleTranslateTransform.X = 0;
+                    PlayerMetadataTranslateTransform.X = 0;
+                    _playerTitleScrollStoryboard = null;
+                    _playerMetadataScrollStoryboard = null;
+                }
+                else
+                {
+                    _playerTitleScrollStoryboard =
+                        ConfigureAuxiliaryViewport(
+                            PlayerTitleViewport,
+                            PlayerTitleText,
+                            PlayerTitleTranslateTransform,
+                            mode);
+                    _playerMetadataScrollStoryboard =
+                        ConfigureAuxiliaryViewport(
+                            PlayerMetadataViewport,
+                            PlayerMetadataText,
+                            PlayerMetadataTranslateTransform,
+                            mode);
+                }
                 _diagnosticsPathScrollStoryboard =
                     ConfigureAuxiliaryViewport(
                         DiagnosticsLogPathViewport,
@@ -8426,6 +8436,8 @@ public sealed partial class MainWindow : Window
         RefreshLocalizedComboBoxSelections();
 
         RenderLyrics();
+        RefreshCurrentMatchCard(
+            _selectedLibraryItem);
         RefreshTrackSyncTab(
             _selectedLibraryItem);
         ConfigureAuxiliaryLongText();
