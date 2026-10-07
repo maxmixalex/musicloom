@@ -35,15 +35,21 @@ public sealed class NeteaseTrackProvider :
             return TrackRecognitionResult.NoMatch();
         }
 
-        double? durationMs =
-            TryReadDurationMs(
-                audioFilePath);
+        (double? durationMs,
+            TrackMetadata? metadata) =
+                await TryReadLocalTrackInfoAsync(
+                    audioFilePath,
+                    cancellationToken);
 
         NeteaseMatchCandidate first =
             NeteaseCandidateRanker
                 .Rank(
                     candidates,
-                    durationMs)
+                    durationMs,
+                    metadata?.Title,
+                    metadata?.AlbumArtist
+                        ?? metadata?.Artist,
+                    metadata?.Album)
                 [0];
         return TrackRecognitionResult.Matched(
             first.TrackId,
@@ -63,15 +69,31 @@ public sealed class NeteaseTrackProvider :
                 audioFilePath,
                 cancellationToken);
 
+        (double? durationMs,
+            TrackMetadata? metadata) =
+                await TryReadLocalTrackInfoAsync(
+                    audioFilePath,
+                    cancellationToken);
+
         return NeteaseCandidateRanker.Rank(
             candidates,
-            TryReadDurationMs(
-                audioFilePath));
+            durationMs,
+            metadata?.Title,
+            metadata?.AlbumArtist
+                ?? metadata?.Artist,
+            metadata?.Album);
     }
 
-    private static double? TryReadDurationMs(
-        string audioFilePath)
+    private static async Task<(
+        double? DurationMs,
+        TrackMetadata? Metadata)>
+        TryReadLocalTrackInfoAsync(
+            string audioFilePath,
+            CancellationToken cancellationToken)
     {
+        double? durationMs = null;
+        TrackMetadata? metadata = null;
+
         try
         {
             double duration =
@@ -79,16 +101,33 @@ public sealed class NeteaseTrackProvider :
                     .ReadDurationMs(
                         audioFilePath);
 
-            return double.IsFinite(
+            if (double.IsFinite(
                     duration)
-                && duration > 0
-                    ? duration
-                    : null;
+                && duration > 0)
+            {
+                durationMs =
+                    duration;
+            }
         }
         catch
         {
-            return null;
         }
+
+        try
+        {
+            metadata =
+                await new AtlMetadataReader()
+                    .ReadAsync(
+                        audioFilePath,
+                        cancellationToken);
+        }
+        catch
+        {
+        }
+
+        return (
+            durationMs,
+            metadata);
     }
 
     public async Task<LyricsLookupResult> GetLyricsAsync(
