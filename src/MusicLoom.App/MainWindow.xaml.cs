@@ -8166,6 +8166,13 @@ public sealed partial class MainWindow : Window
             L(
                 "NetEase match",
                 "网易云匹配");
+        MatchDialogTitleText.Text =
+            L(
+                "Find NetEase match",
+                "查找网易云匹配");
+        ToolTipService.SetToolTip(
+            MatchDialogCloseButton,
+            L("Close", "关闭"));
         SyncTab.Header =
             L("Sync", "同步");
         TrackSyncLogHeadingText.Text =
