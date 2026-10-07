@@ -366,6 +366,7 @@
                   <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5">
                     <ScrollViewer
                         x:Name="TrackTitleViewport"
+                        HorizontalContentAlignment="Stretch"
                         HorizontalScrollBarVisibility="Hidden"
                         VerticalScrollBarVisibility="Disabled"
                         HorizontalScrollMode="Disabled"
@@ -387,6 +388,7 @@
                     <TextBlock x:Name="TrackArtistText" Text="" FontSize="16" TextWrapping="Wrap" />
                     <ScrollViewer
                         x:Name="TrackAlbumViewport"
+                        HorizontalContentAlignment="Stretch"
                         HorizontalScrollBarVisibility="Hidden"
                         VerticalScrollBarVisibility="Disabled"
                         HorizontalScrollMode="Disabled"
@@ -461,7 +463,7 @@
                             ToolTipService.ToolTip="Lyrics display">
                           <FontIcon
                               x:Name="LyricsModeIcon"
-                              Glyph="&#xE8C1;"
+                              Glyph="&#xE909;"
                               FontSize="16" />
                           <DropDownButton.Flyout>
                             <MenuFlyout>
@@ -471,7 +473,7 @@
                                   Tag="originalOnly"
                                   Click="LyricsModeItem_Click">
                                 <MenuFlyoutItem.Icon>
-                                  <FontIcon Glyph="&#xE8A5;" />
+                                  <FontIcon Glyph="&#xE8C3;" />
                                 </MenuFlyoutItem.Icon>
                               </MenuFlyoutItem>
                               <MenuFlyoutItem
@@ -480,7 +482,7 @@
                                   Tag="preferTranslation"
                                   Click="LyricsModeItem_Click">
                                 <MenuFlyoutItem.Icon>
-                                  <FontIcon Glyph="&#xE8C1;" />
+                                  <FontIcon Glyph="&#xE909;" />
                                 </MenuFlyoutItem.Icon>
                               </MenuFlyoutItem>
                               <MenuFlyoutItem
@@ -489,7 +491,7 @@
                                   Tag="preferOriginal"
                                   Click="LyricsModeItem_Click">
                                 <MenuFlyoutItem.Icon>
-                                  <FontIcon Glyph="&#xE8D2;" />
+                                  <FontIcon Glyph="&#xE8AB;" />
                                 </MenuFlyoutItem.Icon>
                               </MenuFlyoutItem>
                             </MenuFlyout>
@@ -530,31 +532,47 @@
                         </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
                           <DataTemplate>
-                            <StackPanel Padding="8,7" Spacing="3">
-                              <StackPanel.ContextFlyout>
+                            <Grid Padding="8,7" ColumnSpacing="8">
+                              <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="44" />
+                                <ColumnDefinition Width="*" />
+                              </Grid.ColumnDefinitions>
+                              <Grid.ContextFlyout>
                                 <MenuFlyout Opening="LyricLineMenu_Opening">
                                   <MenuFlyoutItem
                                       x:Name="CopyLyricLineItem"
                                       Text="Copy line"
                                       Tag="{Binding}"
-                                      Click="CopyLyricLineItem_Click" />
+                                      Click="CopyLyricLineItem_Click">
+                                    <MenuFlyoutItem.Icon>
+                                      <FontIcon Glyph="&#xE8C8;" />
+                                    </MenuFlyoutItem.Icon>
+                                  </MenuFlyoutItem>
                                 </MenuFlyout>
-                              </StackPanel.ContextFlyout>
+                              </Grid.ContextFlyout>
                               <TextBlock
-                                  Text="{Binding PrimaryText}"
-                                  FontSize="16"
-                                  LineHeight="23"
-                                  TextWrapping="WrapWholeWords"
-                                  IsTextSelectionEnabled="False" />
-                              <TextBlock
-                                  Text="{Binding SecondaryText}"
-                                  Visibility="{Binding SecondaryVisibility}"
-                                  FontSize="13"
-                                  LineHeight="20"
-                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                  TextWrapping="WrapWholeWords"
-                                  IsTextSelectionEnabled="False" />
-                            </StackPanel>
+                                  Text="{Binding TimestampText}"
+                                  Margin="0,3,0,0"
+                                  FontSize="11"
+                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                  VerticalAlignment="Top" />
+                              <StackPanel Grid.Column="1" Spacing="3">
+                                <TextBlock
+                                    Text="{Binding PrimaryText}"
+                                    FontSize="16"
+                                    LineHeight="23"
+                                    TextWrapping="WrapWholeWords"
+                                    IsTextSelectionEnabled="False" />
+                                <TextBlock
+                                    Text="{Binding SecondaryText}"
+                                    Visibility="{Binding SecondaryVisibility}"
+                                    FontSize="13"
+                                    LineHeight="20"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    TextWrapping="WrapWholeWords"
+                                    IsTextSelectionEnabled="False" />
+                              </StackPanel>
+                            </Grid>
                           </DataTemplate>
                         </ListView.ItemTemplate>
                       </ListView>
@@ -579,6 +597,37 @@
                         </StackPanel>
                       </Button>
                     </StackPanel>
+                  </TabViewItem>
+
+                  <TabViewItem x:Name="SyncTab" Header="Sync" IsClosable="False">
+                    <ScrollViewer Padding="4,14,4,4">
+                      <StackPanel Spacing="10">
+                        <TextBlock
+                            x:Name="TrackSyncStateText"
+                            Text="No sync information."
+                            FontSize="18"
+                            FontWeight="SemiBold"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            x:Name="TrackSyncTimeText"
+                            Text=""
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            x:Name="TrackSyncLogHeadingText"
+                            Text="Latest sync log"
+                            Margin="0,8,0,0"
+                            FontWeight="SemiBold" />
+                        <TextBox
+                            x:Name="TrackSyncLogText"
+                            MinHeight="150"
+                            IsReadOnly="True"
+                            AcceptsReturn="True"
+                            TextWrapping="Wrap"
+                            FontFamily="Cascadia Mono"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                      </StackPanel>
+                    </ScrollViewer>
                   </TabViewItem>
 
                   <TabViewItem x:Name="PropertiesTab" Header="Properties" IsClosable="False">
@@ -909,6 +958,31 @@
                         TextChanged="SettingsControl_Changed" />
                   </Grid>
                 </Border>
+
+                <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="280" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2">
+                      <TextBlock
+                          x:Name="DatabaseSettingTitle"
+                          Text="Local database"
+                          FontWeight="SemiBold" />
+                      <TextBlock
+                          x:Name="DatabaseSizeText"
+                          Text="0 B"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <Button
+                        x:Name="ClearDatabaseButton"
+                        Grid.Column="1"
+                        HorizontalAlignment="Stretch"
+                        Content="Clear database"
+                        Click="ClearDatabaseButton_Click" />
+                  </Grid>
+                </Border>
               </StackPanel>
 
               <StackPanel Spacing="10">
@@ -966,8 +1040,10 @@
                         Grid.Column="1"
                         HorizontalAlignment="Stretch"
                         Minimum="1"
-                        Maximum="87600"
-                        Value="24"
+                        Maximum="315360000"
+                        Value="86400"
+                        SmallChange="60"
+                        LargeChange="3600"
                         SpinButtonPlacementMode="Compact"
                         ValueChanged="LyricsRefreshHoursBox_ValueChanged" />
                   </Grid>
@@ -981,7 +1057,7 @@
                   <Grid ColumnSpacing="14">
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="240" />
+                      <ColumnDefinition Width="280" />
                     </Grid.ColumnDefinitions>
                     <TextBlock
                         x:Name="ThemeSettingTitle"
@@ -1120,6 +1196,29 @@
                           Click="ClearLogButton_Click" />
                     </StackPanel>
                   </Grid>
+                </Border>
+
+                <Border
+                    Padding="14"
+                    CornerRadius="10"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <StackPanel Spacing="8">
+                    <TextBlock
+                        x:Name="DiagnosticsConsoleTitle"
+                        Text="Live diagnostic console"
+                        FontWeight="SemiBold" />
+                    <TextBox
+                        x:Name="DiagnosticsConsole"
+                        MinHeight="220"
+                        MaxHeight="360"
+                        IsReadOnly="True"
+                        AcceptsReturn="True"
+                        TextWrapping="NoWrap"
+                        FontFamily="Cascadia Mono"
+                        FontSize="12"
+                        ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                        ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                  </StackPanel>
                 </Border>
               </StackPanel>
 
