@@ -105,6 +105,9 @@ public sealed partial class MainWindow : Window
         _matchDialogLyricLines = [];
     private NeteaseMatchCandidate?
         _activeMatchDialogCandidate;
+    private Window? _matchWindow;
+    private readonly Dictionary<long, SymbolIcon>
+        _neteasePreviewIcons = [];
     private byte[]? _currentArtworkBytes;
     private string _lyricsDisplayMode =
         LyricsDisplayModes.PreferOriginal;
@@ -224,6 +227,7 @@ public sealed partial class MainWindow : Window
         WindowEventArgs args)
     {
         _playerTimer?.Stop();
+        _matchWindow?.Close();
         _mediaPlayer.Dispose();
     }
 
@@ -488,6 +492,19 @@ public sealed partial class MainWindow : Window
         PlayerNextButton.IsEnabled =
             _playingLibraryItem is not null
             && _playbackQueue.Length > 1;
+
+        foreach ((long trackId,
+            SymbolIcon icon)
+            in _neteasePreviewIcons)
+        {
+            icon.Symbol =
+                _playingPreviewCandidate
+                        ?.TrackId
+                    == trackId
+                    && playing
+                        ? Symbol.Pause
+                        : Symbol.Play;
+        }
 
         if (_selectedLibraryItem is not null)
         {
@@ -4952,9 +4969,9 @@ public sealed partial class MainWindow : Window
                 HorizontalAlignment.Stretch,
             Padding =
                 new Thickness(
-                    6,
+                    12,
                     0,
-                    14,
+                    22,
                     0),
         };
         ScrollViewer.SetVerticalScrollBarVisibility(
@@ -5174,40 +5191,157 @@ public sealed partial class MainWindow : Window
         root.Children.Add(
             lyricColumn);
 
-        ContentDialog dialog = new()
+        _matchWindow?.Close();
+
+        Button useSelectedButton = new()
         {
-            XamlRoot =
-                ((FrameworkElement)Content)
-                    .XamlRoot,
+            Content =
+                L(
+                    "Use selected",
+                    "使用所选"),
+            IsEnabled = false,
+            Style =
+                Application.Current.Resources[
+                    "AccentButtonStyle"]
+                as Style,
+        };
+
+        Button cancelMatchButton = new()
+        {
+            Content =
+                L("Cancel", "取消"),
+        };
+
+        StackPanel footer = new()
+        {
+            Orientation =
+                Orientation.Horizontal,
+            HorizontalAlignment =
+                HorizontalAlignment.Right,
+            Spacing = 8,
+            Margin =
+                new Thickness(
+                    0,
+                    12,
+                    0,
+                    0),
+        };
+        footer.Children.Add(
+            cancelMatchButton);
+        footer.Children.Add(
+            useSelectedButton);
+
+        Grid shell = new()
+        {
+            Padding =
+                new Thickness(16),
+        };
+        shell.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    new GridLength(
+                        1,
+                        GridUnitType.Star),
+            });
+        shell.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    GridLength.Auto,
+            });
+        shell.Children.Add(root);
+        Grid.SetRow(
+            footer,
+            1);
+        shell.Children.Add(
+            footer);
+
+        Window matchWindow = new()
+        {
             Title =
                 L(
                     "Find NetEase match",
                     "查找网易云匹配"),
-            PrimaryButtonText =
-                L(
-                    "Use selected",
-                    "使用所选"),
-            CloseButtonText =
-                L("Cancel", "取消"),
-            DefaultButton =
-                ContentDialogButton.Primary,
-            IsPrimaryButtonEnabled = false,
-            Width = 1200,
-            MinWidth = 1200,
-            MaxWidth = 1200,
-            HorizontalAlignment =
-                HorizontalAlignment.Center,
-            VerticalAlignment =
-                VerticalAlignment.Center,
-            Content = root,
+            Content = shell,
         };
+        _matchWindow = matchWindow;
 
-        dialog.Resources[
-            "ContentDialogMinWidth"] =
-                1200d;
-        dialog.Resources[
-            "ContentDialogMaxWidth"] =
-                1200d;
+        TaskCompletionSource<NeteaseMatchCandidate?>
+            completion =
+                new(
+                    TaskCreationOptions
+                        .RunContinuationsAsynchronously);
+
+        useSelectedButton.Click +=
+            (_, _) =>
+            {
+                completion.TrySetResult(
+                    GetSelectedCandidate());
+                matchWindow.Close();
+            };
+
+        cancelMatchButton.Click +=
+            (_, _) =>
+            {
+                completion.TrySetResult(
+                    null);
+                matchWindow.Close();
+            };
+
+        matchWindow.Closed +=
+            (_, _) =>
+            {
+                if (ReferenceEquals(
+                        _matchWindow,
+                        matchWindow))
+                {
+                    _matchWindow = null;
+                }
+
+                _neteasePreviewIcons.Clear();
+                _matchDialogLyricLines.Clear();
+                _activeMatchDialogCandidate =
+                    null;
+
+                completion.TrySetResult(
+                    null);
+            };
+
+        matchWindow.Activate();
+
+        const int MatchWindowWidth = 1220;
+        const int MatchWindowHeight = 680;
+
+        matchWindow.AppWindow.Resize(
+            new Windows.Graphics.SizeInt32(
+                MatchWindowWidth,
+                MatchWindowHeight));
+
+        Microsoft.UI.Windowing.DisplayArea displayArea =
+            Microsoft.UI.Windowing.DisplayArea
+                .GetFromWindowId(
+                    matchWindow.AppWindow.Id,
+                    Microsoft.UI.Windowing
+                        .DisplayAreaFallback.Primary);
+
+        Windows.Graphics.RectInt32 workArea =
+            displayArea.WorkArea;
+
+        matchWindow.AppWindow.Move(
+            new Windows.Graphics.PointInt32(
+                workArea.X
+                    + Math.Max(
+                        0,
+                        (workArea.Width
+                            - MatchWindowWidth)
+                        / 2),
+                workArea.Y
+                    + Math.Max(
+                        0,
+                        (workArea.Height
+                            - MatchWindowHeight)
+                        / 2)));
 
         NeteaseMatchCandidate?
             GetSelectedCandidate()
@@ -5246,10 +5380,10 @@ public sealed partial class MainWindow : Window
                 MinHeight = 76,
                 Padding =
                     new Thickness(
-                        16,
-                        7,
+                        22,
                         8,
-                        7),
+                        16,
+                        8),
                 ColumnSpacing = 12,
             };
             row.ColumnDefinitions.Add(
@@ -5270,7 +5404,7 @@ public sealed partial class MainWindow : Window
                 new ColumnDefinition
                 {
                     Width =
-                        new GridLength(178),
+                        new GridLength(220),
                 });
 
             Border cover = new()
@@ -5354,9 +5488,30 @@ public sealed partial class MainWindow : Window
                 1);
             row.Children.Add(text);
 
+            Grid actions = new()
+            {
+                ColumnSpacing = 8,
+                VerticalAlignment =
+                    VerticalAlignment.Center,
+            };
+            actions.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        new GridLength(
+                            1,
+                            GridUnitType.Star),
+                });
+            actions.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        GridLength.Auto,
+                });
+
             StackPanel metadata = new()
             {
-                Spacing = 3,
+                Spacing = 2,
                 HorizontalAlignment =
                     HorizontalAlignment.Right,
                 VerticalAlignment =
@@ -5381,13 +5536,12 @@ public sealed partial class MainWindow : Window
                         HorizontalAlignment.Right,
                 });
 
-            StackPanel linkContent =
-                new()
-                {
-                    Orientation =
-                        Orientation.Horizontal,
-                    Spacing = 4,
-                };
+            StackPanel linkContent = new()
+            {
+                Orientation =
+                    Orientation.Horizontal,
+                Spacing = 4,
+            };
             linkContent.Children.Add(
                 new TextBlock
                 {
@@ -5417,33 +5571,67 @@ public sealed partial class MainWindow : Window
                             $"https://music.163.com/#/song?id={candidate.TrackId}"),
                 });
 
-            Button previewButton =
-                new()
-                {
-                    HorizontalAlignment =
-                        HorizontalAlignment.Right,
-                    Padding =
-                        new Thickness(
-                            8,
-                            2,
-                            8,
-                            2),
-                    Content =
-                        L(
-                            "Preview",
-                            "试听"),
-                };
+            actions.Children.Add(
+                metadata);
+
+            SymbolIcon previewIcon = new()
+            {
+                Symbol = Symbol.Play,
+            };
+            _neteasePreviewIcons[
+                candidate.TrackId] =
+                previewIcon;
+
+            Button previewButton = new()
+            {
+                Width = 36,
+                Height = 36,
+                Padding =
+                    new Thickness(0),
+                VerticalAlignment =
+                    VerticalAlignment.Center,
+                Content = previewIcon,
+            };
+            Grid.SetColumn(
+                previewButton,
+                1);
+            ToolTipService.SetToolTip(
+                previewButton,
+                L(
+                    "Play or pause preview",
+                    "播放或暂停试听"));
+
             previewButton.Click +=
                 async (_, _) =>
-                    await PlayNetEasePreviewAsync(
-                        candidate);
-            metadata.Children.Add(
+                {
+                    if (_playingPreviewCandidate
+                            ?.TrackId
+                        == candidate.TrackId
+                        && _mediaPlayer
+                            .PlaybackSession
+                            .PlaybackState
+                        == MediaPlaybackState
+                            .Playing)
+                    {
+                        _mediaPlayer.Pause();
+                    }
+                    else
+                    {
+                        await PlayNetEasePreviewAsync(
+                            candidate);
+                    }
+
+                    UpdatePlayerVisualState();
+                };
+
+            actions.Children.Add(
                 previewButton);
 
             Grid.SetColumn(
-                metadata,
+                actions,
                 2);
-            row.Children.Add(metadata);
+            row.Children.Add(
+                actions);
 
             return new ListViewItem
             {
@@ -5475,7 +5663,7 @@ public sealed partial class MainWindow : Window
                 L(
                     "Searching…",
                     "正在搜索……");
-            dialog.IsPrimaryButtonEnabled =
+            useSelectedButton.IsEnabled =
                 false;
             results.Items.Clear();
 
@@ -5578,14 +5766,18 @@ public sealed partial class MainWindow : Window
                     candidate =
                         GetSelectedCandidate();
 
+                _matchDialogLyricLines.Clear();
+                _activeMatchDialogCandidate =
+                    candidate;
+
                 if (candidate is null)
                 {
-                    dialog.IsPrimaryButtonEnabled =
+                    useSelectedButton.IsEnabled =
                         false;
                     return;
                 }
 
-                dialog.IsPrimaryButtonEnabled =
+                useSelectedButton.IsEnabled =
                     true;
                 lyricsPreview.ItemsSource =
                     new[]
@@ -5614,9 +5806,10 @@ public sealed partial class MainWindow : Window
                             LyricsDisplayModes
                                 .PreferOriginal);
 
-                    lyricsPreview.ItemsSource =
-                        lines.Length == 0
-                            ? new[]
+                    if (lines.Length == 0)
+                    {
+                        lyricsPreview.ItemsSource =
+                            new[]
                             {
                                 new LyricDisplayLine(
                                     L(
@@ -5625,8 +5818,15 @@ public sealed partial class MainWindow : Window
                                     null,
                                     LyricsDisplayModes
                                         .OriginalOnly),
-                            }
-                            : lines;
+                            };
+                    }
+                    else
+                    {
+                        _matchDialogLyricLines.UnionWith(
+                            lines);
+                        lyricsPreview.ItemsSource =
+                            lines;
+                    }
                 }
                 catch (Exception exception)
                 {
@@ -5644,16 +5844,11 @@ public sealed partial class MainWindow : Window
                 }
             };
 
-        ContentDialogResult result =
-            await dialog.ShowAsync();
-
         NeteaseMatchCandidate?
             selected =
-                GetSelectedCandidate();
+                await completion.Task;
 
-        if (result
-                == ContentDialogResult.Primary
-            && selected is not null)
+        if (selected is not null)
         {
             await SaveManualMatchAsync(
                 item,
