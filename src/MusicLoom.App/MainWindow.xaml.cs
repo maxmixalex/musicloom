@@ -78,6 +78,7 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _settingsSaveCancellation;
     private bool _busy;
     private bool _loadingSettings = true;
+    private bool _refreshingLocalizedChoices;
     private int _detailRequestId;
     private int _artworkGeneration;
     private string _uiLanguage =
@@ -2349,18 +2350,33 @@ public sealed partial class MainWindow : Window
 
     private void LibraryFilterBox_SelectionChanged(
         object sender,
-        SelectionChangedEventArgs e) =>
-        ApplyLibraryFilter();
+        SelectionChangedEventArgs e)
+    {
+        if (!_refreshingLocalizedChoices)
+        {
+            ApplyLibraryFilter();
+        }
+    }
 
     private void LibrarySortBox_SelectionChanged(
         object sender,
-        SelectionChangedEventArgs e) =>
-        ApplyLibraryFilter();
+        SelectionChangedEventArgs e)
+    {
+        if (!_refreshingLocalizedChoices)
+        {
+            ApplyLibraryFilter();
+        }
+    }
 
     private void LibrarySortDirectionBox_SelectionChanged(
         object sender,
-        SelectionChangedEventArgs e) =>
-        ApplyLibraryFilter();
+        SelectionChangedEventArgs e)
+    {
+        if (!_refreshingLocalizedChoices)
+        {
+            ApplyLibraryFilter();
+        }
+    }
 
     private void ApplyLibraryFilter()
     {
@@ -3275,6 +3291,7 @@ public sealed partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         if (_loadingSettings
+            || _refreshingLocalizedChoices
             || LyricsModeBox.SelectedItem
                 is not ComboBoxItem item
             || item.Tag is not string mode)
@@ -6351,13 +6368,23 @@ public sealed partial class MainWindow : Window
 
     private void PlaylistSortBox_SelectionChanged(
         object sender,
-        SelectionChangedEventArgs e) =>
-        ApplyPlaylistTrackFilter();
+        SelectionChangedEventArgs e)
+    {
+        if (!_refreshingLocalizedChoices)
+        {
+            ApplyPlaylistTrackFilter();
+        }
+    }
 
     private void PlaylistSortDirectionBox_SelectionChanged(
         object sender,
-        SelectionChangedEventArgs e) =>
-        ApplyPlaylistTrackFilter();
+        SelectionChangedEventArgs e)
+    {
+        if (!_refreshingLocalizedChoices)
+        {
+            ApplyPlaylistTrackFilter();
+        }
+    }
 
     private void ApplyPlaylistTrackFilter()
     {
@@ -6641,8 +6668,13 @@ public sealed partial class MainWindow : Window
 
     private void SettingsControl_Changed(
         object sender,
-        SelectionChangedEventArgs e) =>
-        ScheduleSettingsSave();
+        SelectionChangedEventArgs e)
+    {
+        if (!_refreshingLocalizedChoices)
+        {
+            ScheduleSettingsSave();
+        }
+    }
 
     private void LyricsRefreshHoursBox_ValueChanged(
         NumberBox sender,
@@ -8137,12 +8169,55 @@ public sealed partial class MainWindow : Window
             PlayerNextButton,
             L("Next", "下一首"));
 
+        RefreshLocalizedComboBoxSelections();
+
         RenderLyrics();
         RefreshTrackSyncTab(
             _selectedLibraryItem);
         ConfigureAuxiliaryLongText();
         ApplyLibraryFilter();
         ApplyPlaylistTrackFilter();
+    }
+
+    private void RefreshLocalizedComboBoxSelections()
+    {
+        ComboBox[] boxes =
+        [
+            LibraryFilterBox,
+            LibrarySortBox,
+            LibrarySortDirectionBox,
+            LyricsModeBox,
+            PlaylistSortBox,
+            PlaylistSortDirectionBox,
+            LyricsStorageModeBox,
+            ThemeBox,
+            LongTextModeBox,
+        ];
+
+        _refreshingLocalizedChoices =
+            true;
+
+        try
+        {
+            foreach (ComboBox box in boxes)
+            {
+                int index =
+                    box.SelectedIndex;
+
+                if (index < 0)
+                {
+                    continue;
+                }
+
+                box.SelectedIndex = -1;
+                box.SelectedIndex = index;
+            }
+        }
+        finally
+        {
+            _refreshingLocalizedChoices =
+                false;
+        }
     }
 
     private static string NormalizeLanguage(
