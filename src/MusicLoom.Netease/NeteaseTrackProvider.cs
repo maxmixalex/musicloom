@@ -1,6 +1,7 @@
 using MusicLoom.AudioFingerprint;
 using MusicLoom.Core.Enrichment;
 using MusicLoom.Core.Lyrics;
+using MusicLoom.Core.Scanning;
 using MusicLoom.Metadata;
 
 namespace MusicLoom.Netease;
