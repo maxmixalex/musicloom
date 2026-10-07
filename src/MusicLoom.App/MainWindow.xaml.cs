@@ -90,7 +90,10 @@ public sealed partial class MainWindow : Window
 
         LibraryFilterBox.SelectedIndex = 0;
         LibrarySortBox.SelectedIndex = 2;
+        LibrarySortDirectionBox.SelectedIndex = 0;
         PlaylistSortBox.SelectedIndex = 2;
+        PlaylistSortDirectionBox.SelectedIndex = 0;
+        LyricsModeBox.SelectedIndex = 2;
         LyricsStorageModeBox.SelectedIndex = 0;
         LanguageBox.SelectedIndex =
             IsChinese ? 1 : 0;
@@ -1650,6 +1653,11 @@ public sealed partial class MainWindow : Window
         SelectionChangedEventArgs e) =>
         ApplyLibraryFilter();
 
+    private void LibrarySortDirectionBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e) =>
+        ApplyLibraryFilter();
+
     private void ApplyLibraryFilter()
     {
         if (LibraryList is null
@@ -1732,6 +1740,19 @@ public sealed partial class MainWindow : Window
                     StringComparer
                         .CurrentCultureIgnoreCase),
         };
+
+        bool descending =
+            string.Equals(
+                (LibrarySortDirectionBox.SelectedItem
+                    as ComboBoxItem)
+                    ?.Tag?.ToString(),
+                "desc",
+                StringComparison.Ordinal);
+
+        if (descending)
+        {
+            items = items.Reverse();
+        }
 
         LibraryDisplayItem[] visible =
             items.ToArray();
@@ -4802,6 +4823,11 @@ public sealed partial class MainWindow : Window
         SelectionChangedEventArgs e) =>
         ApplyPlaylistTrackFilter();
 
+    private void PlaylistSortDirectionBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e) =>
+        ApplyPlaylistTrackFilter();
+
     private void ApplyPlaylistTrackFilter()
     {
         if (PlaylistsList.SelectedItem
@@ -4868,6 +4894,19 @@ public sealed partial class MainWindow : Window
                     StringComparer
                         .CurrentCultureIgnoreCase),
         };
+
+        bool descending =
+            string.Equals(
+                (PlaylistSortDirectionBox.SelectedItem
+                    as ComboBoxItem)
+                    ?.Tag?.ToString(),
+                "desc",
+                StringComparison.Ordinal);
+
+        if (descending)
+        {
+            items = items.Reverse();
+        }
 
         PlaylistTracksList.ItemsSource =
             items.ToArray();
@@ -5803,9 +5842,11 @@ public sealed partial class MainWindow : Window
         LibrarySearchBox.IsEnabled = true;
         LibraryFilterBox.IsEnabled = true;
         LibrarySortBox.IsEnabled = true;
+        LibrarySortDirectionBox.IsEnabled = true;
         LibraryList.IsEnabled = true;
         PlaylistSearchBox.IsEnabled = true;
         PlaylistSortBox.IsEnabled = true;
+        PlaylistSortDirectionBox.IsEnabled = true;
         PlaylistTracksList.IsEnabled = true;
 
         OpenMatchDialogButton.IsEnabled =
@@ -6108,6 +6149,10 @@ public sealed partial class MainWindow : Window
             L(
                 "Sort by artist",
                 "按艺术家排序");
+        LibrarySortAscendingItem.Content =
+            L("Ascending", "顺序");
+        LibrarySortDescendingItem.Content =
+            L("Descending", "倒序");
 
         ToolTipService.SetToolTip(
             CloseDetailButton,
@@ -6407,6 +6452,10 @@ public sealed partial class MainWindow : Window
             L(
                 "Sort by artist",
                 "按艺术家排序");
+        PlaylistSortAscendingItem.Content =
+            L("Ascending", "顺序");
+        PlaylistSortDescendingItem.Content =
+            L("Descending", "倒序");
         PlaylistShowInLibraryItem.Text =
             L(
                 "Show in library",
