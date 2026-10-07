@@ -1834,6 +1834,14 @@ public sealed partial class MainWindow : Window
                 ApplyLibraryFilter();
             }
 
+            _manualPendingSources.RemoveWhere(
+                sourcePath =>
+                    freshBySource.TryGetValue(
+                        sourcePath,
+                        out PlanEntry? freshEntry)
+                    && freshEntry.Status
+                        == PlanEntryStatus.Unchanged);
+
             UpdateLibrarySummary(
                 freshPlan);
 
@@ -2536,6 +2544,8 @@ public sealed partial class MainWindow : Window
             L(
                 "No NetEase match cached.",
                 "尚未缓存网易云匹配。");
+        RefreshMatchedLyricsButton.IsEnabled =
+            false;
 
         TrackSyncStateText.Text =
             L(
@@ -2886,6 +2896,9 @@ public sealed partial class MainWindow : Window
 
         CurrentMatchText.Text =
             GetCachedMatchText(
+                item.Entry.SourcePath);
+        RefreshMatchedLyricsButton.IsEnabled =
+            HasCachedMatch(
                 item.Entry.SourcePath);
         ConfigureAuxiliaryLongText();
 
@@ -5550,8 +5563,15 @@ public sealed partial class MainWindow : Window
         CurrentMatchText.Text =
             GetCachedMatchText(
                 item.Entry.SourcePath);
+        RefreshMatchedLyricsButton.IsEnabled =
+            true;
+        ConfigureAuxiliaryLongText();
 
-        SyncButton.IsEnabled = true;
+        MarkTrackForEnrichmentSync(
+            item,
+            L(
+                "NetEase match changed. Lyrics need to be synchronized.",
+                "网易云匹配已更改，需要重新同步歌词。"));
 
         ShowInfo(
             InfoBarSeverity.Success,
@@ -5561,6 +5581,137 @@ public sealed partial class MainWindow : Window
             L(
                 "The next sync will use the selected NetEase track.",
                 "下次同步会使用所选的网易云歌曲。"));
+    }
+
+    private bool HasCachedMatch(
+        string sourcePath) =>
+        _state is not null
+        && _state.Tracks.TryGetValue(
+            sourcePath,
+            out TrackState? state)
+        && state.NeteaseSongId.HasValue;
+
+    private void MarkTrackForEnrichmentSync(
+        LibraryDisplayItem item,
+        string detail)
+    {
+        _manualPendingSources.Add(
+            item.Entry.SourcePath);
+
+        item.SetStatus(
+            "pending",
+            StatusLabel(
+                "pending"));
+
+        SetTrackSyncState(
+            item.Entry.SourcePath,
+            L(
+                "Pending sync",
+                "待同步"),
+            detail);
+
+        RefreshLiveSyncCounters();
+        RefreshTrackSyncTab(
+            item);
+
+        if (!_busy)
+        {
+            SyncButton.IsEnabled = true;
+        }
+    }
+
+    private async void RefreshMatchedLyricsButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_selectedLibraryItem
+                is not LibraryDisplayItem item
+            || _state is null
+            || _stateStore is null
+            || !_state.Tracks.TryGetValue(
+                item.Entry.SourcePath,
+                out TrackState? state)
+            || state.NeteaseSongId
+                is not long songId)
+        {
+            return;
+        }
+
+        RefreshMatchedLyricsButton.IsEnabled =
+            false;
+
+        try
+        {
+            using NeteaseClient client =
+                new();
+
+            LrcDocument? lyrics =
+                await client.GetLyricsAsync(
+                    songId);
+
+            _currentLyricsRaw =
+                lyrics?.ToString();
+            LyricsSourceText.Text =
+                lyrics is null
+                    ? L(
+                        "NetEase Music · no lyrics returned",
+                        "网易云音乐 · 未返回歌词")
+                    : L(
+                        "NetEase Music · latest preview",
+                        "网易云音乐 · 最新歌词预览");
+
+            ConfigureAuxiliaryLongText();
+            RenderLyrics();
+
+            TrackState updated =
+                state with
+                {
+                    Lyrics =
+                        LyricsState.Unknown,
+                    LyricsCheckedAt = null,
+                    LyricsFingerprint = null,
+                    RecipeVersion =
+                        string.Empty,
+                    ProcessedAt =
+                        DateTimeOffset.UtcNow,
+                };
+
+            _state.Tracks[
+                item.Entry.SourcePath] =
+                updated;
+
+            await _stateStore.SaveAsync(
+                _state);
+
+            MarkTrackForEnrichmentSync(
+                item,
+                L(
+                    "Lyrics were refreshed for preview and are pending synchronization to the library.",
+                    "歌词已刷新预览，等待同步写入音乐库。"));
+
+            ShowInfo(
+                InfoBarSeverity.Success,
+                L(
+                    "Lyrics refreshed",
+                    "歌词已更新"),
+                L(
+                    "The latest NetEase lyrics are shown here. Sync the pending track to write them to the destination.",
+                    "这里已显示最新网易云歌词；同步待处理歌曲后会写入目标文件。"));
+        }
+        catch (Exception exception)
+        {
+            HandleUiException(
+                L(
+                    "Could not update lyrics from NetEase Music.",
+                    "无法从网易云音乐更新歌词。"),
+                exception);
+        }
+        finally
+        {
+            RefreshMatchedLyricsButton.IsEnabled =
+                HasCachedMatch(
+                    item.Entry.SourcePath);
+        }
     }
 
     private string GetCachedMatchText(
@@ -7039,11 +7190,13 @@ public sealed partial class MainWindow : Window
             !busy;
         SyncButton.IsEnabled =
             !busy
-            && _plan is
-                {
-                    PendingCount: > 0,
-                    ErrorCount: 0,
-                };
+            && (_manualPendingSources.Count
+                    > 0
+                || _plan is
+                    {
+                        PendingCount: > 0,
+                        ErrorCount: 0,
+                    });
 
         CancelButton.Visibility =
             busy
@@ -7419,6 +7572,10 @@ public sealed partial class MainWindow : Window
             L(
                 "Find or change match…",
                 "查找或更改匹配……");
+        RefreshMatchedLyricsButtonText.Text =
+            L(
+                "Update lyrics",
+                "更新歌词");
 
         SourcePathHeadingText.Text =
             L("Source", "源文件");
