@@ -420,21 +420,24 @@ public sealed class LocalLibraryMaterializer
                         source.Length,
                 };
 
-            await using FileStream input =
-                new(
-                    sourcePath,
-                    readOptions);
-            await using FileStream output =
-                new(
-                    temporaryPath,
-                    writeOptions);
-
-            await input.CopyToAsync(
-                output,
-                1024 * 1024,
-                cancellationToken);
-            await output.FlushAsync(
-                cancellationToken);
+            await using (
+                FileStream input =
+                    new(
+                        sourcePath,
+                        readOptions))
+            await using (
+                FileStream output =
+                    new(
+                        temporaryPath,
+                        writeOptions))
+            {
+                await input.CopyToAsync(
+                    output,
+                    1024 * 1024,
+                    cancellationToken);
+                await output.FlushAsync(
+                    cancellationToken);
+            }
 
             File.SetLastWriteTimeUtc(
                 temporaryPath,
