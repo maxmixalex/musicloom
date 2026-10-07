@@ -72,7 +72,10 @@ public static class AlbumArtLocator
                 && IsLikelyWindowsMediaPlayerFolderCache(
                     sourceDirectory,
                     item,
-                    metadata.HasEmbeddedArt))
+                    metadata.HasEmbeddedArt,
+                    albumMissing:
+                        string.IsNullOrWhiteSpace(
+                            metadata.Album)))
             {
                 continue;
             }
@@ -86,7 +89,8 @@ public static class AlbumArtLocator
     internal static bool IsLikelyWindowsMediaPlayerFolderCache(
         string sourceDirectory,
         string folderPath,
-        bool embeddedArtPresent = false)
+        bool embeddedArtPresent = false,
+        bool albumMissing = false)
     {
         if (!Directory.Exists(sourceDirectory)
             || !File.Exists(folderPath)
@@ -214,6 +218,16 @@ public static class AlbumArtLocator
         // libraries where timestamps or Hidden/System attributes were lost.
         if (embeddedArtPresent
             && hasClassicAlbumArtName)
+        {
+            return true;
+        }
+
+        // For tracks without album metadata, a Folder.jpg next to any
+        // AlbumArt*.jpg must not become the shared "Unknown album" artwork.
+        // WMP frequently leaves exactly this combination in mixed folders,
+        // and there is no reliable album boundary to justify sharing it.
+        if (albumMissing
+            && albumArtFiles.Length > 0)
         {
             return true;
         }
