@@ -717,10 +717,6 @@ internal static class LibraryDatabase
                 File.Delete(candidate);
             }
         }
-
-        await InitializeAsync(
-            path,
-            cancellationToken);
     }
 
     private static async Task SetMetaAsync(
