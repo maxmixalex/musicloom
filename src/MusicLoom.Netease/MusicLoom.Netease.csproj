@@ -9,5 +9,6 @@
   <ItemGroup>
     <ProjectReference Include="../MusicLoom.Core/MusicLoom.Core.csproj" />
     <ProjectReference Include="../MusicLoom.AudioFingerprint/MusicLoom.AudioFingerprint.csproj" />
+    <ProjectReference Include="../MusicLoom.Metadata/MusicLoom.Metadata.csproj" />
   </ItemGroup>
 </Project>
