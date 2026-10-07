@@ -2864,30 +2864,65 @@ public sealed partial class MainWindow : Window
                     continue;
                 }
 
+                string[] creditLines =
+                    texts
+                        .Where(
+                            static text =>
+                                LooksLikeCreditLine(
+                                    text))
+                        .ToArray();
+
+                foreach (string creditLine
+                    in creditLines)
+                {
+                    result.Add(
+                        new LyricDisplayLine(
+                            creditLine,
+                            null,
+                            normalizedMode,
+                            group.Key));
+                }
+
+                string[] lyricLines =
+                    texts
+                        .Where(
+                            static text =>
+                                !LooksLikeCreditLine(
+                                    text))
+                        .ToArray();
+
+                if (lyricLines.Length == 0)
+                {
+                    continue;
+                }
+
                 (string original,
                     string? translation) =
                     SplitTranslation(
-                        texts[0]);
+                        lyricLines[0]);
 
                 if (translation is null
-                    && texts.Length > 1)
+                    && lyricLines.Length > 1)
                 {
-                    string[] translatedLines =
-                        texts
+                    string[] candidates =
+                        lyricLines
                             .Skip(1)
-                            .Where(
-                                static text =>
-                                    !LooksLikeCreditLine(
-                                        text))
+                            .Where(text =>
+                                !string.Equals(
+                                    NormalizeLyricForComparison(
+                                        text),
+                                    NormalizeLyricForComparison(
+                                        original),
+                                    StringComparison
+                                        .OrdinalIgnoreCase))
                             .ToArray();
 
-                    if (translatedLines.Length
-                        > 0)
+                    if (candidates.Length > 0)
                     {
                         translation =
                             string.Join(
                                 Environment.NewLine,
-                                translatedLines);
+                                candidates);
                     }
                 }
 
@@ -2949,7 +2984,9 @@ public sealed partial class MainWindow : Window
             text.IndexOf('/');
 
         if (slash <= 0
-            || slash >= text.Length - 1)
+            || slash >= text.Length - 1
+            || slash
+                != text.LastIndexOf('/'))
         {
             return (text, null);
         }
@@ -2959,11 +2996,32 @@ public sealed partial class MainWindow : Window
         string right =
             text[(slash + 1)..].Trim();
 
-        return left.Length > 0
-            && right.Length > 0
-                ? (left, right)
-                : (text, null);
+        if (left.Length == 0
+            || right.Length == 0
+            || string.Equals(
+                NormalizeLyricForComparison(
+                    left),
+                NormalizeLyricForComparison(
+                    right),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return (text, null);
+        }
+
+        return (left, right);
     }
+
+    private static string NormalizeLyricForComparison(
+        string text) =>
+        string.Concat(
+            text
+                .Where(
+                    static character =>
+                        !char.IsWhiteSpace(
+                            character)
+                        && !char.IsPunctuation(
+                            character)))
+            .Trim();
 
     private static bool LooksLikeCreditLine(
         string text)
