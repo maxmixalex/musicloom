@@ -744,36 +744,39 @@
                                 FontSize="12"
                                 TextTrimming="CharacterEllipsis"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                              <TextBlock
-                                  x:Name="CurrentMatchAlbumText"
-                                  Text=""
-                                  FontSize="11"
-                                  TextTrimming="CharacterEllipsis"
-                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                              <TextBlock
-                                  x:Name="CurrentMatchIdText"
-                                  Text=""
-                                  FontSize="11"
-                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                            </StackPanel>
+                            <TextBlock
+                                x:Name="CurrentMatchAlbumText"
+                                Text=""
+                                FontSize="11"
+                                TextTrimming="CharacterEllipsis"
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                           </StackPanel>
-                          <HyperlinkButton
-                              x:Name="CurrentMatchOpenLink"
+                          <StackPanel
                               Grid.Column="2"
-                              Visibility="Collapsed"
-                              Padding="4,2"
-                              FontSize="11"
+                              VerticalAlignment="Center"
                               HorizontalAlignment="Right"
-                              VerticalAlignment="Center">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                              <TextBlock
-                                  x:Name="CurrentMatchOpenLinkText"
-                                  Text="Open in NetEase Music"
-                                  FontSize="11" />
-                              <FontIcon Glyph="&#xE8A7;" FontSize="10" />
-                            </StackPanel>
-                          </HyperlinkButton>
+                              Spacing="2">
+                            <TextBlock
+                                x:Name="CurrentMatchIdText"
+                                Text=""
+                                FontSize="11"
+                                HorizontalAlignment="Right"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <HyperlinkButton
+                                x:Name="CurrentMatchOpenLink"
+                                Visibility="Collapsed"
+                                Padding="0"
+                                FontSize="11"
+                                HorizontalAlignment="Right">
+                              <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock
+                                    x:Name="CurrentMatchOpenLinkText"
+                                    Text="Open in NetEase Music"
+                                    FontSize="11" />
+                                <FontIcon Glyph="&#xE8A7;" FontSize="10" />
+                              </StackPanel>
+                            </HyperlinkButton>
+                          </StackPanel>
                         </Grid>
                       </Border>
                       <TextBlock
