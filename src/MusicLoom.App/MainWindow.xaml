@@ -23,7 +23,7 @@
         <NavigationViewItem.Icon><SymbolIcon Symbol="Audio" /></NavigationViewItem.Icon>
       </NavigationViewItem>
       <NavigationViewItem x:Name="PlaylistsNav" Content="Playlists" Tag="playlists">
-        <NavigationViewItem.Icon><SymbolIcon Symbol="List" /></NavigationViewItem.Icon>
+        <NavigationViewItem.Icon><FontIcon Glyph="&#xE90B;" /></NavigationViewItem.Icon>
       </NavigationViewItem>
       <NavigationViewItem x:Name="SettingsNav" Content="Settings" Tag="settings">
         <NavigationViewItem.Icon><SymbolIcon Symbol="Setting" /></NavigationViewItem.Icon>
@@ -345,40 +345,50 @@
                     <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
 
-                  <Button
-                      x:Name="CoverButton"
-                      Width="132"
-                      Height="132"
-                      Padding="0"
-                      Background="Transparent"
-                      BorderThickness="0"
-                      Click="CoverButton_Click"
-                      PointerEntered="CoverButton_PointerEntered"
-                      PointerExited="CoverButton_PointerExited"
-                      ToolTipService.ToolTip="Open artwork">
-                    <Border
+                  <StackPanel
+                      Grid.Column="0"
+                      Spacing="8"
+                      HorizontalAlignment="Center">
+                    <Button
+                        x:Name="CoverButton"
                         Width="132"
                         Height="132"
-                        CornerRadius="9"
-                        Background="Transparent">
-                      <Grid>
-                        <Image
-                            x:Name="CoverImage"
-                            Stretch="Uniform"
-                            RenderTransformOrigin="0.5,0.5">
-                          <Image.RenderTransform>
-                            <ScaleTransform x:Name="CoverScaleTransform" ScaleX="1" ScaleY="1" />
-                          </Image.RenderTransform>
-                        </Image>
-                        <TextBlock
-                            x:Name="CoverPlaceholderText"
-                            Text="No artwork"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                      </Grid>
-                    </Border>
-                  </Button>
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="CoverButton_Click"
+                        PointerEntered="CoverButton_PointerEntered"
+                        PointerExited="CoverButton_PointerExited"
+                        ToolTipService.ToolTip="Open artwork">
+                      <Border
+                          Width="132"
+                          Height="132"
+                          CornerRadius="9"
+                          Background="Transparent">
+                        <Grid>
+                          <Image
+                              x:Name="CoverImage"
+                              Stretch="Uniform" />
+                          <TextBlock
+                              x:Name="CoverPlaceholderText"
+                              Text="No artwork"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </Grid>
+                      </Border>
+                    </Button>
+                    <Button
+                        x:Name="DetailPlayButton"
+                        Width="48"
+                        Height="42"
+                        Padding="0"
+                        HorizontalAlignment="Center"
+                        Click="DetailPlayButton_Click"
+                        ToolTipService.ToolTip="Play track">
+                      <SymbolIcon x:Name="DetailPlayIcon" Symbol="Play" />
+                    </Button>
+                  </StackPanel>
 
                   <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5">
                     <ScrollViewer
@@ -447,36 +457,21 @@
                     </StackPanel>
                   </StackPanel>
 
-                  <StackPanel
+                  <Button
+                      x:Name="CloseDetailButton"
                       Grid.Column="2"
+                      Width="32"
+                      Height="32"
                       Margin="0,-10,-10,0"
-                      Orientation="Horizontal"
-                      Spacing="4"
                       HorizontalAlignment="Right"
-                      VerticalAlignment="Top">
-                    <Button
-                        x:Name="DetailPlayButton"
-                        Width="36"
-                        Height="32"
-                        Padding="0"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Click="DetailPlayButton_Click"
-                        ToolTipService.ToolTip="Play track">
-                      <SymbolIcon x:Name="DetailPlayIcon" Symbol="Play" />
-                    </Button>
-                    <Button
-                        x:Name="CloseDetailButton"
-                        Width="32"
-                        Height="32"
-                        Padding="0"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Click="CloseDetailButton_Click"
-                        ToolTipService.ToolTip="Close details">
-                      <FontIcon Glyph="&#xE711;" FontSize="12" />
-                    </Button>
-                  </StackPanel>
+                      VerticalAlignment="Top"
+                      Padding="0"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      Click="CloseDetailButton_Click"
+                      ToolTipService.ToolTip="Close details">
+                    <FontIcon Glyph="&#xE711;" FontSize="12" />
+                  </Button>
                 </Grid>
 
                 <TabView
@@ -556,7 +551,6 @@
                           SelectionMode="Single"
                           IsItemClickEnabled="False"
                           RightTapped="LyricsList_RightTapped"
-                          PointerReleased="LyricsList_PointerReleased"
                           HorizontalContentAlignment="Stretch">
                         <ListView.ItemContainerStyle>
                           <Style TargetType="ListViewItem">
@@ -608,6 +602,16 @@
                                         Tag="{Binding}"
                                         Click="CopyLyricLineLrcItem_Click" />
                                   </MenuFlyoutSubItem>
+                                  <MenuFlyoutSeparator />
+                                  <MenuFlyoutItem
+                                      x:Name="SeekLyricLineItem"
+                                      Text="Play from here"
+                                      Tag="{Binding}"
+                                      Click="SeekLyricLineItem_Click">
+                                    <MenuFlyoutItem.Icon>
+                                      <SymbolIcon Symbol="Play" />
+                                    </MenuFlyoutItem.Icon>
+                                  </MenuFlyoutItem>
                                 </MenuFlyout>
                               </Grid.ContextFlyout>
                               <TextBlock
@@ -619,14 +623,14 @@
                               <StackPanel Grid.Column="1" Spacing="3">
                                 <TextBlock
                                     Text="{Binding PrimaryText}"
-                                    FontSize="16"
+                                    FontSize="{Binding PrimaryFontSize}"
                                     LineHeight="23"
                                     TextWrapping="WrapWholeWords"
                                     IsTextSelectionEnabled="False" />
                                 <TextBlock
                                     Text="{Binding SecondaryText}"
                                     Visibility="{Binding SecondaryVisibility}"
-                                    FontSize="13"
+                                    FontSize="{Binding SecondaryFontSize}"
                                     LineHeight="20"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     TextWrapping="WrapWholeWords"
@@ -1437,7 +1441,7 @@
       <Border
           x:Name="PlayerBar"
           Grid.Row="2"
-          Padding="14,10"
+          Padding="18,12"
           BorderThickness="0,1,0,0"
           BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
           Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
@@ -1446,7 +1450,7 @@
             <ColumnDefinition Width="72" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="230" />
+            <ColumnDefinition Width="170" />
           </Grid.ColumnDefinitions>
 
           <Button
@@ -1597,7 +1601,8 @@
           <Grid Grid.Column="3" VerticalAlignment="Center" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="100" />
+              <ColumnDefinition Width="42" />
             </Grid.ColumnDefinitions>
             <FontIcon
                 x:Name="PlayerVolumeIcon"
@@ -1607,11 +1612,20 @@
             <Slider
                 x:Name="PlayerVolumeSlider"
                 Grid.Column="1"
+                Width="100"
                 Minimum="0"
                 Maximum="1"
                 Value="0.75"
                 StepFrequency="0.01"
                 ValueChanged="PlayerVolumeSlider_ValueChanged" />
+            <TextBlock
+                x:Name="PlayerVolumePercentText"
+                Grid.Column="2"
+                Text="75%"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                FontSize="12"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
           </Grid>
         </Grid>
       </Border>
