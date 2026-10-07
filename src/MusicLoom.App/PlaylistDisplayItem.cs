@@ -16,26 +16,19 @@ internal sealed record PlaylistDisplayItem(
 
     public string StatusGlyph =>
         IsVirtual
-            ? "\uE8A9"
+            ? string.Empty
             : IsReady
                 ? "\uE73E"
                 : "\uE823";
 
     public Brush StatusBrush =>
         new SolidColorBrush(
-            IsVirtual
+            IsReady
                 ? Color.FromArgb(
-                    255, 96, 94, 92)
-                : IsReady
-                    ? Color.FromArgb(
-                        255, 16, 124, 65)
-                    : Color.FromArgb(
-                        255, 202, 116, 0));
+                    255, 16, 124, 65)
+                : Color.FromArgb(
+                    255, 202, 116, 0));
 
     public string StatusKey =>
-        IsVirtual
-            ? "virtual"
-            : IsReady
-                ? "ready"
-                : "pending";
+        IsReady ? "ready" : "pending";
 }
