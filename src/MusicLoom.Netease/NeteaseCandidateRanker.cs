@@ -17,7 +17,7 @@ public static class NeteaseCandidateRanker
 
         return candidates
             .OrderBy(candidate =>
-                DurationDistance(
+                DurationBucket(
                     localDurationMs,
                     candidate.DurationMs))
             .ThenByDescending(candidate =>
@@ -26,12 +26,51 @@ public static class NeteaseCandidateRanker
                     title,
                     artist,
                     album))
+            .ThenBy(candidate =>
+                DurationDistance(
+                    localDurationMs,
+                    candidate.DurationMs))
             .ThenByDescending(candidate =>
                 candidate.Score
                     ?? double.MinValue)
             .ThenBy(candidate =>
                 candidate.TrackId)
             .ToArray();
+    }
+
+    private static int DurationBucket(
+        double? localDurationMs,
+        long? candidateDurationMs)
+    {
+        if (localDurationMs is not double local
+            || !double.IsFinite(local)
+            || local <= 0)
+        {
+            return 0;
+        }
+
+        if (candidateDurationMs is not long candidate
+            || candidate <= 0)
+        {
+            return 100;
+        }
+
+        double difference =
+            Math.Abs(
+                candidate - local);
+
+        return difference switch
+        {
+            <= 1_500 => 0,
+            <= 5_000 => 1,
+            <= 15_000 => 2,
+            <= 30_000 => 3,
+            _ => 4
+                + (int)Math.Min(
+                    95,
+                    difference
+                    / 60_000),
+        };
     }
 
     private static double DurationDistance(
