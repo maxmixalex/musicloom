@@ -84,9 +84,22 @@ public sealed partial class LrcDocument
 
         int searchStart = 0;
 
-        foreach (LrcLine originalLine
-            in original.Lines)
+        for (int originalIndex = 0;
+            originalIndex
+                < original.Lines.Count;
+            originalIndex++)
         {
+            LrcLine originalLine =
+                original.Lines[
+                    originalIndex];
+
+            LrcLine? nextOriginal =
+                originalIndex + 1
+                    < original.Lines.Count
+                        ? original.Lines[
+                            originalIndex + 1]
+                        : null;
+
             merged.Lines.Add(
                 originalLine);
 
@@ -125,6 +138,19 @@ public sealed partial class LrcDocument
                     || delta >= smallestDelta)
                 {
                     continue;
+                }
+
+                if (nextOriginal is not null)
+                {
+                    TimeSpan nextDelta =
+                        (translation.Timestamp
+                            - nextOriginal.Timestamp)
+                        .Duration();
+
+                    if (nextDelta < delta)
+                    {
+                        continue;
+                    }
                 }
 
                 bestIndex = i;
