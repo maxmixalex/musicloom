@@ -71,7 +71,8 @@ public static class AlbumArtLocator
                     StringComparison.OrdinalIgnoreCase)
                 && IsLikelyWindowsMediaPlayerFolderCache(
                     sourceDirectory,
-                    item))
+                    item,
+                    metadata.HasEmbeddedArt))
             {
                 continue;
             }
@@ -84,7 +85,8 @@ public static class AlbumArtLocator
 
     internal static bool IsLikelyWindowsMediaPlayerFolderCache(
         string sourceDirectory,
-        string folderPath)
+        string folderPath,
+        bool embeddedArtPresent = false)
     {
         if (!Directory.Exists(sourceDirectory)
             || !File.Exists(folderPath)
@@ -197,16 +199,6 @@ public static class AlbumArtLocator
                     }
                 });
 
-        if (!hasTightlyClusteredAlbumArt)
-        {
-            return false;
-        }
-
-        // WMP usually writes Folder.jpg and one or more AlbumArt*.jpg files
-        // in the same short burst. It may resize/re-encode Folder.jpg, so
-        // byte equality alone is insufficient. A close timestamp must be
-        // accompanied by a WMP-specific filename/attribute signal, except
-        // for the classic AlbumArt.jpg + Folder.jpg pair which WMP also uses.
         bool hasClassicAlbumArtName =
             albumArtFiles.Any(
                 static path =>
@@ -216,6 +208,24 @@ public static class AlbumArtLocator
                         "AlbumArt",
                         StringComparison.OrdinalIgnoreCase));
 
+        // If the audio file already carries embedded art and a classic
+        // AlbumArt.jpg + Folder.jpg pair exists, Folder.jpg is overwhelmingly
+        // likely to be WMP's extracted/resized cache. This also catches old
+        // libraries where timestamps or Hidden/System attributes were lost.
+        if (embeddedArtPresent
+            && hasClassicAlbumArtName)
+        {
+            return true;
+        }
+
+        if (!hasTightlyClusteredAlbumArt)
+        {
+            return false;
+        }
+
+        // Without embedded-art evidence, require a short write-time cluster
+        // plus at least one Windows/WMP-specific signal. This preserves
+        // intentionally curated Folder.jpg files next to unrelated AlbumArt.
         return folderMarkedByWindows
             || hasWindowsMarkedAlbumArt
             || hasStrongWmpName
