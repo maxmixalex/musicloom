@@ -708,8 +708,18 @@ public sealed partial class MainWindow : Window
 
         _mediaPlayer.Volume =
             volume;
-        PlayerVolumePercentText.Text =
-            $"{volume * 100:0}%";
+
+        if (PlayerVolumePercentText
+            is not null)
+        {
+            PlayerVolumePercentText.Text =
+                $"{volume * 100:0}%";
+        }
+
+        if (PlayerVolumeIcon is null)
+        {
+            return;
+        }
 
         PlayerVolumeIcon.Glyph =
             volume <= 0.001
