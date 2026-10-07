@@ -1,4 +1,5 @@
 using MusicLoom.Core.Configuration;
+using MusicLoom.Core.Planning;
 using Microsoft.Data.Sqlite;
 using MusicLoom.Core.Scanning;
 
