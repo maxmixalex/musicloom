@@ -104,29 +104,6 @@ public static class AncillaryPlanner
             return;
         }
 
-        string[] wmpAlbumArt =
-            Directory.EnumerateFiles(
-                    sourceDirectory,
-                    "*",
-                    SearchOption.TopDirectoryOnly)
-                .Where(static path =>
-                {
-                    string? stem =
-                        Path.GetFileNameWithoutExtension(
-                            path);
-
-                    return stem is not null
-                        && stem.StartsWith(
-                            "AlbumArt",
-                            StringComparison.OrdinalIgnoreCase);
-                })
-                .ToArray();
-
-        if (wmpAlbumArt.Length == 0)
-        {
-            return;
-        }
-
         string? folderCache =
             Directory.EnumerateFiles(
                     sourceDirectory,
@@ -141,11 +118,10 @@ public static class AncillaryPlanner
                             StringComparison.OrdinalIgnoreCase));
 
         if (folderCache is null
-            || !wmpAlbumArt.Any(
-                albumArt =>
-                    FilesHaveSameContent(
-                        folderCache,
-                        albumArt)))
+            || !AlbumArtLocator
+                .IsLikelyWindowsMediaPlayerFolderCache(
+                    sourceDirectory,
+                    folderCache))
         {
             return;
         }
@@ -157,6 +133,9 @@ public static class AncillaryPlanner
                 SearchOption.TopDirectoryOnly))
         {
             if (!FilesHaveSameContent(
+                    folderCache,
+                    destinationCover)
+                && !LooksLikeDirectCopy(
                     folderCache,
                     destinationCover))
             {
@@ -170,6 +149,23 @@ public static class AncillaryPlanner
                     NeedsWrite: true,
                     DeleteDestination: true));
         }
+    }
+
+    private static bool LooksLikeDirectCopy(
+        string sourcePath,
+        string destinationPath)
+    {
+        FileInfo source =
+            new(sourcePath);
+        FileInfo destination =
+            new(destinationPath);
+
+        return source.Exists
+            && destination.Exists
+            && source.Length
+                == destination.Length
+            && source.LastWriteTimeUtc.Ticks
+                == destination.LastWriteTimeUtc.Ticks;
     }
 
     private static bool FilesHaveSameContent(
