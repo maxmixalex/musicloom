@@ -25,12 +25,12 @@ namespace MusicLoom.App;
 
 public sealed partial class MainWindow : Window
 {
-    private static readonly string ConfigPath =
+    private static readonly string LegacyConfigPath =
         Path.Combine(
             AppDiagnostics.DataDirectory,
             "config.json");
 
-    private static readonly string StatePath =
+    private static readonly string LegacyStatePath =
         Path.Combine(
             AppDiagnostics.DataDirectory,
             "state.json");
@@ -171,11 +171,11 @@ public sealed partial class MainWindow : Window
     {
         try
         {
+            await LibraryDatabase.InitializeAsync(
+                DatabasePath);
+
             MusicLoomSettings settings =
-                File.Exists(ConfigPath)
-                    ? await SettingsLoader.LoadAsync(
-                        ConfigPath)
-                    : new MusicLoomSettings();
+                await LoadPersistedSettingsAsync();
 
             _settings = settings;
             _uiLanguage =
@@ -193,9 +193,6 @@ public sealed partial class MainWindow : Window
 
             SettingsStatusText.Text =
                 string.Empty;
-
-            await LibraryDatabase.InitializeAsync(
-                DatabasePath);
             RefreshDatabaseSize();
 
             await RestoreCachedLibraryAsync(
@@ -207,7 +204,7 @@ public sealed partial class MainWindow : Window
                 L("Ready", "就绪"),
                 L(
                     "MusicLoom started.",
-                    "MusicLoom 已启动。"));
+                    "MusicLoom 已启动."));
         }
         catch (Exception exception)
         {
@@ -236,6 +233,65 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task<MusicLoomSettings>
+        LoadPersistedSettingsAsync(
+            CancellationToken cancellationToken = default)
+    {
+        MusicLoomSettings? settings =
+            await LibraryDatabase
+                .LoadSettingsAsync(
+                    DatabasePath,
+                    cancellationToken);
+
+        if (settings is not null)
+        {
+            TryDeleteLegacyFile(
+                LegacyConfigPath);
+            return settings;
+        }
+
+        if (File.Exists(
+                LegacyConfigPath))
+        {
+            settings =
+                await SettingsLoader.LoadAsync(
+                    LegacyConfigPath,
+                    cancellationToken);
+
+            await LibraryDatabase
+                .SaveSettingsAsync(
+                    DatabasePath,
+                    settings,
+                    cancellationToken);
+
+            TryDeleteLegacyFile(
+                LegacyConfigPath);
+
+            AppDiagnostics.Log(
+                "Migrated legacy JSON settings into the local database.");
+
+            return settings;
+        }
+
+        return new MusicLoomSettings();
+    }
+
+    private static void TryDeleteLegacyFile(
+        string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+
     private async Task RestoreCachedLibraryAsync(
         MusicLoomSettings settings)
     {
@@ -250,7 +306,9 @@ public sealed partial class MainWindow : Window
         try
         {
             StateStore stateStore =
-                new(StatePath);
+                new SqliteStateStore(
+                    DatabasePath,
+                    LegacyStatePath);
             StateDocument state =
                 await stateStore.LoadAsync();
 
@@ -297,6 +355,9 @@ public sealed partial class MainWindow : Window
                 settings.Path.SourceDirectory,
                 settings.Path.DestinationDirectory,
                 cachedPlan);
+
+            TryDeleteLegacyFile(
+                LegacySnapshotPath);
             RefreshDatabaseSize();
 
             PopulateLibrary(
@@ -485,16 +546,18 @@ public sealed partial class MainWindow : Window
         try
         {
             MusicLoomSettings settings =
-                await SettingsLoader.LoadAsync(
-                    ConfigPath,
+                _settings
+                ?? await LoadPersistedSettingsAsync(
                     cancellation.Token);
 
             LibraryPathSafety.ValidateStatePath(
                 settings,
-                StatePath);
+                DatabasePath);
 
             StateStore stateStore =
-                new(StatePath);
+                new SqliteStateStore(
+                    DatabasePath,
+                    LegacyStatePath);
             StateDocument state =
                 await stateStore.LoadAsync(
                     cancellation.Token);
@@ -1031,7 +1094,9 @@ public sealed partial class MainWindow : Window
             SetIndeterminateProgress();
 
             StateStore stateStore =
-                new(StatePath);
+                new SqliteStateStore(
+                    DatabasePath,
+                    LegacyStatePath);
             StateDocument state =
                 await stateStore.LoadAsync(
                     cancellationToken);
@@ -1203,7 +1268,14 @@ public sealed partial class MainWindow : Window
         bool clearInfoBar,
         bool recordActivity)
     {
-        if (!File.Exists(ConfigPath))
+        MusicLoomSettings configured =
+            _settings
+            ?? await LoadPersistedSettingsAsync();
+
+        if (string.IsNullOrWhiteSpace(
+                configured.Path.SourceDirectory)
+            || string.IsNullOrWhiteSpace(
+                configured.Path.DestinationDirectory))
         {
             NavigateTo("settings");
             ShowInfo(
@@ -1238,8 +1310,8 @@ public sealed partial class MainWindow : Window
         try
         {
             MusicLoomSettings settings =
-                await SettingsLoader.LoadAsync(
-                    ConfigPath,
+                _settings
+                ?? await LoadPersistedSettingsAsync(
                     cancellation.Token);
 
             _settings = settings;
@@ -1249,10 +1321,12 @@ public sealed partial class MainWindow : Window
 
             LibraryPathSafety.ValidateStatePath(
                 settings,
-                StatePath);
+                DatabasePath);
 
             StateStore stateStore =
-                new(StatePath);
+                new SqliteStateStore(
+                    DatabasePath,
+                    LegacyStatePath);
             StateDocument state =
                 await stateStore.LoadAsync(
                     cancellation.Token);
@@ -5030,10 +5104,11 @@ public sealed partial class MainWindow : Window
                     _settings,
                     settings);
 
-            await SettingsLoader.SaveAsync(
-                ConfigPath,
+            await LibraryDatabase.SaveSettingsAsync(
+                DatabasePath,
                 settings,
                 cancellationToken);
+            RefreshDatabaseSize();
 
             _settings = settings;
             _uiLanguage =
@@ -5404,14 +5479,16 @@ public sealed partial class MainWindow : Window
                     .XamlRoot,
             Title =
                 L(
-                    "Clear local database?",
-                    "清空本地数据库？"),
+                    "Clear the entire local database?",
+                    "完全清空本地数据库？"),
             Content =
                 L(
-                    "This removes MusicLoom's cached library index. Your source music, settings and sync state are not deleted.",
-                    "这会删除 MusicLoom 缓存的音乐库索引，不会删除源音乐、设置或同步状态。"),
+                    "This deletes the cached library, synchronization state, NetEase matches and saved settings. Your source and destination music files are not deleted.",
+                    "这会删除音乐库缓存、同步状态、网易云匹配和已保存设置；不会删除源音乐或目标音乐文件。"),
             PrimaryButtonText =
-                L("Clear", "清空"),
+                L(
+                    "Clear everything",
+                    "全部清空"),
             CloseButtonText =
                 L("Cancel", "取消"),
             DefaultButton =
@@ -5426,23 +5503,50 @@ public sealed partial class MainWindow : Window
 
         try
         {
+            _settingsSaveCancellation
+                ?.Cancel();
+
+            Microsoft.Data.Sqlite
+                .SqliteConnection
+                .ClearAllPools();
+
             await LibraryDatabase.ClearAsync(
                 DatabasePath);
 
-            if (File.Exists(
-                    LegacySnapshotPath))
-            {
-                File.Delete(
-                    LegacySnapshotPath);
-            }
+            TryDeleteLegacyFile(
+                LegacySnapshotPath);
+            TryDeleteLegacyFile(
+                LegacyConfigPath);
+            TryDeleteLegacyFile(
+                LegacyStatePath);
+            TryDeleteLegacyFile(
+                LegacyStatePath + ".bak");
 
+            _settings =
+                new MusicLoomSettings();
+            _state =
+                new StateDocument();
+            _stateStore =
+                new SqliteStateStore(
+                    DatabasePath,
+                    LegacyStatePath);
             _plan = null;
+            _trackSyncStates.Clear();
             _allLibraryItems.Clear();
             _playlists.Clear();
+
+            PopulateSettingsForm(
+                _settings);
+            ApplyAppearance(
+                _settings);
+            ApplyLanguage();
+
             LibraryList.ItemsSource = null;
             PlaylistsList.ItemsSource = null;
             PlaylistTracksList.ItemsSource = null;
             SyncButton.IsEnabled = false;
+            HideDetailPane();
+            ResetTrackDetails();
             UpdateLibraryEmptyState();
             RefreshDatabaseSize();
 
@@ -5452,8 +5556,8 @@ public sealed partial class MainWindow : Window
                     "Database cleared",
                     "数据库已清空"),
                 L(
-                    "Refresh the library to rebuild the local index.",
-                    "刷新音乐库即可重新建立本地索引。"));
+                    "MusicLoom local state has been reset. Configure the library again to continue.",
+                    "MusicLoom 的本地状态已重置，请重新配置音乐库后继续。"));
         }
         catch (Exception exception)
         {
