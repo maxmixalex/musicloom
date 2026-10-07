@@ -1562,7 +1562,7 @@
             <ColumnDefinition Width="72" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="170" />
+            <ColumnDefinition Width="138" />
           </Grid.ColumnDefinitions>
 
           <Button
@@ -1634,7 +1634,6 @@
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
-              <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <Grid ColumnSpacing="12">
@@ -1701,20 +1700,12 @@
                 Margin="0,3,0,0"
                 ValueChanged="PlayerProgressSlider_ValueChanged" />
 
-            <TextBlock
-                x:Name="PlayerHintText"
-                Grid.Row="2"
-                Text=""
-                FontSize="11"
-                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                TextTrimming="CharacterEllipsis" />
           </Grid>
 
           <Grid Grid.Column="3" VerticalAlignment="Center" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="100" />
-              <ColumnDefinition Width="42" />
+              <ColumnDefinition Width="108" />
             </Grid.ColumnDefinitions>
             <FontIcon
                 x:Name="PlayerVolumeIcon"
@@ -1724,20 +1715,16 @@
             <Slider
                 x:Name="PlayerVolumeSlider"
                 Grid.Column="1"
-                Width="100"
+                Width="108"
                 Minimum="0"
-                Maximum="1"
-                Value="0.75"
-                StepFrequency="0.01"
-                ValueChanged="PlayerVolumeSlider_ValueChanged" />
-            <TextBlock
-                x:Name="PlayerVolumePercentText"
-                Grid.Column="2"
-                Text="75%"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Center"
-                FontSize="12"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                Maximum="100"
+                Value="75"
+                StepFrequency="1"
+                ValueChanged="PlayerVolumeSlider_ValueChanged">
+              <Slider.ThumbToolTipValueConverter>
+                <local:PercentageSliderValueConverter />
+              </Slider.ThumbToolTipValueConverter>
+            </Slider>
           </Grid>
         </Grid>
       </Border>
