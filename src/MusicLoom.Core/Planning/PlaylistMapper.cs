@@ -66,7 +66,7 @@ public static class PlaylistMapper
 
         while (normalized.Length > 1
             && normalized.EndsWith(
-                '/',
+                "/",
                 StringComparison.Ordinal))
         {
             normalized =
