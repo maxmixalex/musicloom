@@ -170,9 +170,7 @@ public sealed partial class MainWindow : Window
     {
         _mediaPlayer.AutoPlay = false;
         _mediaPlayer.Volume =
-            PlayerVolumeSlider.Value;
-        PlayerVolumePercentText.Text =
-            $"{PlayerVolumeSlider.Value * 100:0}%";
+            PlayerVolumeSlider.Value / 100.0;
 
         _mediaPlayer.MediaOpened +=
             (_, _) =>
@@ -201,11 +199,6 @@ public sealed partial class MainWindow : Window
                 DispatcherQueue.TryEnqueue(
                     () =>
                     {
-                        PlayerHintText.Text =
-                            L(
-                                $"Playback failed · {args.ErrorMessage}",
-                                $"播放失败 · {args.ErrorMessage}");
-
                         ShowInfo(
                             InfoBarSeverity.Error,
                             L(
@@ -279,10 +272,6 @@ public sealed partial class MainWindow : Window
                     : $"{item.Artist} - {item.Title}";
             PlayerMetadataText.Text =
                 item.Album;
-            PlayerHintText.Text =
-                L(
-                    "Local library",
-                    "本地音乐库");
             PlayerArtworkImage.Source =
                 item.Artwork;
             PlayerArtworkPlaceholder.Visibility =
@@ -326,10 +315,6 @@ public sealed partial class MainWindow : Window
                 : $"{candidate.Artist} - {candidate.Name}";
         PlayerMetadataText.Text =
             candidate.Album;
-        PlayerHintText.Text =
-            L(
-                "NetEase Music online preview",
-                "网易云音乐在线预览");
 
         if (!string.IsNullOrWhiteSpace(
                 candidate.CoverUrl)
@@ -703,19 +688,12 @@ public sealed partial class MainWindow : Window
     {
         double volume =
             Math.Clamp(
-                e.NewValue,
+                e.NewValue / 100.0,
                 0,
                 1);
 
         _mediaPlayer.Volume =
             volume;
-
-        if (PlayerVolumePercentText
-            is not null)
-        {
-            PlayerVolumePercentText.Text =
-                $"{volume * 100:0}%";
-        }
 
         if (PlayerVolumeIcon is null)
         {
@@ -8453,8 +8431,6 @@ public sealed partial class MainWindow : Window
                     "Nothing playing",
                     "未播放歌曲");
             PlayerMetadataText.Text =
-                string.Empty;
-            PlayerHintText.Text =
                 string.Empty;
         }
 
