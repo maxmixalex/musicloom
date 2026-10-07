@@ -4371,36 +4371,59 @@ public sealed partial class MainWindow : Window
     private void CoverButton_PointerEntered(
         object sender,
         PointerRoutedEventArgs e) =>
-        AnimateCoverOpacity(0.9);
+        AnimateCoverScale(1.04);
 
     private void CoverButton_PointerExited(
         object sender,
         PointerRoutedEventArgs e) =>
-        AnimateCoverOpacity(1.0);
+        AnimateCoverScale(1.0);
 
-    private void AnimateCoverOpacity(
+    private void AnimateCoverScale(
         double target)
     {
-        DoubleAnimation animation = new()
+        CubicEase ease = new()
+        {
+            EasingMode =
+                EasingMode.EaseOut,
+        };
+
+        DoubleAnimation x = new()
         {
             To = target,
             Duration =
                 new Duration(
                     TimeSpan.FromMilliseconds(
-                        120)),
+                        150)),
+            EasingFunction = ease,
+            EnableDependentAnimation = true,
+        };
+        DoubleAnimation y = new()
+        {
+            To = target,
+            Duration =
+                new Duration(
+                    TimeSpan.FromMilliseconds(
+                        150)),
+            EasingFunction = ease,
             EnableDependentAnimation = true,
         };
 
         Storyboard.SetTarget(
-            animation,
-            CoverImage);
+            x,
+            CoverScaleTransform);
         Storyboard.SetTargetProperty(
-            animation,
-            "Opacity");
+            x,
+            "ScaleX");
+        Storyboard.SetTarget(
+            y,
+            CoverScaleTransform);
+        Storyboard.SetTargetProperty(
+            y,
+            "ScaleY");
 
         Storyboard storyboard = new();
-        storyboard.Children.Add(
-            animation);
+        storyboard.Children.Add(x);
+        storyboard.Children.Add(y);
         storyboard.Begin();
     }
 
