@@ -4608,27 +4608,54 @@ public sealed partial class MainWindow : Window
                 is not null;
     }
 
-    private void ContextOpenSourceItem_Click(
+    private async void ContextOpenSourceItem_Click(
         object sender,
         RoutedEventArgs e)
     {
         if (GetContextItem()
-            is LibraryDisplayItem item)
+            is not LibraryDisplayItem item)
         {
-            OpenInExplorer(
+            return;
+        }
+
+        try
+        {
+            await OpenInExplorerAsync(
                 item.Entry.SourcePath);
+        }
+        catch (Exception exception)
+        {
+            HandleUiException(
+                L(
+                    "Could not open the source folder.",
+                    "无法打开源文件位置。"),
+                exception);
         }
     }
 
-    private void ContextOpenDestinationItem_Click(
+    private async void ContextOpenDestinationItem_Click(
         object sender,
         RoutedEventArgs e)
     {
         if (GetContextItem()
                 ?.Entry.DestinationPath
-            is string path)
+            is not string path)
         {
-            OpenInExplorer(path);
+            return;
+        }
+
+        try
+        {
+            await OpenInExplorerAsync(
+                path);
+        }
+        catch (Exception exception)
+        {
+            HandleUiException(
+                L(
+                    "Could not open the destination folder.",
+                    "无法打开目标文件位置。"),
+                exception);
         }
     }
 
@@ -4685,36 +4712,34 @@ public sealed partial class MainWindow : Window
         Clipboard.Flush();
     }
 
-    private static void OpenInExplorer(
+    private static async Task OpenInExplorerAsync(
         string path)
     {
-        if (File.Exists(path))
+        string directory =
+            File.Exists(path)
+                ? Path.GetDirectoryName(path)
+                    ?? path
+                : Directory.Exists(path)
+                    ? path
+                    : Path.GetDirectoryName(path)
+                        ?? path;
+
+        if (!Directory.Exists(directory))
         {
-            Process.Start(
-                new ProcessStartInfo
-                {
-                    FileName =
-                        "explorer.exe",
-                    Arguments =
-                        $"/select,\"{path}\"",
-                    UseShellExecute =
-                        true,
-                });
-            return;
+            throw new DirectoryNotFoundException(
+                directory);
         }
 
-        string directory =
-            Directory.Exists(path)
-                ? path
-                : Path.GetDirectoryName(path)
-                    ?? path;
+        bool launched =
+            await Windows.System.Launcher
+                .LaunchFolderPathAsync(
+                    directory);
 
-        Process.Start(
-            new ProcessStartInfo
-            {
-                FileName = directory,
-                UseShellExecute = true,
-            });
+        if (!launched)
+        {
+            throw new InvalidOperationException(
+                $"Windows could not open '{directory}'.");
+        }
     }
 
     private PlaylistDisplayItem[]
