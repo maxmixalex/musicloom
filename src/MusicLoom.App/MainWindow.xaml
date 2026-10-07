@@ -1492,7 +1492,7 @@
 
         <Grid
             x:Name="MatchOverlay"
-            Panel.ZIndex="100"
+            Canvas.ZIndex="100"
             Visibility="Collapsed">
           <Grid.Background>
             <SolidColorBrush Color="#66000000" />
