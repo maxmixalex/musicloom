@@ -88,7 +88,6 @@ public sealed partial class MainWindow : Window
     private Storyboard? _titleScrollStoryboard;
     private Storyboard? _albumScrollStoryboard;
     private Storyboard? _lyricsSourceScrollStoryboard;
-    private Storyboard? _currentMatchScrollStoryboard;
     private Storyboard? _playlistTitleScrollStoryboard;
     private Storyboard? _playlistMetaScrollStoryboard;
     private Storyboard? _trackArtistScrollStoryboard;
@@ -2613,12 +2612,8 @@ public sealed partial class MainWindow : Window
         LyricsList.ItemsSource =
             Array.Empty<LyricDisplayLine>();
 
-        CurrentMatchText.Text =
-            L(
-                "No NetEase match cached.",
-                "尚未缓存网易云匹配。");
-        RefreshMatchedLyricsButton.IsEnabled =
-            false;
+        RefreshCurrentMatchCard(
+            null);
 
         TrackSyncStateText.Text =
             L(
@@ -2870,11 +2865,6 @@ public sealed partial class MainWindow : Window
             mode,
             maxLines: 2);
         ConfigureDetailText(
-            CurrentMatchViewport,
-            CurrentMatchText,
-            mode,
-            maxLines: 3);
-        ConfigureDetailText(
             PlaylistTitleViewport,
             PlaylistTitleText,
             mode,
@@ -2906,7 +2896,6 @@ public sealed partial class MainWindow : Window
             maxLines: 2);
 
         LyricsSourceTranslateTransform.X = 0;
-        CurrentMatchTranslateTransform.X = 0;
         PlaylistTitleTranslateTransform.X = 0;
         PlaylistMetaTranslateTransform.X = 0;
         TrackArtistTranslateTransform.X = 0;
@@ -2922,12 +2911,6 @@ public sealed partial class MainWindow : Window
                         LyricsSourceViewport,
                         LyricsSourceText,
                         LyricsSourceTranslateTransform,
-                        mode);
-                _currentMatchScrollStoryboard =
-                    ConfigureAuxiliaryViewport(
-                        CurrentMatchViewport,
-                        CurrentMatchText,
-                        CurrentMatchTranslateTransform,
                         mode);
                 _playlistTitleScrollStoryboard =
                     ConfigureAuxiliaryViewport(
@@ -3001,7 +2984,6 @@ public sealed partial class MainWindow : Window
     private void StopAuxiliaryLongText()
     {
         _lyricsSourceScrollStoryboard?.Stop();
-        _currentMatchScrollStoryboard?.Stop();
         _playlistTitleScrollStoryboard?.Stop();
         _playlistMetaScrollStoryboard?.Stop();
         _trackArtistScrollStoryboard?.Stop();
@@ -3010,7 +2992,6 @@ public sealed partial class MainWindow : Window
         _diagnosticsPathScrollStoryboard?.Stop();
 
         _lyricsSourceScrollStoryboard = null;
-        _currentMatchScrollStoryboard = null;
         _playlistTitleScrollStoryboard = null;
         _playlistMetaScrollStoryboard = null;
         _trackArtistScrollStoryboard = null;
@@ -3040,12 +3021,8 @@ public sealed partial class MainWindow : Window
             item.StatusBrush;
         RefreshTrackSyncTab(item);
 
-        CurrentMatchText.Text =
-            GetCachedMatchText(
-                item.Entry.SourcePath);
-        RefreshMatchedLyricsButton.IsEnabled =
-            HasCachedMatch(
-                item.Entry.SourcePath);
+        RefreshCurrentMatchCard(
+            item);
         ConfigureAuxiliaryLongText();
 
         CoverImage.Source =
@@ -3091,6 +3068,8 @@ public sealed partial class MainWindow : Window
                 CoverImage.Source = bitmap;
                 CoverPlaceholderText.Visibility =
                     Visibility.Collapsed;
+                RefreshCurrentMatchCard(
+                    item);
             }
 
             _currentArtworkBytes =
@@ -5796,11 +5775,8 @@ public sealed partial class MainWindow : Window
         await _stateStore.SaveAsync(
             _state);
 
-        CurrentMatchText.Text =
-            GetCachedMatchText(
-                item.Entry.SourcePath);
-        RefreshMatchedLyricsButton.IsEnabled =
-            true;
+        RefreshCurrentMatchCard(
+            item);
         ConfigureAuxiliaryLongText();
 
         MarkTrackForEnrichmentSync(
@@ -5962,33 +5938,52 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private string GetCachedMatchText(
-        string sourcePath)
+    private void RefreshCurrentMatchCard(
+        LibraryDisplayItem? item)
     {
-        if (_state is null
+        CurrentMatchArtworkImage.Source =
+            item?.Artwork;
+        CurrentMatchArtworkPlaceholder.Visibility =
+            item?.Artwork is null
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+        if (item is null
+            || _state is null
             || !_state.Tracks.TryGetValue(
-                sourcePath,
+                item.Entry.SourcePath,
                 out TrackState? state)
             || state.NeteaseSongId
                 is not long songId)
         {
-            return L(
-                "No NetEase match cached.",
-                "尚未缓存网易云匹配。");
+            CurrentMatchTitleText.Text =
+                L(
+                    "No NetEase match cached.",
+                    "尚未缓存网易云匹配。");
+            CurrentMatchArtistText.Text =
+                string.Empty;
+            CurrentMatchAlbumText.Text =
+                string.Empty;
+            CurrentMatchIdText.Text =
+                string.Empty;
+            RefreshMatchedLyricsButton.IsEnabled =
+                false;
+            return;
         }
 
-        string artist =
-            state.NeteaseTrackArtist
-            ?? _selectedLibraryItem?.Artist
-            ?? string.Empty;
-        string title =
+        CurrentMatchTitleText.Text =
             state.NeteaseTrackName
-            ?? _selectedLibraryItem?.Title
-            ?? $"#{songId}";
-
-        return IsChinese
-            ? $"{artist} - {title}（缓存 ID: {songId}）"
-            : $"{artist} - {title} (cached ID: {songId})";
+            ?? item.Title;
+        CurrentMatchArtistText.Text =
+            state.NeteaseTrackArtist
+            ?? item.Artist;
+        CurrentMatchAlbumText.Text =
+            state.NeteaseTrackAlbum
+            ?? item.Album;
+        CurrentMatchIdText.Text =
+            $"#{songId}";
+        RefreshMatchedLyricsButton.IsEnabled =
+            true;
     }
 
     private void LibraryList_RightTapped(
