@@ -49,6 +49,9 @@ public sealed partial class MainWindow : Window
         _allLibraryItems = [];
     private readonly List<PlaylistDisplayItem>
         _playlists = [];
+    private readonly Dictionary<string, TrackSyncViewState>
+        _trackSyncStates =
+            new(StringComparer.OrdinalIgnoreCase);
 
     private MusicLoomSettings? _settings;
     private StateDocument? _state;
@@ -67,10 +70,8 @@ public sealed partial class MainWindow : Window
         DetectSystemLanguage();
     private string _accentColor = "system";
     private string? _currentLyricsRaw;
-    private DispatcherTimer? _titleScrollTimer;
-    private double _titleScrollDirection = 1;
-    private double _albumScrollDirection = 1;
-    private DateTimeOffset _titleScrollPauseUntil;
+    private Storyboard? _titleScrollStoryboard;
+    private Storyboard? _albumScrollStoryboard;
     private byte[]? _currentArtworkBytes;
     private string _lyricsDisplayMode =
         LyricsDisplayModes.PreferOriginal;
@@ -88,8 +89,8 @@ public sealed partial class MainWindow : Window
         ApplyWindowIcon();
 
         LibraryFilterBox.SelectedIndex = 0;
-        LibrarySortBox.SelectedIndex = 0;
-        PlaylistSortBox.SelectedIndex = 0;
+        LibrarySortBox.SelectedIndex = 2;
+        PlaylistSortBox.SelectedIndex = 2;
         LyricsStorageModeBox.SelectedIndex = 0;
         LanguageBox.SelectedIndex =
             IsChinese ? 1 : 0;
@@ -98,6 +99,9 @@ public sealed partial class MainWindow : Window
 
         DiagnosticsLogPathText.Text =
             AppDiagnostics.LogPath;
+        RefreshDiagnosticsConsole();
+        AppDiagnostics.LineWritten +=
+            AppDiagnostics_LineWritten;
 
         ApplyLanguage();
         HideDetailPane();
@@ -192,6 +196,7 @@ public sealed partial class MainWindow : Window
 
             await LibraryDatabase.InitializeAsync(
                 DatabasePath);
+            RefreshDatabaseSize();
 
             await RestoreCachedLibraryAsync(
                 settings);
@@ -292,6 +297,7 @@ public sealed partial class MainWindow : Window
                 settings.Path.SourceDirectory,
                 settings.Path.DestinationDirectory,
                 cachedPlan);
+            RefreshDatabaseSize();
 
             PopulateLibrary(
                 settings,
@@ -700,6 +706,40 @@ public sealed partial class MainWindow : Window
             {
                 AppDiagnostics.Log(
                     $"Track error [{error.Stage}] {error.SourcePath}: {error.Message}");
+
+                SetTrackSyncState(
+                    error.SourcePath,
+                    L("Error", "错误"),
+                    $"[{error.Stage}] {error.Message}",
+                    isError: true);
+            }
+
+            HashSet<string> failedSources =
+                summary.Errors
+                    .Select(
+                        static error =>
+                            error.SourcePath)
+                    .ToHashSet(
+                        StringComparer
+                            .OrdinalIgnoreCase);
+
+            foreach (PlanEntry entry
+                in plan.Entries.Where(
+                    entry =>
+                        entry.Status
+                            != PlanEntryStatus
+                                .Unchanged
+                        && entry.Status
+                            != PlanEntryStatus.Error
+                        && !failedSources.Contains(
+                            entry.SourcePath)))
+            {
+                SetTrackSyncState(
+                    entry.SourcePath,
+                    L("Synced", "已同步"),
+                    L(
+                        "Sync completed successfully.",
+                        "同步已成功完成。"));
             }
 
             if (summary.Errors.Count == 0)
@@ -730,6 +770,14 @@ public sealed partial class MainWindow : Window
                 settings,
                 summary.Errors,
                 cancellation.Token);
+
+            if (summary.Errors.Count > 0)
+            {
+                LibraryFilterBox.SelectedItem =
+                    LibraryFilterErrorsItem;
+                NavigateTo("library");
+                ApplyLibraryFilter();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -821,6 +869,19 @@ public sealed partial class MainWindow : Window
                     "同步中"));
         }
 
+        SetTrackSyncState(
+            item.Entry.SourcePath,
+            progress.Stage == "failed"
+                ? L("Error", "错误")
+                : progress.Stage == "complete"
+                    ? L("Synced", "已同步")
+                    : FriendlyStage(
+                        progress.Stage),
+            L(
+                $"[{progress.Stage}] {progress.Processed:N0}/{progress.Total:N0}",
+                $"[{progress.Stage}] {progress.Processed:N0}/{progress.Total:N0}"),
+            progress.Stage == "failed");
+
         if (ReferenceEquals(
                 item,
                 _selectedLibraryItem))
@@ -834,6 +895,110 @@ public sealed partial class MainWindow : Window
         }
 
         RefreshLiveSyncCounters();
+    }
+
+    private void SetTrackSyncState(
+        string sourcePath,
+        string status,
+        string detail,
+        bool isError = false)
+    {
+        _trackSyncStates[sourcePath] =
+            new TrackSyncViewState(
+                status,
+                detail,
+                DateTimeOffset.Now,
+                isError);
+
+        if (_selectedLibraryItem
+                is LibraryDisplayItem selected
+            && string.Equals(
+                selected.Entry.SourcePath,
+                sourcePath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            RefreshTrackSyncTab(
+                selected);
+        }
+    }
+
+    private void RefreshTrackSyncTab(
+        LibraryDisplayItem? item)
+    {
+        if (item is null)
+        {
+            TrackSyncStateText.Text =
+                L(
+                    "No sync information.",
+                    "暂无同步信息。");
+            TrackSyncTimeText.Text =
+                string.Empty;
+            TrackSyncLogText.Text =
+                string.Empty;
+            return;
+        }
+
+        if (_trackSyncStates.TryGetValue(
+                item.Entry.SourcePath,
+                out TrackSyncViewState? latest))
+        {
+            TrackSyncStateText.Text =
+                latest.Status;
+            TrackSyncTimeText.Text =
+                L(
+                    $"Updated {latest.UpdatedAt:G}",
+                    $"更新于 {latest.UpdatedAt:G}");
+            TrackSyncLogText.Text =
+                latest.Detail;
+            return;
+        }
+
+        TrackSyncTimeText.Text =
+            L(
+                "Current library plan",
+                "当前音乐库状态");
+
+        if (item.Kind == "error")
+        {
+            TrackSyncStateText.Text =
+                L("Error", "错误");
+            TrackSyncLogText.Text =
+                item.Entry.Detail
+                ?? L(
+                    "The current scan reports an error.",
+                    "当前扫描报告了错误。");
+        }
+        else if (item.Kind == "synced")
+        {
+            TrackSyncStateText.Text =
+                L("Synced", "已同步");
+            TrackSyncLogText.Text =
+                L(
+                    "No sync error is recorded for this track.",
+                    "此歌曲没有记录到同步错误。");
+        }
+        else if (item.Kind == "syncing")
+        {
+            TrackSyncStateText.Text =
+                L("Syncing", "同步中");
+            TrackSyncLogText.Text =
+                item.Entry.Detail
+                ?? L(
+                    "Synchronization is in progress.",
+                    "正在同步。");
+        }
+        else
+        {
+            TrackSyncStateText.Text =
+                L(
+                    "Pending sync",
+                    "待同步");
+            TrackSyncLogText.Text =
+                item.Entry.Detail
+                ?? L(
+                    "This track has pending work.",
+                    "此歌曲存在待处理的同步工作。");
+        }
     }
 
     private void RefreshLiveSyncCounters()
@@ -980,6 +1145,7 @@ public sealed partial class MainWindow : Window
                 settings.Path.DestinationDirectory,
                 freshPlan,
                 cancellationToken);
+            RefreshDatabaseSize();
 
             PopulatePlaylists(
                 await Task.Run(
@@ -1180,6 +1346,7 @@ public sealed partial class MainWindow : Window
                 settings.Path.DestinationDirectory,
                 plan,
                 cancellation.Token);
+            RefreshDatabaseSize();
 
             PlaylistDisplayItem[] playlists =
                 await Task.Run(
@@ -1432,7 +1599,7 @@ public sealed partial class MainWindow : Window
             (LibrarySortBox.SelectedItem
                 as ComboBoxItem)
                 ?.Tag?.ToString()
-            ?? "title";
+            ?? "artist";
 
         IEnumerable<LibraryDisplayItem>
             items = _allLibraryItems;
@@ -1528,12 +1695,14 @@ public sealed partial class MainWindow : Window
             is not LibraryDisplayItem item)
         {
             _selectedLibraryItem = null;
+            OpenMatchDialogButton.IsEnabled = false;
             HideDetailPane();
             ResetTrackDetails();
             return;
         }
 
         _selectedLibraryItem = item;
+        OpenMatchDialogButton.IsEnabled = !_busy;
         ShowDetailPane();
         await ShowTrackDetailsAsync(item);
     }
@@ -1617,6 +1786,13 @@ public sealed partial class MainWindow : Window
                 "No NetEase match cached.",
                 "尚未缓存网易云匹配。");
 
+        TrackSyncStateText.Text =
+            L(
+                "No sync information.",
+                "暂无同步信息。");
+        TrackSyncTimeText.Text = string.Empty;
+        TrackSyncLogText.Text = string.Empty;
+
         TrackSourcePathText.Text = string.Empty;
         TrackDestinationPathText.Text = string.Empty;
         TrackFormatText.Text = string.Empty;
@@ -1660,16 +1836,32 @@ public sealed partial class MainWindow : Window
             mode,
             maxLines: 2);
 
-        if (mode != LongTextModes.AutoScroll)
-        {
-            return;
-        }
-
         DispatcherQueue.TryEnqueue(
             () =>
             {
                 TrackTitleViewport.UpdateLayout();
                 TrackAlbumViewport.UpdateLayout();
+
+                if (mode == LongTextModes.Hover)
+                {
+                    TrackTitleText.Width =
+                        Math.Max(
+                            0,
+                            TrackTitleViewport
+                                .ViewportWidth);
+                    TrackAlbumText.Width =
+                        Math.Max(
+                            0,
+                            TrackAlbumViewport
+                                .ViewportWidth);
+                    return;
+                }
+
+                if (mode
+                    != LongTextModes.AutoScroll)
+                {
+                    return;
+                }
 
                 double titleOverflow =
                     GetTextOverflow(
@@ -1680,30 +1872,14 @@ public sealed partial class MainWindow : Window
                         TrackAlbumViewport,
                         TrackAlbumText);
 
-                if (titleOverflow <= 1
-                    && albumOverflow <= 1)
-                {
-                    return;
-                }
-
-                _titleScrollDirection = 1;
-                _albumScrollDirection = 1;
-                _titleScrollPauseUntil =
-                    DateTimeOffset.UtcNow
-                        .AddMilliseconds(450);
-
-                DispatcherTimer timer = new()
-                {
-                    Interval =
-                        TimeSpan.FromMilliseconds(
-                            16),
-                };
-
-                timer.Tick +=
-                    TitleScrollTimer_Tick;
-
-                _titleScrollTimer = timer;
-                timer.Start();
+                _titleScrollStoryboard =
+                    StartTextMarquee(
+                        TrackTitleTranslateTransform,
+                        titleOverflow);
+                _albumScrollStoryboard =
+                    StartTextMarquee(
+                        TrackAlbumTranslateTransform,
+                        albumOverflow);
             });
     }
 
@@ -1727,10 +1903,7 @@ public sealed partial class MainWindow : Window
         viewport.HorizontalScrollBarVisibility =
             ScrollBarVisibility.Hidden;
         viewport.HorizontalScrollMode =
-            normalized
-                == LongTextModes.AutoScroll
-                ? ScrollMode.Enabled
-                : ScrollMode.Disabled;
+            ScrollMode.Disabled;
         viewport.IsHitTestVisible =
             hover;
 
@@ -1739,9 +1912,7 @@ public sealed partial class MainWindow : Window
                 == LongTextModes.AutoScroll
                 ? HorizontalAlignment.Left
                 : HorizontalAlignment.Stretch;
-
-        text.Width =
-            double.NaN;
+        text.Width = double.NaN;
 
         text.TextWrapping =
             wrap
@@ -1780,100 +1951,51 @@ public sealed partial class MainWindow : Window
 
     private void StopTitleAutoScroll()
     {
-        if (_titleScrollTimer is null)
-        {
-            return;
-        }
-
-        _titleScrollTimer.Stop();
-        _titleScrollTimer.Tick -=
-            TitleScrollTimer_Tick;
-        _titleScrollTimer = null;
+        _titleScrollStoryboard?.Stop();
+        _albumScrollStoryboard?.Stop();
+        _titleScrollStoryboard = null;
+        _albumScrollStoryboard = null;
     }
 
-    private void TitleScrollTimer_Tick(
-        object? sender,
-        object e)
-    {
-        if (CurrentLongTextMode
-                != LongTextModes.AutoScroll
-            || DetailPane.Visibility
-                != Visibility.Visible)
-        {
-            StopTitleAutoScroll();
-            return;
-        }
-
-        if (DateTimeOffset.UtcNow
-            < _titleScrollPauseUntil)
-        {
-            return;
-        }
-
-        bool titleHit =
-            AdvanceTextTransform(
-                TrackTitleViewport,
-                TrackTitleText,
-                TrackTitleTranslateTransform,
-                ref _titleScrollDirection);
-        bool albumHit =
-            AdvanceTextTransform(
-                TrackAlbumViewport,
-                TrackAlbumText,
-                TrackAlbumTranslateTransform,
-                ref _albumScrollDirection);
-
-        if (titleHit || albumHit)
-        {
-            _titleScrollPauseUntil =
-                DateTimeOffset.UtcNow
-                    .AddMilliseconds(420);
-        }
-    }
-
-    private static bool AdvanceTextTransform(
-        ScrollViewer viewport,
-        TextBlock text,
+    private static Storyboard? StartTextMarquee(
         TranslateTransform transform,
-        ref double direction)
+        double overflow)
     {
-        double max =
-            GetTextOverflow(
-                viewport,
-                text);
-
-        if (max <= 1)
+        if (overflow <= 1)
         {
             transform.X = 0;
-            return false;
+            return null;
         }
 
-        double offset =
-            -transform.X;
-
-        double next =
-            offset
-            + direction * 2.65;
-        bool hitEdge = false;
-
-        if (next >= max)
+        DoubleAnimation animation = new()
         {
-            next = max;
-            direction = -1;
-            hitEdge = true;
-        }
-        else if (next <= 0)
-        {
-            next = 0;
-            direction = 1;
-            hitEdge = true;
-        }
+            From = 0,
+            To = -overflow,
+            Duration =
+                new Duration(
+                    TimeSpan.FromSeconds(
+                        Math.Clamp(
+                            overflow / 48.0,
+                            3.2,
+                            18.0))),
+            AutoReverse = true,
+            RepeatBehavior =
+                RepeatBehavior.Forever,
+            EnableDependentAnimation = true,
+        };
 
-        // RenderTransform updates do not invalidate layout, unlike
-        // ScrollViewer.ChangeView(), so this avoids LayoutCycleException.
-        transform.X = -next;
+        Storyboard.SetTarget(
+            animation,
+            transform);
+        Storyboard.SetTargetProperty(
+            animation,
+            "X");
 
-        return hitEdge;
+        Storyboard storyboard = new();
+        storyboard.Children.Add(
+            animation);
+        storyboard.Begin();
+        return storyboard;
     }
 
     private async Task ShowTrackDetailsAsync(
@@ -1895,6 +2017,7 @@ public sealed partial class MainWindow : Window
             item.StatusGlyph;
         TrackStatusIcon.Foreground =
             item.StatusBrush;
+        RefreshTrackSyncTab(item);
 
         CurrentMatchText.Text =
             GetCachedMatchText(
@@ -2098,12 +2221,12 @@ public sealed partial class MainWindow : Window
             {
                 LyricsDisplayModes
                     .OriginalOnly =>
-                    "\uE8A5",
+                    "\uE8C3",
                 LyricsDisplayModes
                     .PreferTranslation =>
-                    "\uE8C1",
+                    "\uE909",
                 _ =>
-                    "\uE8D2",
+                    "\uE8AB",
             };
 
         ToolTipService.SetToolTip(
@@ -2273,17 +2396,31 @@ public sealed partial class MainWindow : Window
                 if (translation is null
                     && texts.Length > 1)
                 {
-                    translation =
-                        string.Join(
-                            Environment.NewLine,
-                            texts.Skip(1));
+                    string[] translatedLines =
+                        texts
+                            .Skip(1)
+                            .Where(
+                                static text =>
+                                    !LooksLikeCreditLine(
+                                        text))
+                            .ToArray();
+
+                    if (translatedLines.Length
+                        > 0)
+                    {
+                        translation =
+                            string.Join(
+                                Environment.NewLine,
+                                translatedLines);
+                    }
                 }
 
                 result.Add(
                     new LyricDisplayLine(
                         original,
                         translation,
-                        normalizedMode));
+                        normalizedMode,
+                        group.Key));
             }
 
             return [.. result];
@@ -2326,7 +2463,8 @@ public sealed partial class MainWindow : Window
     {
         if (text.Contains(
                 "://",
-                StringComparison.Ordinal))
+                StringComparison.Ordinal)
+            || LooksLikeCreditLine(text))
         {
             return (text, null);
         }
@@ -2349,6 +2487,87 @@ public sealed partial class MainWindow : Window
             && right.Length > 0
                 ? (left, right)
                 : (text, null);
+    }
+
+    private static bool LooksLikeCreditLine(
+        string text)
+    {
+        int asciiColon =
+            text.IndexOf(':');
+        int fullWidthColon =
+            text.IndexOf('：');
+
+        int colon =
+            asciiColon < 0
+                ? fullWidthColon
+                : fullWidthColon < 0
+                    ? asciiColon
+                    : Math.Min(
+                        asciiColon,
+                        fullWidthColon);
+
+        if (colon <= 0 || colon > 24)
+        {
+            return false;
+        }
+
+        string label =
+            text[..colon]
+                .Trim();
+
+        string[] creditLabels =
+        [
+            "器乐",
+            "演奏",
+            "作词",
+            "作詞",
+            "作曲",
+            "编曲",
+            "編曲",
+            "制作",
+            "制作人",
+            "演唱",
+            "和声",
+            "和聲",
+            "吉他",
+            "贝斯",
+            "貝斯",
+            "鼓",
+            "键盘",
+            "鍵盤",
+            "弦乐",
+            "弦楽",
+            "混音",
+            "母带",
+            "母帶",
+            "录音",
+            "錄音",
+            "监制",
+            "監製",
+            "lyrics",
+            "lyricist",
+            "composer",
+            "arranger",
+            "arrangement",
+            "instrumental",
+            "guitar",
+            "bass",
+            "drums",
+            "keyboard",
+            "producer",
+            "mix",
+            "mixing",
+            "mastering",
+            "recording",
+        ];
+
+        return creditLabels.Any(
+            credit =>
+                string.Equals(
+                    label,
+                    credit,
+                    StringComparison
+                        .OrdinalIgnoreCase));
     }
 
     private async Task
@@ -2601,59 +2820,65 @@ public sealed partial class MainWindow : Window
             MusicLoomSettings settings,
             PlanEntry entry)
     {
-        if (entry.DestinationPath
-            is string destination)
+        if (entry.Metadata is not null)
         {
-            string? directory =
+            string? sourceDirectory =
                 Path.GetDirectoryName(
-                    destination);
+                    entry.SourcePath);
 
             if (!string.IsNullOrWhiteSpace(
-                    directory)
+                    sourceDirectory)
                 && Directory.Exists(
-                    directory))
+                    sourceDirectory))
             {
-                string? existing =
-                    Directory
-                        .EnumerateFiles(
-                            directory,
-                            "Cover.*",
-                            SearchOption.TopDirectoryOnly)
-                        .FirstOrDefault();
+                string? sourceCover =
+                    AlbumArtLocator.Find(
+                        sourceDirectory,
+                        entry.Metadata,
+                        onlyExplicit: false);
 
-                if (existing is not null)
+                if (sourceCover is not null)
                 {
                     return File.ReadAllBytes(
-                        existing);
+                        sourceCover);
                 }
+
+                // A destination Cover.* can be stale (notably from a
+                // previous WMP Folder.jpg cache). Current source state wins.
+                return null;
             }
         }
 
-        if (entry.Metadata is null)
+        if (entry.DestinationPath
+            is not string destination)
         {
             return null;
         }
 
-        string? sourceDirectory =
+        string? directory =
             Path.GetDirectoryName(
-                entry.SourcePath);
+                destination);
 
         if (string.IsNullOrWhiteSpace(
-                sourceDirectory))
+                directory)
+            || !Directory.Exists(
+                directory))
         {
             return null;
         }
 
-        string? cover =
-            AlbumArtLocator.Find(
-                sourceDirectory,
-                entry.Metadata,
-                onlyExplicit: false);
+        string? existing =
+            Directory
+                .EnumerateFiles(
+                    directory,
+                    "Cover.*",
+                    SearchOption.TopDirectoryOnly)
+                .FirstOrDefault();
 
-        return cover is null
+        return existing is null
             ? null
             : File.ReadAllBytes(
-                cover);
+                existing);
     }
 
     private static string? FindExistingSidecar(
@@ -2838,49 +3063,9 @@ public sealed partial class MainWindow : Window
             double scale = 1;
             double translateX = 0;
             double translateY = 0;
-            double targetScale = 1;
-            double targetTranslateX = 0;
-            double targetTranslateY = 0;
             bool dragging = false;
             Windows.Foundation.Point
                 lastPointer = default;
-
-            DispatcherTimer motionTimer =
-                new()
-                {
-                    Interval =
-                        TimeSpan.FromMilliseconds(
-                            16),
-                };
-
-            motionTimer.Tick +=
-                (_, _) =>
-                {
-                    const double Ease = 0.24;
-
-                    scale +=
-                        (targetScale - scale)
-                        * Ease;
-                    translateX +=
-                        (targetTranslateX
-                            - translateX)
-                        * Ease;
-                    translateY +=
-                        (targetTranslateY
-                            - translateY)
-                        * Ease;
-
-                    imageTransform.ScaleX =
-                        scale;
-                    imageTransform.ScaleY =
-                        scale;
-                    imageTransform.TranslateX =
-                        translateX;
-                    imageTransform.TranslateY =
-                        translateY;
-                };
-
-            motionTimer.Start();
 
             PointerEventHandler wheelHandler =
                 (_, args) =>
@@ -2898,10 +3083,10 @@ public sealed partial class MainWindow : Window
                     }
 
                     double oldScale =
-                        targetScale;
+                        scale;
                     double nextScale =
                         Math.Clamp(
-                            targetScale
+                            scale
                             * (delta > 0
                                 ? 1.14
                                 : 1.0 / 1.14),
@@ -2922,16 +3107,25 @@ public sealed partial class MainWindow : Window
                     double factor =
                         nextScale / oldScale;
 
-                    targetTranslateX =
+                    translateX =
                         p.X
-                        - (p.X - targetTranslateX)
+                        - (p.X - translateX)
                         * factor;
-                    targetTranslateY =
+                    translateY =
                         p.Y
-                        - (p.Y - targetTranslateY)
+                        - (p.Y - translateY)
                         * factor;
-                    targetScale =
+                    scale =
                         nextScale;
+
+                    imageTransform.ScaleX =
+                        scale;
+                    imageTransform.ScaleY =
+                        scale;
+                    imageTransform.TranslateX =
+                        translateX;
+                    imageTransform.TranslateY =
+                        translateY;
 
                     args.Handled = true;
                 };
@@ -2971,13 +3165,18 @@ public sealed partial class MainWindow : Window
                                 viewport)
                                 .Position;
 
-                    targetTranslateX +=
+                    translateX +=
                         position.X
                         - lastPointer.X;
-                    targetTranslateY +=
+                    translateY +=
                         position.Y
                         - lastPointer.Y;
                     lastPointer = position;
+
+                    imageTransform.TranslateX =
+                        translateX;
+                    imageTransform.TranslateY =
+                        translateY;
                     args.Handled = true;
                 };
 
@@ -3086,6 +3285,10 @@ public sealed partial class MainWindow : Window
                 XamlRoot =
                     ((FrameworkElement)Content)
                         .XamlRoot,
+                CloseButtonText =
+                    L("Close", "关闭"),
+                DefaultButton =
+                    ContentDialogButton.Close,
             };
 
             Button closeButton = new()
@@ -3267,7 +3470,6 @@ public sealed partial class MainWindow : Window
             await dialog.ShowAsync();
 
             titleTimer?.Stop();
-            motionTimer.Stop();
         }
         catch (Exception exception)
         {
@@ -3297,15 +3499,14 @@ public sealed partial class MainWindow : Window
             Header =
                 L("Artist", "艺术家"),
             Text =
-                item.Artist
-                    .Contains(
-                        L(
-                            "Unknown artist",
-                            "未知艺术家"),
-                        StringComparison
-                            .OrdinalIgnoreCase)
-                        ? string.Empty
-                        : item.Artist,
+                item.Artist.Contains(
+                    L(
+                        "Unknown artist",
+                        "未知艺术家"),
+                    StringComparison
+                        .OrdinalIgnoreCase)
+                    ? string.Empty
+                    : item.Artist,
         };
 
         TextBox titleBox = new()
@@ -3322,15 +3523,14 @@ public sealed partial class MainWindow : Window
                     "Album (optional)",
                     "专辑（可选）"),
             Text =
-                item.Album
-                    .Contains(
-                        L(
-                            "Unknown album",
-                            "未知专辑"),
-                        StringComparison
-                            .OrdinalIgnoreCase)
-                        ? string.Empty
-                        : item.Album,
+                item.Album.Contains(
+                    L(
+                        "Unknown album",
+                        "未知专辑"),
+                    StringComparison
+                        .OrdinalIgnoreCase)
+                    ? string.Empty
+                    : item.Album,
         };
 
         Button fingerprintButton = new()
@@ -3339,6 +3539,8 @@ public sealed partial class MainWindow : Window
                 L(
                     "Recognize from audio",
                     "通过音频指纹识别"),
+            HorizontalAlignment =
+                HorizontalAlignment.Stretch,
         };
 
         Button searchButton = new()
@@ -3347,6 +3549,8 @@ public sealed partial class MainWindow : Window
                 L(
                     "Search by metadata",
                     "按元数据搜索"),
+            HorizontalAlignment =
+                HorizontalAlignment.Stretch,
             Style =
                 (Style)Application.Current
                     .Resources[
@@ -3366,32 +3570,197 @@ public sealed partial class MainWindow : Window
 
         ListView results = new()
         {
-            MinHeight = 170,
-            MaxHeight = 250,
+            SelectionMode =
+                ListViewSelectionMode.Single,
+            HorizontalContentAlignment =
+                HorizontalAlignment.Stretch,
         };
 
-        TextBlock lyricsPreview = new()
+        ListView lyricsPreview = new()
+        {
+            SelectionMode =
+                ListViewSelectionMode.Single,
+            IsItemClickEnabled = false,
+            HorizontalContentAlignment =
+                HorizontalAlignment.Stretch,
+            ItemContainerStyle =
+                LyricsList.ItemContainerStyle,
+            ItemTemplate =
+                LyricsList.ItemTemplate,
+        };
+        lyricsPreview.ItemsSource =
+            new[]
+            {
+                new LyricDisplayLine(
+                    L(
+                        "Select a result to preview lyrics.",
+                        "选择结果后可预览歌词。"),
+                    null,
+                    LyricsDisplayModes
+                        .OriginalOnly),
+            };
+
+        StackPanel searchPanel = new()
+        {
+            Spacing = 10,
+        };
+        searchPanel.Children.Add(
+            new TextBlock
+            {
+                Text =
+                    L("Search", "搜索信息"),
+                FontSize = 18,
+                FontWeight =
+                    new Windows.UI.Text.FontWeight
+                    {
+                        Weight = 600,
+                    },
+            });
+        searchPanel.Children.Add(
+            artistBox);
+        searchPanel.Children.Add(
+            titleBox);
+        searchPanel.Children.Add(
+            albumBox);
+        searchPanel.Children.Add(
+            fingerprintButton);
+        searchPanel.Children.Add(
+            searchButton);
+        searchPanel.Children.Add(
+            status);
+
+        Grid candidatePanel = new();
+        candidatePanel.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    GridLength.Auto,
+            });
+        candidatePanel.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    new GridLength(
+                        1,
+                        GridUnitType.Star),
+            });
+        TextBlock candidatesHeading = new()
         {
             Text =
                 L(
-                    "Select a result to preview lyrics.",
-                    "选择结果后可预览歌词。"),
-            TextWrapping =
-                TextWrapping.Wrap,
-            IsTextSelectionEnabled = true,
+                    "Candidates",
+                    "候选项"),
+            FontSize = 18,
+            FontWeight =
+                new Windows.UI.Text.FontWeight
+                {
+                    Weight = 600,
+                },
+            Margin =
+                new Thickness(
+                    0,
+                    0,
+                    0,
+                    8),
         };
+        candidatePanel.Children.Add(
+            candidatesHeading);
+        Grid.SetRow(
+            results,
+            1);
+        candidatePanel.Children.Add(
+            results);
 
-        ScrollViewer lyricsScroll = new()
+        Grid lyricsPanel = new();
+        lyricsPanel.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    GridLength.Auto,
+            });
+        lyricsPanel.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    new GridLength(
+                        1,
+                        GridUnitType.Star),
+            });
+        TextBlock lyricsHeading = new()
         {
-            MaxHeight = 190,
-            Content = lyricsPreview,
+            Text =
+                L(
+                    "Lyrics",
+                    "歌词"),
+            FontSize = 18,
+            FontWeight =
+                new Windows.UI.Text.FontWeight
+                {
+                    Weight = 600,
+                },
+            Margin =
+                new Thickness(
+                    0,
+                    0,
+                    0,
+                    8),
         };
+        lyricsPanel.Children.Add(
+            lyricsHeading);
+        Grid.SetRow(
+            lyricsPreview,
+            1);
+        lyricsPanel.Children.Add(
+            lyricsPreview);
 
-        Grid buttons = new()
+        Border WrapColumn(
+            UIElement child)
         {
-            ColumnSpacing = 8,
+            Border border = new()
+            {
+                Padding =
+                    new Thickness(12),
+                CornerRadius =
+                    new CornerRadius(8),
+                BorderThickness =
+                    new Thickness(1),
+                BorderBrush =
+                    Application.Current
+                        .Resources[
+                            "CardStrokeColorDefaultBrush"]
+                        as Microsoft.UI.Xaml.Media
+                            .Brush,
+                Background =
+                    Application.Current
+                        .Resources[
+                            "CardBackgroundFillColorDefaultBrush"]
+                        as Microsoft.UI.Xaml.Media
+                            .Brush,
+                Child = child,
+            };
+
+            return border;
+        }
+
+        Grid root = new()
+        {
+            Width = 1120,
+            Height = 560,
+            ColumnSpacing = 12,
         };
-        buttons.ColumnDefinitions.Add(
+        root.ColumnDefinitions.Add(
+            new ColumnDefinition
+            {
+                Width =
+                    new GridLength(280),
+            });
+        root.ColumnDefinitions.Add(
+            new ColumnDefinition
+            {
+                Width =
+                    new GridLength(420),
+            });
+        root.ColumnDefinitions.Add(
             new ColumnDefinition
             {
                 Width =
@@ -3399,39 +3768,26 @@ public sealed partial class MainWindow : Window
                         1,
                         GridUnitType.Star),
             });
-        buttons.ColumnDefinitions.Add(
-            new ColumnDefinition
-            {
-                Width =
-                    GridLength.Auto,
-            });
-        buttons.Children.Add(
-            fingerprintButton);
-        Grid.SetColumn(
-            searchButton,
-            1);
-        buttons.Children.Add(
-            searchButton);
 
-        StackPanel panel = new()
-        {
-            Spacing = 10,
-            MaxWidth = 680,
-        };
-        panel.Children.Add(
-            artistBox);
-        panel.Children.Add(
-            titleBox);
-        panel.Children.Add(
-            albumBox);
-        panel.Children.Add(
-            buttons);
-        panel.Children.Add(
-            status);
-        panel.Children.Add(
-            results);
-        panel.Children.Add(
-            lyricsScroll);
+        Border searchColumn =
+            WrapColumn(searchPanel);
+        Border candidateColumn =
+            WrapColumn(candidatePanel);
+        Border lyricColumn =
+            WrapColumn(lyricsPanel);
+
+        root.Children.Add(
+            searchColumn);
+        Grid.SetColumn(
+            candidateColumn,
+            1);
+        root.Children.Add(
+            candidateColumn);
+        Grid.SetColumn(
+            lyricColumn,
+            2);
+        root.Children.Add(
+            lyricColumn);
 
         ContentDialog dialog = new()
         {
@@ -3451,8 +3807,201 @@ public sealed partial class MainWindow : Window
             DefaultButton =
                 ContentDialogButton.Primary,
             IsPrimaryButtonEnabled = false,
-            Content = panel,
+            MinWidth = 1180,
+            MaxWidth = 1180,
+            Content = root,
         };
+
+        NeteaseMatchCandidate?
+            GetSelectedCandidate()
+        {
+            return results.SelectedItem
+                is ListViewItem row
+                && row.Tag
+                    is NeteaseMatchCandidate
+                        candidate
+                    ? candidate
+                    : null;
+        }
+
+        ListViewItem CreateCandidateRow(
+            NeteaseMatchCandidate
+                candidate)
+        {
+            BitmapImage? bitmap = null;
+
+            if (!string.IsNullOrWhiteSpace(
+                    candidate.CoverUrl)
+                && Uri.TryCreate(
+                    candidate.CoverUrl,
+                    UriKind.Absolute,
+                    out Uri? coverUri))
+            {
+                bitmap = new BitmapImage
+                {
+                    DecodePixelWidth = 96,
+                    UriSource = coverUri,
+                };
+            }
+
+            Grid row = new()
+            {
+                MinHeight = 64,
+                Padding =
+                    new Thickness(
+                        8,
+                        7,
+                        8,
+                        7),
+                ColumnSpacing = 10,
+            };
+            row.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        new GridLength(48),
+                });
+            row.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        new GridLength(
+                            1,
+                            GridUnitType.Star),
+                });
+            row.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width =
+                        new GridLength(92),
+                });
+
+            Border cover = new()
+            {
+                Width = 48,
+                Height = 48,
+                CornerRadius =
+                    new CornerRadius(6),
+                Background =
+                    Application.Current
+                        .Resources[
+                            "CardBackgroundFillColorSecondaryBrush"]
+                        as Microsoft.UI.Xaml.Media
+                            .Brush,
+                Child =
+                    new Image
+                    {
+                        Source = bitmap,
+                        Stretch =
+                            Microsoft.UI.Xaml.Media
+                                .Stretch.UniformToFill,
+                    },
+            };
+            row.Children.Add(cover);
+
+            StackPanel text = new()
+            {
+                Spacing = 2,
+                VerticalAlignment =
+                    VerticalAlignment.Center,
+            };
+            text.Children.Add(
+                new TextBlock
+                {
+                    Text = candidate.Name,
+                    FontWeight =
+                        new Windows.UI.Text
+                            .FontWeight
+                        {
+                            Weight = 600,
+                        },
+                    TextTrimming =
+                        TextTrimming
+                            .CharacterEllipsis,
+                });
+            text.Children.Add(
+                new TextBlock
+                {
+                    Text =
+                        string.IsNullOrWhiteSpace(
+                            candidate.Album)
+                            ? candidate.Artist
+                            : $"{candidate.Artist} · {candidate.Album}",
+                    FontSize = 12,
+                    Foreground =
+                        Application.Current
+                            .Resources[
+                                "TextFillColorSecondaryBrush"]
+                            as Microsoft.UI.Xaml.Media
+                                .Brush,
+                    TextTrimming =
+                        TextTrimming
+                            .CharacterEllipsis,
+                });
+            Grid.SetColumn(
+                text,
+                1);
+            row.Children.Add(text);
+
+            StackPanel metadata = new()
+            {
+                Spacing = 2,
+                HorizontalAlignment =
+                    HorizontalAlignment.Right,
+                VerticalAlignment =
+                    VerticalAlignment.Center,
+            };
+            metadata.Children.Add(
+                new TextBlock
+                {
+                    Text =
+                        $"#{candidate.TrackId}",
+                    FontSize = 11,
+                    Foreground =
+                        Application.Current
+                            .Resources[
+                                "TextFillColorSecondaryBrush"]
+                            as Microsoft.UI.Xaml.Media
+                                .Brush,
+                    HorizontalAlignment =
+                        HorizontalAlignment.Right,
+                });
+            metadata.Children.Add(
+                new HyperlinkButton
+                {
+                    Content =
+                        L(
+                            "NetEase",
+                            "网易云"),
+                    Padding =
+                        new Thickness(0),
+                    HorizontalAlignment =
+                        HorizontalAlignment.Right,
+                    NavigateUri =
+                        new Uri(
+                            $"https://music.163.com/#/song?id={candidate.TrackId}"),
+                });
+            Grid.SetColumn(
+                metadata,
+                2);
+            row.Children.Add(metadata);
+
+            return new ListViewItem
+            {
+                Tag = candidate,
+                Content = row,
+                Padding =
+                    new Thickness(0),
+                Margin =
+                    new Thickness(
+                        0,
+                        1,
+                        0,
+                        1),
+                HorizontalContentAlignment =
+                    HorizontalAlignment.Stretch,
+            };
+        }
 
         async Task SetResultsAsync(
             Task<IReadOnlyList<
@@ -3467,6 +4016,9 @@ public sealed partial class MainWindow : Window
                 L(
                     "Searching…",
                     "正在搜索……");
+            dialog.IsPrimaryButtonEnabled =
+                false;
+            results.Items.Clear();
 
             try
             {
@@ -3475,8 +4027,13 @@ public sealed partial class MainWindow : Window
                     candidates =
                         await request;
 
-                results.ItemsSource =
-                    candidates;
+                foreach (NeteaseMatchCandidate
+                    candidate in candidates)
+                {
+                    results.Items.Add(
+                        CreateCandidateRow(
+                            candidate));
+                }
 
                 status.Text =
                     candidates.Count == 0
@@ -3547,10 +4104,11 @@ public sealed partial class MainWindow : Window
         results.SelectionChanged +=
             async (_, _) =>
             {
-                if (results.SelectedItem
-                    is not
-                        NeteaseMatchCandidate
-                            candidate)
+                NeteaseMatchCandidate?
+                    candidate =
+                        GetSelectedCandidate();
+
+                if (candidate is null)
                 {
                     dialog.IsPrimaryButtonEnabled =
                         false;
@@ -3559,10 +4117,17 @@ public sealed partial class MainWindow : Window
 
                 dialog.IsPrimaryButtonEnabled =
                     true;
-                lyricsPreview.Text =
-                    L(
-                        "Loading lyrics…",
-                        "正在加载歌词……");
+                lyricsPreview.ItemsSource =
+                    new[]
+                    {
+                        new LyricDisplayLine(
+                            L(
+                                "Loading lyrics…",
+                                "正在加载歌词……"),
+                            null,
+                            LyricsDisplayModes
+                                .OriginalOnly),
+                    };
 
                 try
                 {
@@ -3576,38 +4141,49 @@ public sealed partial class MainWindow : Window
                     LyricDisplayLine[] lines =
                         BuildLyricLines(
                             lyrics?.ToString(),
-                            LyricsDisplayModes.PreferOriginal);
+                            LyricsDisplayModes
+                                .PreferOriginal);
 
-                    lyricsPreview.Text =
+                    lyricsPreview.ItemsSource =
                         lines.Length == 0
-                            ? L(
-                                "No lyrics for this result.",
-                                "这个结果没有歌词。")
-                            : string.Join(
-                                Environment.NewLine,
-                                lines.Select(
-                                    static line =>
-                                        string.IsNullOrWhiteSpace(
-                                            line.Translation)
-                                            ? line.Original
-                                            : $"{line.Original}\n{line.Translation}"));
+                            ? new[]
+                            {
+                                new LyricDisplayLine(
+                                    L(
+                                        "No lyrics for this result.",
+                                        "这个结果没有歌词。"),
+                                    null,
+                                    LyricsDisplayModes
+                                        .OriginalOnly),
+                            }
+                            : lines;
                 }
                 catch (Exception exception)
                 {
-                    lyricsPreview.Text =
-                        UserFacingErrors.Describe(
-                            exception);
+                    lyricsPreview.ItemsSource =
+                        new[]
+                        {
+                            new LyricDisplayLine(
+                                UserFacingErrors
+                                    .Describe(
+                                        exception),
+                                null,
+                                LyricsDisplayModes
+                                    .OriginalOnly),
+                        };
                 }
             };
 
         ContentDialogResult result =
             await dialog.ShowAsync();
 
+        NeteaseMatchCandidate?
+            selected =
+                GetSelectedCandidate();
+
         if (result
                 == ContentDialogResult.Primary
-            && results.SelectedItem
-                is NeteaseMatchCandidate
-                    selected)
+            && selected is not null)
         {
             await SaveManualMatchAsync(
                 item,
@@ -3918,16 +4494,6 @@ public sealed partial class MainWindow : Window
         BuildPlaylists(
             MusicLoomSettings settings)
     {
-        string root =
-            settings.Path
-                .SourcePlaylistDirectory;
-
-        if (string.IsNullOrWhiteSpace(root)
-            || !Directory.Exists(root))
-        {
-            return [];
-        }
-
         Dictionary<string, LibraryDisplayItem>
             trackLookup =
                 _allLibraryItems.ToDictionary(
@@ -3937,113 +4503,159 @@ public sealed partial class MainWindow : Window
                     StringComparer
                         .OrdinalIgnoreCase);
 
+        HashSet<LibraryDisplayItem>
+            categorized = [];
         List<PlaylistDisplayItem> result = [];
 
-        foreach (string playlistPath
-            in Directory.EnumerateFiles(
-                root,
-                "*.m3u",
-                SearchOption.TopDirectoryOnly)
-                .Order(
-                    StringComparer
-                        .CurrentCultureIgnoreCase))
+        string root =
+            settings.Path
+                .SourcePlaylistDirectory;
+
+        if (!string.IsNullOrWhiteSpace(root)
+            && Directory.Exists(root))
         {
-            IReadOnlyList<string> paths =
-                PlaylistMapper.ParseM3u(
-                    File.ReadAllLines(
-                        playlistPath));
-
-            List<LibraryDisplayItem>
-                tracks = [];
-
-            string playlistDirectory =
-                Path.GetDirectoryName(
-                    playlistPath)
-                ?? root;
-
-            foreach (string rawPath in paths)
+            foreach (string playlistPath
+                in Directory.EnumerateFiles(
+                    root,
+                    "*.m3u",
+                    SearchOption.TopDirectoryOnly)
+                    .Order(
+                        StringComparer
+                            .CurrentCultureIgnoreCase))
             {
-                string normalized;
-                try
-                {
-                    normalized =
-                        Path.GetFullPath(
-                            Path.IsPathRooted(
-                                rawPath)
-                                ? rawPath
-                                : Path.Combine(
-                                    playlistDirectory,
-                                    rawPath));
-                }
-                catch
-                {
-                    normalized = rawPath;
-                }
+                IReadOnlyList<string> paths =
+                    PlaylistMapper.ParseM3u(
+                        File.ReadAllLines(
+                            playlistPath));
 
-                if (trackLookup.TryGetValue(
-                        normalized,
-                        out LibraryDisplayItem? item))
-                {
-                    tracks.Add(item);
-                }
-            }
+                List<LibraryDisplayItem>
+                    tracks = [];
 
-            string destinationPath =
-                Path.Combine(
-                    settings.Path
-                        .DestinationDirectory,
-                    Path.GetFileNameWithoutExtension(
+                string playlistDirectory =
+                    Path.GetDirectoryName(
                         playlistPath)
-                    + ".txt");
+                    ?? root;
 
-            string playlistBase =
-                settings.Path
-                    .DestinationPlaylistBase
-                    .Replace('\\', '/')
-                    .TrimEnd('/');
-
-            string[] expectedLines =
-                tracks
-                    .Where(static item =>
-                        item.Entry
-                            .DestinationPath
-                        is not null)
-                    .Select(item =>
+                foreach (string rawPath in paths)
+                {
+                    string normalized;
+                    try
                     {
-                        string relative =
-                            Path.GetRelativePath(
-                                settings.Path
-                                    .DestinationDirectory,
-                                item.Entry
-                                    .DestinationPath!)
-                                .Replace('\\', '/');
+                        normalized =
+                            Path.GetFullPath(
+                                Path.IsPathRooted(
+                                    rawPath)
+                                    ? rawPath
+                                    : Path.Combine(
+                                        playlistDirectory,
+                                        rawPath));
+                    }
+                    catch
+                    {
+                        normalized = rawPath;
+                    }
 
-                        return $"{playlistBase}/{relative}";
-                    })
-                    .ToArray();
+                    if (trackLookup.TryGetValue(
+                            normalized,
+                            out LibraryDisplayItem?
+                                displayItem))
+                    {
+                        tracks.Add(
+                            displayItem);
+                        categorized.Add(
+                            displayItem);
+                    }
+                }
 
-            string expected =
-                string.Join(
-                    "\n",
-                    expectedLines);
+                string destinationPath =
+                    Path.Combine(
+                        settings.Path
+                            .DestinationDirectory,
+                        Path.GetFileNameWithoutExtension(
+                            playlistPath)
+                        + ".txt");
 
-            bool isReady =
-                File.Exists(destinationPath)
-                && string.Equals(
-                    File.ReadAllText(
-                        destinationPath),
-                    expected,
-                    StringComparison.Ordinal);
+                string playlistBase =
+                    settings.Path
+                        .DestinationPlaylistBase
+                        .Replace('\\', '/')
+                        .TrimEnd('/');
 
-            result.Add(
-                new PlaylistDisplayItem(
-                    Path.GetFileNameWithoutExtension(
-                        playlistPath),
-                    playlistPath,
-                    destinationPath,
-                    tracks,
-                    isReady));
+                string[] expectedLines =
+                    tracks
+                        .Where(static displayItem =>
+                            displayItem.Entry
+                                .DestinationPath
+                            is not null)
+                        .Select(displayItem =>
+                        {
+                            string relative =
+                                Path.GetRelativePath(
+                                    settings.Path
+                                        .DestinationDirectory,
+                                    displayItem.Entry
+                                        .DestinationPath!)
+                                    .Replace(
+                                        '\\',
+                                        '/');
+
+                            return
+                                $"{playlistBase}/{relative}";
+                        })
+                        .ToArray();
+
+                string expected =
+                    string.Join(
+                        "\n",
+                        expectedLines);
+
+                bool isReady =
+                    File.Exists(
+                        destinationPath)
+                    && string.Equals(
+                        File.ReadAllText(
+                            destinationPath),
+                        expected,
+                        StringComparison.Ordinal);
+
+                result.Add(
+                    new PlaylistDisplayItem(
+                        Path.GetFileNameWithoutExtension(
+                            playlistPath),
+                        playlistPath,
+                        destinationPath,
+                        tracks,
+                        isReady));
+            }
         }
+
+        LibraryDisplayItem[] uncategorized =
+            _allLibraryItems
+                .Where(item =>
+                    !categorized.Contains(item))
+                .OrderBy(
+                    static item =>
+                        item.Artist,
+                    StringComparer
+                        .CurrentCultureIgnoreCase)
+                .ThenBy(
+                    static item =>
+                        item.Title,
+                    StringComparer
+                        .CurrentCultureIgnoreCase)
+                .ToArray();
+
+        result.Insert(
+            0,
+            new PlaylistDisplayItem(
+                L(
+                    "Uncategorized",
+                    "未分类"),
+                string.Empty,
+                string.Empty,
+                uncategorized,
+                IsReady: true,
+                IsVirtual: true));
 
         return [.. result];
     }
@@ -4091,13 +4703,17 @@ public sealed partial class MainWindow : Window
         PlaylistTitleText.Text =
             playlist.Name;
         PlaylistMetaText.Text =
-            playlist.IsReady
+            playlist.IsVirtual
                 ? L(
-                    $"{playlist.TrackCount:N0} tracks · Ready",
-                    $"{playlist.TrackCount:N0} 首歌曲 · 已就绪")
-                : L(
-                    $"{playlist.TrackCount:N0} tracks · Pending sync",
-                    $"{playlist.TrackCount:N0} 首歌曲 · 待同步");
+                    $"{playlist.TrackCount:N0} tracks · Not in any playlist",
+                    $"{playlist.TrackCount:N0} 首歌曲 · 不属于任何音乐列表")
+                : playlist.IsReady
+                    ? L(
+                        $"{playlist.TrackCount:N0} tracks · Ready",
+                        $"{playlist.TrackCount:N0} 首歌曲 · 已就绪")
+                    : L(
+                        $"{playlist.TrackCount:N0} tracks · Pending sync",
+                        $"{playlist.TrackCount:N0} 首歌曲 · 待同步");
 
         ApplyPlaylistTrackFilter();
     }
@@ -4129,7 +4745,7 @@ public sealed partial class MainWindow : Window
             (PlaylistSortBox.SelectedItem
                 as ComboBoxItem)
                 ?.Tag?.ToString()
-            ?? "title";
+            ?? "artist";
 
         IEnumerable<LibraryDisplayItem>
             items = playlist.Tracks;
@@ -4485,13 +5101,16 @@ public sealed partial class MainWindow : Window
     private MusicLoomSettings
         BuildSettingsFromForm()
     {
-        double refreshHours =
+        double refreshSeconds =
             double.IsFinite(
                 LyricsRefreshHoursBox.Value)
             && LyricsRefreshHoursBox.Value
                 > 0
                 ? LyricsRefreshHoursBox.Value
-                : 24;
+                : 86_400;
+
+        double refreshHours =
+            refreshSeconds / 3600.0;
 
         string language =
             (LanguageBox.SelectedItem
@@ -4623,7 +5242,8 @@ public sealed partial class MainWindow : Window
                         ? settings.Organizer
                             .Lyrics
                             .RefreshIntervalHours
-                        : 24;
+                            * 3600.0
+                        : 86_400;
 
             string storage =
                 LyricsStorageModes.Normalize(
@@ -4764,6 +5384,185 @@ public sealed partial class MainWindow : Window
         RoutedEventArgs e) =>
         NavigateTo("settings");
 
+    private void RefreshDatabaseSize()
+    {
+        DatabaseSizeText.Text =
+            FormatBytes(
+                LibraryDatabase
+                    .GetStorageSizeBytes(
+                        DatabasePath));
+    }
+
+    private async void ClearDatabaseButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        ContentDialog dialog = new()
+        {
+            XamlRoot =
+                ((FrameworkElement)Content)
+                    .XamlRoot,
+            Title =
+                L(
+                    "Clear local database?",
+                    "清空本地数据库？"),
+            Content =
+                L(
+                    "This removes MusicLoom's cached library index. Your source music, settings and sync state are not deleted.",
+                    "这会删除 MusicLoom 缓存的音乐库索引，不会删除源音乐、设置或同步状态。"),
+            PrimaryButtonText =
+                L("Clear", "清空"),
+            CloseButtonText =
+                L("Cancel", "取消"),
+            DefaultButton =
+                ContentDialogButton.Close,
+        };
+
+        if (await dialog.ShowAsync()
+            != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        try
+        {
+            await LibraryDatabase.ClearAsync(
+                DatabasePath);
+
+            if (File.Exists(
+                    LegacySnapshotPath))
+            {
+                File.Delete(
+                    LegacySnapshotPath);
+            }
+
+            _plan = null;
+            _allLibraryItems.Clear();
+            _playlists.Clear();
+            LibraryList.ItemsSource = null;
+            PlaylistsList.ItemsSource = null;
+            PlaylistTracksList.ItemsSource = null;
+            SyncButton.IsEnabled = false;
+            UpdateLibraryEmptyState();
+            RefreshDatabaseSize();
+
+            ShowInfo(
+                InfoBarSeverity.Success,
+                L(
+                    "Database cleared",
+                    "数据库已清空"),
+                L(
+                    "Refresh the library to rebuild the local index.",
+                    "刷新音乐库即可重新建立本地索引。"));
+        }
+        catch (Exception exception)
+        {
+            HandleUiException(
+                L(
+                    "Could not clear the local database.",
+                    "无法清空本地数据库。"),
+                exception);
+        }
+    }
+
+    private void RefreshDiagnosticsConsole()
+    {
+        try
+        {
+            string text =
+                File.Exists(
+                    AppDiagnostics.LogPath)
+                    ? File.ReadAllText(
+                        AppDiagnostics.LogPath)
+                    : string.Empty;
+
+            const int MaxCharacters =
+                120_000;
+
+            if (text.Length
+                > MaxCharacters)
+            {
+                text =
+                    text[^MaxCharacters..];
+
+                int newline =
+                    text.IndexOf(
+                        Environment.NewLine,
+                        StringComparison.Ordinal);
+                if (newline >= 0)
+                {
+                    text =
+                        text[
+                            (newline
+                                + Environment
+                                    .NewLine.Length)..];
+                }
+            }
+
+            DiagnosticsConsole.Text =
+                text;
+            DiagnosticsConsole.SelectionStart =
+                DiagnosticsConsole.Text.Length;
+        }
+        catch (Exception exception)
+        {
+            DiagnosticsConsole.Text =
+                UserFacingErrors.Describe(
+                    exception);
+        }
+    }
+
+    private void AppDiagnostics_LineWritten(
+        string line)
+    {
+        DispatcherQueue.TryEnqueue(
+            () =>
+                AppendDiagnosticLine(
+                    line));
+    }
+
+    private void AppendDiagnosticLine(
+        string line)
+    {
+        const int MaxCharacters =
+            120_000;
+
+        string current =
+            DiagnosticsConsole.Text;
+
+        string next =
+            string.IsNullOrEmpty(current)
+                ? line
+                : current
+                    + Environment.NewLine
+                    + line;
+
+        if (next.Length
+            > MaxCharacters)
+        {
+            next =
+                next[^MaxCharacters..];
+
+            int newline =
+                next.IndexOf(
+                    Environment.NewLine,
+                    StringComparison.Ordinal);
+            if (newline >= 0)
+            {
+                next =
+                    next[
+                        (newline
+                            + Environment
+                                .NewLine.Length)..];
+            }
+        }
+
+        DiagnosticsConsole.Text =
+            next;
+        DiagnosticsConsole.SelectionStart =
+            next.Length;
+    }
+
     private void OpenLogFolderButton_Click(
         object sender,
         RoutedEventArgs e)
@@ -4805,6 +5604,8 @@ public sealed partial class MainWindow : Window
         RoutedEventArgs e)
     {
         AppDiagnostics.ClearLog();
+        DiagnosticsConsole.Text =
+            string.Empty;
 
         ShowInfo(
             InfoBarSeverity.Success,
@@ -5226,6 +6027,12 @@ public sealed partial class MainWindow : Window
             L(
                 "NetEase match",
                 "网易云匹配");
+        SyncTab.Header =
+            L("Sync", "同步");
+        TrackSyncLogHeadingText.Text =
+            L(
+                "Latest sync log",
+                "最新同步日志");
         PropertiesTab.Header =
             L(
                 "Properties",
@@ -5343,6 +6150,14 @@ public sealed partial class MainWindow : Window
             L(
                 "Playlist path on phone",
                 "手机上的播放列表路径");
+        DatabaseSettingTitle.Text =
+            L(
+                "Local database",
+                "本地数据库");
+        ClearDatabaseButton.Content =
+            L(
+                "Clear database",
+                "完全清空数据库");
 
         FetchLyricsSettingTitle.Text =
             L(
@@ -5378,12 +6193,12 @@ public sealed partial class MainWindow : Window
                 "独立 .lrc 文件");
         LyricsCacheSettingTitle.Text =
             L(
-                "Lyrics cache lifetime",
-                "歌词缓存有效期");
+                "Lyrics cache lifetime (seconds)",
+                "歌词缓存有效期（秒）");
         LyricsCacheSettingDescription.Text =
             L(
-                "How long a result stays fresh before MusicLoom checks again.",
-                "在 MusicLoom 再次检查前，结果保持有效的时间。");
+                "How many seconds a result stays fresh before MusicLoom checks again.",
+                "结果在 MusicLoom 再次检查前保持有效的秒数。");
 
         ThemeSettingTitle.Text =
             L(
@@ -5510,6 +6325,10 @@ public sealed partial class MainWindow : Window
             L(
                 "Diagnostic log",
                 "诊断日志");
+        DiagnosticsConsoleTitle.Text =
+            L(
+                "Live diagnostic console",
+                "实时诊断控制台");
         OpenLogFileButton.Content =
             L(
                 "Open log",
@@ -5526,6 +6345,8 @@ public sealed partial class MainWindow : Window
             AppDiagnostics.LogPath;
 
         RenderLyrics();
+        RefreshTrackSyncTab(
+            _selectedLibraryItem);
         ApplyLibraryFilter();
         ApplyPlaylistTrackFilter();
     }
@@ -5622,6 +6443,12 @@ public sealed partial class MainWindow : Window
 
         return $"{value:0.##} {suffixes[index]}";
     }
+
+    private sealed record TrackSyncViewState(
+        string Status,
+        string Detail,
+        DateTimeOffset UpdatedAt,
+        bool IsError);
 
     private sealed record TrackDetailPayload(
         byte[]? Artwork,
