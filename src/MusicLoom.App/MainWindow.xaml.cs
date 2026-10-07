@@ -100,6 +100,7 @@ public sealed partial class MainWindow : Window
     private LibraryDisplayItem[] _playbackQueue = [];
     private int _playbackQueueIndex = -1;
     private bool _updatingPlayerProgress;
+    private bool _suppressPlaybackLyricFollow;
     private LyricDisplayLine? _activePlaybackLyric;
     private readonly HashSet<LyricDisplayLine>
         _matchDialogLyricLines = [];
@@ -238,7 +239,8 @@ public sealed partial class MainWindow : Window
 
     private async Task PlayLibraryItemAsync(
         LibraryDisplayItem item,
-        bool rebuildQueue = true)
+        bool rebuildQueue = true,
+        TimeSpan? startPosition = null)
     {
         try
         {
@@ -259,7 +261,16 @@ public sealed partial class MainWindow : Window
 
             _playingLibraryItem = item;
             _playingPreviewCandidate = null;
+
+            if (_activePlaybackLyric
+                is not null)
+            {
+                _activePlaybackLyric.IsActive =
+                    false;
+            }
             _activePlaybackLyric = null;
+            _suppressPlaybackLyricFollow =
+                startPosition.HasValue;
 
             _mediaPlayer.Source =
                 MediaSource.CreateFromStorageFile(
@@ -280,11 +291,27 @@ public sealed partial class MainWindow : Window
                     : Visibility.Collapsed;
             ConfigureAuxiliaryLongText();
 
+            if (startPosition
+                is TimeSpan initialPosition)
+            {
+                await SeekPlayerWhenReadyAsync(
+                    initialPosition);
+            }
+
             _mediaPlayer.Play();
+            _suppressPlaybackLyricFollow =
+                false;
             UpdatePlayerVisualState();
+
+            if (startPosition.HasValue)
+            {
+                UpdatePlaybackLyrics();
+            }
         }
         catch (Exception exception)
         {
+            _suppressPlaybackLyricFollow =
+                false;
             HandleUiException(
                 L(
                     "Could not play the track.",
@@ -293,15 +320,25 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private Task PlayNetEasePreviewAsync(
-        NeteaseMatchCandidate candidate)
+    private async Task PlayNetEasePreviewAsync(
+        NeteaseMatchCandidate candidate,
+        TimeSpan? startPosition = null)
     {
         _playingLibraryItem = null;
         _playingPreviewCandidate =
             candidate;
         _playbackQueue = [];
         _playbackQueueIndex = -1;
+
+        if (_activePlaybackLyric
+            is not null)
+        {
+            _activePlaybackLyric.IsActive =
+                false;
+        }
         _activePlaybackLyric = null;
+        _suppressPlaybackLyricFollow =
+            startPosition.HasValue;
 
         _mediaPlayer.Source =
             MediaSource.CreateFromUri(
@@ -340,10 +377,23 @@ public sealed partial class MainWindow : Window
         }
 
         ConfigureAuxiliaryLongText();
+
+        if (startPosition
+            is TimeSpan initialPosition)
+        {
+            await SeekPlayerWhenReadyAsync(
+                initialPosition);
+        }
+
         _mediaPlayer.Play();
+        _suppressPlaybackLyricFollow =
+            false;
         UpdatePlayerVisualState();
 
-        return Task.CompletedTask;
+        if (startPosition.HasValue)
+        {
+            UpdatePlaybackLyrics();
+        }
     }
 
     private LibraryDisplayItem[]
@@ -535,6 +585,11 @@ public sealed partial class MainWindow : Window
 
     private void UpdatePlaybackLyrics()
     {
+        if (_suppressPlaybackLyricFollow)
+        {
+            return;
+        }
+
         IEnumerable<LyricDisplayLine> source;
         ListView targetList;
 
@@ -3523,6 +3578,9 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        bool positionAlreadyApplied =
+            false;
+
         if (_matchDialogLyricLines.Contains(
                 line)
             && _activeMatchDialogCandidate
@@ -3534,7 +3592,10 @@ public sealed partial class MainWindow : Window
                 != candidate.TrackId)
             {
                 await PlayNetEasePreviewAsync(
-                    candidate);
+                    candidate,
+                    timestamp);
+                positionAlreadyApplied =
+                    true;
             }
         }
         else if (_selectedLibraryItem
@@ -3545,13 +3606,31 @@ public sealed partial class MainWindow : Window
                     _playingLibraryItem))
             {
                 await PlayLibraryItemAsync(
-                    selected);
+                    selected,
+                    startPosition:
+                        timestamp);
+                positionAlreadyApplied =
+                    true;
             }
         }
 
-        await SeekPlayerWhenReadyAsync(
-            timestamp);
-        _mediaPlayer.Play();
+        if (!positionAlreadyApplied)
+        {
+            _suppressPlaybackLyricFollow =
+                true;
+            try
+            {
+                await SeekPlayerWhenReadyAsync(
+                    timestamp);
+            }
+            finally
+            {
+                _suppressPlaybackLyricFollow =
+                    false;
+            }
+
+            _mediaPlayer.Play();
+        }
 
         if (_activePlaybackLyric
             is not null)
@@ -3573,7 +3652,7 @@ public sealed partial class MainWindow : Window
         }
 
         for (int attempt = 0;
-            attempt < 30;
+            attempt < 100;
             attempt++)
         {
             TimeSpan duration =
