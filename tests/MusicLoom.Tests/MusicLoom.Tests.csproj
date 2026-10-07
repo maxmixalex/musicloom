@@ -15,5 +15,7 @@
              Link="AppPersistence/LibraryDatabase.cs" />
     <Compile Include="../../src/MusicLoom.App/SqliteStateStore.cs"
              Link="AppPersistence/SqliteStateStore.cs" />
+    <Compile Include="../../src/MusicLoom.App/TomlSettingsStore.cs"
+             Link="AppPersistence/TomlSettingsStore.cs" />
   </ItemGroup>
 </Project>
