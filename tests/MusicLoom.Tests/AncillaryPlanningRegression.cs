@@ -186,7 +186,7 @@ internal static class AncillaryPlanningRegression
                 Path.Combine(
                     wmpDirectory,
                     "AlbumArt.jpg"),
-                [30, 31, 32]);
+                [36, 37, 38]);
             await File.WriteAllBytesAsync(
                 Path.Combine(
                     wmpDirectory,
@@ -205,8 +205,35 @@ internal static class AncillaryPlanningRegression
             if (wmpResult is not null)
             {
                 throw new InvalidOperationException(
-                    "WMP AlbumArt cache must not promote Folder.jpg to Cover.jpg.");
+                    "WMP AlbumArt cache must not promote duplicate Folder.jpg to Cover.jpg.");
             }
+
+            string unrelatedWmpDirectory =
+                Path.Combine(
+                    sourceRoot,
+                    "wmp-unrelated-art");
+            Directory.CreateDirectory(
+                unrelatedWmpDirectory);
+            string unrelatedFolder =
+                Path.Combine(
+                    unrelatedWmpDirectory,
+                    "Folder.jpg");
+            await File.WriteAllBytesAsync(
+                Path.Combine(
+                    unrelatedWmpDirectory,
+                    "AlbumArt.jpg"),
+                [60, 61, 62]);
+            await File.WriteAllBytesAsync(
+                unrelatedFolder,
+                [63, 64, 65]);
+
+            Equal(
+                unrelatedFolder,
+                AlbumArtLocator.Find(
+                    unrelatedWmpDirectory,
+                    metadata,
+                    onlyExplicit: false)
+                ?? string.Empty);
 
             string standaloneDirectory =
                 Path.Combine(
