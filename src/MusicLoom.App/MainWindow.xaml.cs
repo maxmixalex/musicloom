@@ -993,6 +993,8 @@ public sealed partial class MainWindow : Window
     {
         if (item is null)
         {
+            SetTrackSyncTabVisual(
+                "pending");
             TrackSyncStateText.Text =
                 L(
                     "No sync information.",
@@ -1008,6 +1010,10 @@ public sealed partial class MainWindow : Window
                 item.Entry.SourcePath,
                 out TrackSyncViewState? latest))
         {
+            SetTrackSyncTabVisual(
+                latest.IsError
+                    ? "error"
+                    : item.Kind);
             TrackSyncStateText.Text =
                 latest.Status;
             TrackSyncTimeText.Text =
@@ -1018,6 +1024,9 @@ public sealed partial class MainWindow : Window
                 latest.Detail;
             return;
         }
+
+        SetTrackSyncTabVisual(
+            item.Kind);
 
         TrackSyncTimeText.Text =
             L(
@@ -1065,6 +1074,52 @@ public sealed partial class MainWindow : Window
                     "This track has pending work.",
                     "此歌曲存在待处理的同步工作。");
         }
+    }
+
+    private void SetTrackSyncTabVisual(
+        string kind)
+    {
+        TrackSyncTabStatusIcon.Glyph =
+            kind switch
+            {
+                "synced" => "\uE73E",
+                "error" => "\uEA39",
+                "syncing" => "\uE895",
+                _ => "\uE823",
+            };
+
+        TrackSyncTabStatusIcon.Foreground =
+            kind switch
+            {
+                "synced" =>
+                    new Microsoft.UI.Xaml.Media
+                        .SolidColorBrush(
+                            Color.FromArgb(
+                                255,
+                                16,
+                                124,
+                                65)),
+                "error" =>
+                    new Microsoft.UI.Xaml.Media
+                        .SolidColorBrush(
+                            Color.FromArgb(
+                                255,
+                                196,
+                                43,
+                                28)),
+                "syncing" =>
+                    Application.Current.Resources[
+                        "AccentTextFillColorPrimaryBrush"]
+                    as Microsoft.UI.Xaml.Media.Brush,
+                _ =>
+                    new Microsoft.UI.Xaml.Media
+                        .SolidColorBrush(
+                            Color.FromArgb(
+                                255,
+                                202,
+                                116,
+                                0)),
+            };
     }
 
     private void RefreshLiveSyncCounters()
@@ -1885,6 +1940,8 @@ public sealed partial class MainWindow : Window
             L(
                 "No sync information.",
                 "暂无同步信息。");
+        SetTrackSyncTabVisual(
+            "pending");
         TrackSyncTimeText.Text = string.Empty;
         TrackSyncLogText.Text = string.Empty;
 
