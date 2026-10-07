@@ -85,6 +85,10 @@ public sealed partial class MainWindow : Window
     private Storyboard? _currentMatchScrollStoryboard;
     private Storyboard? _playlistTitleScrollStoryboard;
     private Storyboard? _playlistMetaScrollStoryboard;
+    private Storyboard? _trackArtistScrollStoryboard;
+    private Storyboard? _playerTitleScrollStoryboard;
+    private Storyboard? _playerMetadataScrollStoryboard;
+    private Storyboard? _diagnosticsPathScrollStoryboard;
     private DispatcherTimer? _playerTimer;
     private LibraryDisplayItem? _playingLibraryItem;
     private NeteaseMatchCandidate? _playingPreviewCandidate;
@@ -258,6 +262,7 @@ public sealed partial class MainWindow : Window
                 item.Artwork is null
                     ? Visibility.Visible
                     : Visibility.Collapsed;
+            ConfigureAuxiliaryLongText();
 
             _mediaPlayer.Play();
             UpdatePlayerVisualState();
@@ -322,6 +327,7 @@ public sealed partial class MainWindow : Window
                 Visibility.Visible;
         }
 
+        ConfigureAuxiliaryLongText();
         _mediaPlayer.Play();
         UpdatePlayerVisualState();
 
@@ -2795,11 +2801,35 @@ public sealed partial class MainWindow : Window
             PlaylistMetaText,
             mode,
             maxLines: 2);
+        ConfigureDetailText(
+            TrackArtistViewport,
+            TrackArtistText,
+            mode,
+            maxLines: 2);
+        ConfigureDetailText(
+            PlayerTitleViewport,
+            PlayerTitleText,
+            mode,
+            maxLines: 2);
+        ConfigureDetailText(
+            PlayerMetadataViewport,
+            PlayerMetadataText,
+            mode,
+            maxLines: 2);
+        ConfigureDetailText(
+            DiagnosticsLogPathViewport,
+            DiagnosticsLogPathText,
+            mode,
+            maxLines: 2);
 
         LyricsSourceTranslateTransform.X = 0;
         CurrentMatchTranslateTransform.X = 0;
         PlaylistTitleTranslateTransform.X = 0;
         PlaylistMetaTranslateTransform.X = 0;
+        TrackArtistTranslateTransform.X = 0;
+        PlayerTitleTranslateTransform.X = 0;
+        PlayerMetadataTranslateTransform.X = 0;
+        DiagnosticsLogPathTranslateTransform.X = 0;
 
         DispatcherQueue.TryEnqueue(
             () =>
@@ -2827,6 +2857,30 @@ public sealed partial class MainWindow : Window
                         PlaylistMetaViewport,
                         PlaylistMetaText,
                         PlaylistMetaTranslateTransform,
+                        mode);
+                _trackArtistScrollStoryboard =
+                    ConfigureAuxiliaryViewport(
+                        TrackArtistViewport,
+                        TrackArtistText,
+                        TrackArtistTranslateTransform,
+                        mode);
+                _playerTitleScrollStoryboard =
+                    ConfigureAuxiliaryViewport(
+                        PlayerTitleViewport,
+                        PlayerTitleText,
+                        PlayerTitleTranslateTransform,
+                        mode);
+                _playerMetadataScrollStoryboard =
+                    ConfigureAuxiliaryViewport(
+                        PlayerMetadataViewport,
+                        PlayerMetadataText,
+                        PlayerMetadataTranslateTransform,
+                        mode);
+                _diagnosticsPathScrollStoryboard =
+                    ConfigureAuxiliaryViewport(
+                        DiagnosticsLogPathViewport,
+                        DiagnosticsLogPathText,
+                        DiagnosticsLogPathTranslateTransform,
                         mode);
             });
     }
@@ -2867,11 +2921,19 @@ public sealed partial class MainWindow : Window
         _currentMatchScrollStoryboard?.Stop();
         _playlistTitleScrollStoryboard?.Stop();
         _playlistMetaScrollStoryboard?.Stop();
+        _trackArtistScrollStoryboard?.Stop();
+        _playerTitleScrollStoryboard?.Stop();
+        _playerMetadataScrollStoryboard?.Stop();
+        _diagnosticsPathScrollStoryboard?.Stop();
 
         _lyricsSourceScrollStoryboard = null;
         _currentMatchScrollStoryboard = null;
         _playlistTitleScrollStoryboard = null;
         _playlistMetaScrollStoryboard = null;
+        _trackArtistScrollStoryboard = null;
+        _playerTitleScrollStoryboard = null;
+        _playerMetadataScrollStoryboard = null;
+        _diagnosticsPathScrollStoryboard = null;
     }
 
     private async Task ShowTrackDetailsAsync(
