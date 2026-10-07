@@ -157,6 +157,8 @@ public sealed partial class MainWindow : Window
         _mediaPlayer.AutoPlay = false;
         _mediaPlayer.Volume =
             PlayerVolumeSlider.Value;
+        PlayerVolumePercentText.Text =
+            $"{PlayerVolumeSlider.Value * 100:0}%";
 
         _mediaPlayer.MediaOpened +=
             (_, _) =>
@@ -256,12 +258,12 @@ public sealed partial class MainWindow : Window
                     file);
 
             PlayerTitleText.Text =
-                item.Title;
-            PlayerMetadataText.Text =
                 string.IsNullOrWhiteSpace(
-                    item.Album)
-                    ? item.Artist
-                    : $"{item.Artist} · {item.Album}";
+                    item.Artist)
+                    ? item.Title
+                    : $"{item.Artist} - {item.Title}";
+            PlayerMetadataText.Text =
+                item.Album;
             PlayerHintText.Text =
                 L(
                     "Local library",
@@ -303,12 +305,12 @@ public sealed partial class MainWindow : Window
                     candidate.TrackId));
 
         PlayerTitleText.Text =
-            candidate.Name;
-        PlayerMetadataText.Text =
             string.IsNullOrWhiteSpace(
-                candidate.Album)
-                ? candidate.Artist
-                : $"{candidate.Artist} · {candidate.Album}";
+                candidate.Artist)
+                ? candidate.Name
+                : $"{candidate.Artist} - {candidate.Name}";
+        PlayerMetadataText.Text =
+            candidate.Album;
         PlayerHintText.Text =
             L(
                 "NetEase Music online preview",
@@ -654,6 +656,8 @@ public sealed partial class MainWindow : Window
 
         _mediaPlayer.Volume =
             volume;
+        PlayerVolumePercentText.Text =
+            $"{volume * 100:0}%";
 
         PlayerVolumeIcon.Glyph =
             volume <= 0.001
@@ -2776,15 +2780,32 @@ public sealed partial class MainWindow : Window
         ScrollViewer viewport,
         TextBlock text)
     {
+        double available =
+            viewport.ViewportWidth > 1
+                ? viewport.ViewportWidth
+                : viewport.ActualWidth;
+
+        if (!double.IsFinite(available)
+            || available <= 1)
+        {
+            return 0;
+        }
+
         text.Measure(
             new Windows.Foundation.Size(
                 double.PositiveInfinity,
                 double.PositiveInfinity));
 
-        return Math.Max(
-            0,
-            text.DesiredSize.Width
-            - viewport.ViewportWidth);
+        double desired =
+            text.DesiredSize.Width;
+
+        if (!double.IsFinite(desired)
+            || desired <= available + 1)
+        {
+            return 0;
+        }
+
+        return desired - available;
     }
 
     private void StopTitleAutoScroll()
