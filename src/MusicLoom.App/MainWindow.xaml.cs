@@ -119,7 +119,17 @@ public sealed partial class MainWindow : Window
             "MainWindow.ctor.enter");
         StartupTrace.Mark(
             "MainWindow.InitializeComponent.before");
-        InitializeComponent();
+        try
+        {
+            InitializeComponent();
+        }
+        catch (Exception exception)
+        {
+            StartupTrace.Mark(
+                "MainWindow.InitializeComponent.failed: "
+                + exception);
+            throw;
+        }
         StartupTrace.Mark(
             "MainWindow.InitializeComponent.after");
 
