@@ -218,14 +218,27 @@ internal static class AncillaryPlanningRegression
                 Path.Combine(
                     unrelatedWmpDirectory,
                     "Folder.jpg");
-            await File.WriteAllBytesAsync(
+            string unrelatedAlbumArt =
                 Path.Combine(
                     unrelatedWmpDirectory,
-                    "AlbumArt.jpg"),
+                    "AlbumArt.jpg");
+            await File.WriteAllBytesAsync(
+                unrelatedAlbumArt,
                 [60, 61, 62]);
             await File.WriteAllBytesAsync(
                 unrelatedFolder,
                 [63, 64, 65]);
+
+            DateTime manualTimestamp =
+                DateTime.UtcNow
+                    .AddHours(-2);
+            File.SetLastWriteTimeUtc(
+                unrelatedAlbumArt,
+                manualTimestamp);
+            File.SetLastWriteTimeUtc(
+                unrelatedFolder,
+                manualTimestamp
+                    .AddMinutes(15));
 
             Equal(
                 unrelatedFolder,
