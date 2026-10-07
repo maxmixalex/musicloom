@@ -5910,6 +5910,10 @@ public sealed partial class MainWindow : Window
                 L(
                     "Copying cover",
                     "复制封面"),
+            "delete-cover" =>
+                L(
+                    "Removing stale cover",
+                    "清理错误封面"),
             "write-playlist" =>
                 L(
                     "Writing playlist",
