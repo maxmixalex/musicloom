@@ -8,22 +8,34 @@ internal sealed record PlaylistDisplayItem(
     string SourcePath,
     string DestinationPath,
     IReadOnlyList<LibraryDisplayItem> Tracks,
-    bool IsReady)
+    bool IsReady,
+    bool IsVirtual = false)
 {
     public int TrackCount => Tracks.Count;
     public string CountText => $"{TrackCount:N0}";
 
     public string StatusGlyph =>
-        IsReady ? "\uE73E" : "\uE823";
+        IsVirtual
+            ? "\uE8A9"
+            : IsReady
+                ? "\uE73E"
+                : "\uE823";
 
     public Brush StatusBrush =>
         new SolidColorBrush(
-            IsReady
+            IsVirtual
                 ? Color.FromArgb(
-                    255, 16, 124, 65)
-                : Color.FromArgb(
-                    255, 202, 116, 0));
+                    255, 96, 94, 92)
+                : IsReady
+                    ? Color.FromArgb(
+                        255, 16, 124, 65)
+                    : Color.FromArgb(
+                        255, 202, 116, 0));
 
     public string StatusKey =>
-        IsReady ? "ready" : "pending";
+        IsVirtual
+            ? "virtual"
+            : IsReady
+                ? "ready"
+                : "pending";
 }
