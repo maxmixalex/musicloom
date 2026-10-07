@@ -5097,10 +5097,18 @@ public sealed partial class MainWindow : Window
                     24));
         SolidColorBrush foreground =
             new(
-                Colors.White);
+                Color.FromArgb(
+                    255,
+                    255,
+                    255,
+                    255));
         SolidColorBrush transparent =
             new(
-                Colors.Transparent);
+                Color.FromArgb(
+                    0,
+                    0,
+                    0,
+                    0));
 
         button.Background =
             background;
