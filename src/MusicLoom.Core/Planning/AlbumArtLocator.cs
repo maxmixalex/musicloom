@@ -51,14 +51,23 @@ public static class AlbumArtLocator
             return null;
         }
 
-        bool hasWindowsMediaPlayerCache =
-            Directory.EnumerateFiles(sourceDirectory)
-                .Select(Path.GetFileNameWithoutExtension)
-                .Any(static stem =>
-                    stem is not null
-                    && stem.StartsWith(
-                        "AlbumArt",
-                        StringComparison.OrdinalIgnoreCase));
+        string[] wmpAlbumArt =
+            Directory.EnumerateFiles(
+                    sourceDirectory,
+                    "*",
+                    SearchOption.TopDirectoryOnly)
+                .Where(static path =>
+                {
+                    string? stem =
+                        Path.GetFileNameWithoutExtension(
+                            path);
+
+                    return stem is not null
+                        && stem.StartsWith(
+                            "AlbumArt",
+                            StringComparison.OrdinalIgnoreCase);
+                })
+                .ToArray();
 
         foreach (string item in Directory.EnumerateFiles(sourceDirectory))
         {
@@ -74,11 +83,15 @@ public static class AlbumArtLocator
             // with Folder.jpg after extracting embedded artwork. Treat that
             // Folder.jpg as a cache artifact rather than intentional sidecar
             // artwork, while retaining standalone Folder.jpg compatibility.
-            if (hasWindowsMediaPlayerCache
-                && string.Equals(
+            if (string.Equals(
                     stem,
                     "Folder",
-                    StringComparison.OrdinalIgnoreCase))
+                    StringComparison.OrdinalIgnoreCase)
+                && wmpAlbumArt.Any(
+                    albumArt =>
+                        FilesHaveSameContent(
+                            item,
+                            albumArt)))
             {
                 continue;
             }
@@ -87,5 +100,57 @@ public static class AlbumArtLocator
         }
 
         return null;
+    }
+
+    private static bool FilesHaveSameContent(
+        string leftPath,
+        string rightPath)
+    {
+        FileInfo left =
+            new(leftPath);
+        FileInfo right =
+            new(rightPath);
+
+        if (!left.Exists
+            || !right.Exists
+            || left.Length != right.Length)
+        {
+            return false;
+        }
+
+        using FileStream leftStream =
+            File.OpenRead(leftPath);
+        using FileStream rightStream =
+            File.OpenRead(rightPath);
+
+        Span<byte> leftBuffer =
+            stackalloc byte[8192];
+        Span<byte> rightBuffer =
+            stackalloc byte[8192];
+
+        while (true)
+        {
+            int leftRead =
+                leftStream.Read(leftBuffer);
+            int rightRead =
+                rightStream.Read(rightBuffer);
+
+            if (leftRead != rightRead)
+            {
+                return false;
+            }
+
+            if (leftRead == 0)
+            {
+                return true;
+            }
+
+            if (!leftBuffer[..leftRead]
+                .SequenceEqual(
+                    rightBuffer[..rightRead]))
+            {
+                return false;
+            }
+        }
     }
 }
