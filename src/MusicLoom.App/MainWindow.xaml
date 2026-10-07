@@ -489,16 +489,27 @@
                           <ComboBoxItem x:Name="LyricsPreferTranslationItem" Content="Prefer translation" Tag="preferTranslation" />
                           <ComboBoxItem x:Name="LyricsPreferOriginalItem" Content="Prefer original" Tag="preferOriginal" />
                         </ComboBox>
-                        <Button
+                        <DropDownButton
                             x:Name="CopyAllLyricsButton"
                             Grid.Column="2"
-                            Click="CopyAllLyricsButton_Click"
                             ToolTipService.ToolTip="Copy full lyrics">
                           <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE8C8;" FontSize="14" />
                             <TextBlock x:Name="CopyAllLyricsButtonText" Text="Copy all" />
                           </StackPanel>
-                        </Button>
+                          <DropDownButton.Flyout>
+                            <MenuFlyout>
+                              <MenuFlyoutItem
+                                  x:Name="CopyAllLyricsTextItem"
+                                  Text="Copy as text"
+                                  Click="CopyAllLyricsTextItem_Click" />
+                              <MenuFlyoutItem
+                                  x:Name="CopyAllLyricsLrcItem"
+                                  Text="Copy as LRC"
+                                  Click="CopyAllLyricsLrcItem_Click" />
+                            </MenuFlyout>
+                          </DropDownButton.Flyout>
+                        </DropDownButton>
                       </Grid>
 
                       <ListView
@@ -541,15 +552,23 @@
                               </Grid.ColumnDefinitions>
                               <Grid.ContextFlyout>
                                 <MenuFlyout Opening="LyricLineMenu_Opening">
-                                  <MenuFlyoutItem
+                                  <MenuFlyoutSubItem
                                       x:Name="CopyLyricLineItem"
-                                      Text="Copy line"
-                                      Tag="{Binding}"
-                                      Click="CopyLyricLineItem_Click">
-                                    <MenuFlyoutItem.Icon>
+                                      Text="Copy line">
+                                    <MenuFlyoutSubItem.Icon>
                                       <FontIcon Glyph="&#xE8C8;" />
-                                    </MenuFlyoutItem.Icon>
-                                  </MenuFlyoutItem>
+                                    </MenuFlyoutSubItem.Icon>
+                                    <MenuFlyoutItem
+                                        x:Name="CopyLyricLineTextItem"
+                                        Text="Copy as text"
+                                        Tag="{Binding}"
+                                        Click="CopyLyricLineTextItem_Click" />
+                                    <MenuFlyoutItem
+                                        x:Name="CopyLyricLineLrcItem"
+                                        Text="Copy as LRC"
+                                        Tag="{Binding}"
+                                        Click="CopyLyricLineLrcItem_Click" />
+                                  </MenuFlyoutSubItem>
                                 </MenuFlyout>
                               </Grid.ContextFlyout>
                               <TextBlock
