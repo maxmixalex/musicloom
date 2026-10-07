@@ -248,6 +248,54 @@ internal static class AncillaryPlanningRegression
                     onlyExplicit: false)
                 ?? string.Empty);
 
+            string unknownAlbumWmpDirectory =
+                Path.Combine(
+                    sourceRoot,
+                    "wmp-unknown-album");
+            Directory.CreateDirectory(
+                unknownAlbumWmpDirectory);
+
+            string unknownAlbumArt =
+                Path.Combine(
+                    unknownAlbumWmpDirectory,
+                    "AlbumArt.jpg");
+            string unknownFolder =
+                Path.Combine(
+                    unknownAlbumWmpDirectory,
+                    "Folder.jpg");
+
+            await File.WriteAllBytesAsync(
+                unknownAlbumArt,
+                [66, 67, 68, 69]);
+            await File.WriteAllBytesAsync(
+                unknownFolder,
+                [70, 71, 72]);
+
+            File.SetLastWriteTimeUtc(
+                unknownAlbumArt,
+                DateTime.UtcNow
+                    .AddDays(-40));
+            File.SetLastWriteTimeUtc(
+                unknownFolder,
+                DateTime.UtcNow
+                    .AddDays(-2));
+
+            TrackMetadata unknownAlbumMetadata =
+                metadata with
+                {
+                    Album = null,
+                };
+
+            if (AlbumArtLocator.Find(
+                    unknownAlbumWmpDirectory,
+                    unknownAlbumMetadata,
+                    onlyExplicit: false)
+                is not null)
+            {
+                throw new InvalidOperationException(
+                    "WMP Folder.jpg must not become shared artwork for an unknown album.");
+            }
+
             string resizedWmpDirectory =
                 Path.Combine(
                     sourceRoot,
