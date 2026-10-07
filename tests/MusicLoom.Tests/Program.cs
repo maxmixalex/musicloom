@@ -158,23 +158,44 @@ static void NeteaseCandidateRanking()
     [
         new(
             1,
-            "Completely Different",
-            "Other Artist",
-            "Other Album",
+            "Wrong title",
+            "Wrong artist",
+            "Wrong album",
             Score: 0.99,
-            DurationMs: 200_100),
+            DurationMs: 200_500),
         new(
             2,
             "Target Song",
-            "Target Artist",
-            "Target Album",
-            Score: 0.75,
-            DurationMs: 201_000),
+            "Wrong artist",
+            "Wrong album",
+            Score: 0.99,
+            DurationMs: 200_500),
         new(
             3,
             "Target Song",
             "Target Artist",
+            "Wrong album",
+            Score: 0.99,
+            DurationMs: 200_500),
+        new(
+            4,
+            "Target Song",
+            "Target Artist",
             "Target Album",
+            Score: 0.99,
+            DurationMs: 200_500),
+        new(
+            5,
+            "Target Song",
+            "Target Artist",
+            "Target Album",
+            Score: 0.99,
+            DurationMs: 201_000),
+        new(
+            6,
+            "Completely Different",
+            "Other Artist",
+            "Other Album",
             Score: 0.999,
             DurationMs: 260_000),
     ];
@@ -188,15 +209,27 @@ static void NeteaseCandidateRanking()
                 artist: "Target Artist",
                 album: "Target Album");
 
+    // Fingerprint score is primary.
     Equal(
-        2L,
+        6L,
         ranked[0].TrackId);
+
+    // For an equal fingerprint, exact duration wins before metadata.
     Equal(
-        1L,
+        4L,
         ranked[1].TrackId);
     Equal(
         3L,
         ranked[2].TrackId);
+    Equal(
+        2L,
+        ranked[3].TrackId);
+    Equal(
+        1L,
+        ranked[4].TrackId);
+    Equal(
+        5L,
+        ranked[5].TrackId);
 }
 
 static void Layout()
