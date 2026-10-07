@@ -74,7 +74,8 @@ public static class AncillaryPlanner
                 AddStaleWmpCoverCleanup(
                     covers,
                     sourceDirectory,
-                    albumDirectory);
+                    albumDirectory,
+                    metadata.HasEmbeddedArt);
                 continue;
             }
 
@@ -96,7 +97,8 @@ public static class AncillaryPlanner
     private static void AddStaleWmpCoverCleanup(
         List<CoverPlanEntry> covers,
         string sourceDirectory,
-        string albumDirectory)
+        string albumDirectory,
+        bool embeddedArtPresent)
     {
         if (!Directory.Exists(sourceDirectory)
             || !Directory.Exists(albumDirectory))
@@ -121,7 +123,8 @@ public static class AncillaryPlanner
             || !AlbumArtLocator
                 .IsLikelyWindowsMediaPlayerFolderCache(
                     sourceDirectory,
-                    folderCache))
+                    folderCache,
+                    embeddedArtPresent))
         {
             return;
         }
