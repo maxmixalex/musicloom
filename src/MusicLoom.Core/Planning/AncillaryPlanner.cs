@@ -75,7 +75,10 @@ public static class AncillaryPlanner
                     covers,
                     sourceDirectory,
                     albumDirectory,
-                    metadata.HasEmbeddedArt);
+                    metadata.HasEmbeddedArt,
+                    albumMissing:
+                        string.IsNullOrWhiteSpace(
+                            metadata.Album));
                 continue;
             }
 
@@ -98,7 +101,8 @@ public static class AncillaryPlanner
         List<CoverPlanEntry> covers,
         string sourceDirectory,
         string albumDirectory,
-        bool embeddedArtPresent)
+        bool embeddedArtPresent,
+        bool albumMissing)
     {
         if (!Directory.Exists(sourceDirectory)
             || !Directory.Exists(albumDirectory))
@@ -124,7 +128,8 @@ public static class AncillaryPlanner
                 .IsLikelyWindowsMediaPlayerFolderCache(
                     sourceDirectory,
                     folderCache,
-                    embeddedArtPresent))
+                    embeddedArtPresent,
+                    albumMissing))
         {
             return;
         }
