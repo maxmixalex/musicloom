@@ -24,6 +24,7 @@ internal static class SyncExecutorRegression
         await LyricsOnlyRefreshProtectsUserSidecarAsync();
         await CachedLyricsAvoidsSecondNetworkFetchAsync();
         await FetchSuccessSurvivesOutputFailureAsync();
+        await NoLyricsCacheProtectsUnmanagedOutputAsync();
         MatchWarningHandlesChineseAndArtistSubsets();
         ProgressTrackerRejectsStaleStages();
         await WarningGatesLyricsUntilConfirmationAsync();
@@ -380,6 +381,61 @@ internal static class SyncExecutorRegression
             "[00:01.000]saved before output",
             cached.Lrc ?? string.Empty);
         True(await lyricsCache.GetAsync(fixture.SourcePath, 99) is null);
+    }
+
+    private static async Task NoLyricsCacheProtectsUnmanagedOutputAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: false);
+
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(fixture.DestinationPath)!);
+        await File.WriteAllBytesAsync(
+            fixture.DestinationPath,
+            [9, 8, 7]);
+
+        string sidecar =
+            SidecarLrcLyricsWriter.GetSidecarPath(
+                fixture.DestinationPath);
+        await File.WriteAllTextAsync(
+            sidecar, "[00:01.000]Do not delete this manual lyric");
+
+        InMemoryLyricsCache lyricsCache = new();
+        SyncExecutionSummary result = await new SyncExecutor(
+            new LocalLibraryMaterializer(),
+            new FakeRecognizer(
+                TrackRecognitionResult.Matched(42)),
+            new FakeLyricsProvider(
+                LyricsLookupResult.NoLyrics()),
+            new SidecarLrcLyricsWriter(),
+            lyricsCache: lyricsCache).ExecuteAsync(
+                fixture.Settings,
+                new LibraryPlan([
+                    fixture.Plan.Entries[0] with
+                    {
+                        Status = PlanEntryStatus.Modified,
+                        NeedsAudioCopy = false,
+                    },
+                ]),
+                fixture.State,
+                fixture.StateStore,
+                lyricsOnly: true);
+
+        Equal(1, result.Errors.Count);
+        Equal(0, result.CompletedTracks);
+        Equal(
+            "[00:01.000]Do not delete this manual lyric",
+            await File.ReadAllTextAsync(sidecar));
+
+        CachedTrackLyrics cached = await lyricsCache.GetAsync(
+            fixture.SourcePath, 42)
+            ?? throw new InvalidOperationException(
+                "A confirmed no-lyrics response must be cached.");
+        True(!cached.HasLyrics);
+
+        TrackState state = await fixture.LoadTrackStateAsync();
+        Equal(string.Empty, state.RecipeVersion);
     }
 
     private static void MatchWarningHandlesChineseAndArtistSubsets()

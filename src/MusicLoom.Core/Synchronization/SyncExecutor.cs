@@ -254,6 +254,7 @@ public sealed class SyncExecutor
             }
 
             string stage = "state";
+            bool canonicalOutputPending = false;
             TrackState partial = BuildPartialState(
                 entry,
                 updatedState);
@@ -503,11 +504,16 @@ public sealed class SyncExecutor
                     }
                 }
 
+                canonicalOutputPending = _lyricsCache is not null
+                    || lyricsOnly;
+
                 if (lookup.Status == LyricsLookupStatus.NoLyrics
                     || lookup.Lyrics is null
                     || lookup.Lyrics.Lines.Count == 0)
                 {
-                    if (lyricsOnly)
+                    if (lyricsOnly
+                        || (_lyricsCache is not null
+                            && partial.NeteaseMatchConfirmed))
                     {
                         RemoveManagedSidecarIfUnchanged(
                             entry.DestinationPath,
@@ -587,9 +593,9 @@ public sealed class SyncExecutor
                 // recopying an unchanged destination.
                 updatedState.Tracks[entry.SourcePath] = partial with
                 {
-                    RecipeVersion = GetPreviousValidRecipe(
-                        state,
-                        entry),
+                    RecipeVersion = canonicalOutputPending
+                        ? string.Empty
+                        : GetPreviousValidRecipe(state, entry),
                     ProcessedAt = DateTimeOffset.UtcNow,
                 };
 
