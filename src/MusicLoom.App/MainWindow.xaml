@@ -220,26 +220,14 @@
                         <MenuFlyoutItem.Icon><SymbolIcon Symbol="Play" /></MenuFlyoutItem.Icon>
                       </MenuFlyoutItem>
                       <MenuFlyoutSeparator />
-                      <MenuFlyoutItem x:Name="ContextOpenSourceItem" Text="Open source folder" Click="ContextOpenSourceItem_Click">
-                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon>
-                      </MenuFlyoutItem>
-                      <MenuFlyoutItem x:Name="ContextOpenDestinationItem" Text="Open destination folder" Click="ContextOpenDestinationItem_Click">
-                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon>
-                      </MenuFlyoutItem>
+                      <MenuFlyoutItem x:Name="ContextOpenSourceItem" Text="Open source folder" Click="ContextOpenSourceItem_Click" />
+                      <MenuFlyoutItem x:Name="ContextOpenDestinationItem" Text="Open destination folder" Click="ContextOpenDestinationItem_Click" />
                       <MenuFlyoutSeparator />
-                      <MenuFlyoutItem x:Name="ContextCopySourceItem" Text="Copy source path" Click="ContextCopySourceItem_Click">
-                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
-                      </MenuFlyoutItem>
-                      <MenuFlyoutItem x:Name="ContextCopyDestinationItem" Text="Copy destination path" Click="ContextCopyDestinationItem_Click">
-                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
-                      </MenuFlyoutItem>
+                      <MenuFlyoutItem x:Name="ContextCopySourceItem" Text="Copy source path" Click="ContextCopySourceItem_Click" />
+                      <MenuFlyoutItem x:Name="ContextCopyDestinationItem" Text="Copy destination path" Click="ContextCopyDestinationItem_Click" />
                       <MenuFlyoutSeparator />
-                      <MenuFlyoutItem x:Name="ContextFindMatchItem" Text="Find NetEase match…" Click="ContextFindMatchItem_Click">
-                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE721;" /></MenuFlyoutItem.Icon>
-                      </MenuFlyoutItem>
-                      <MenuFlyoutItem x:Name="ContextConfirmMatchItem" Text="Confirm NetEase match" Visibility="Collapsed" Click="ContextConfirmMatchItem_Click">
-                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE73E;" /></MenuFlyoutItem.Icon>
-                      </MenuFlyoutItem>
+                      <MenuFlyoutItem x:Name="ContextFindMatchItem" Text="Find NetEase match…" Click="ContextFindMatchItem_Click" />
+                      <MenuFlyoutItem x:Name="ContextConfirmMatchItem" Text="Confirm NetEase match" Visibility="Collapsed" Click="ContextConfirmMatchItem_Click" />
                     </MenuFlyout>
                   </ListView.ContextFlyout>
 
@@ -257,7 +245,7 @@
                                 Padding="{TemplateBinding Padding}"
                                 HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                 VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                                SelectionIndicatorVisualEnabled="False"
+                                SelectionIndicatorVisualEnabled="True"
                                 SelectionIndicatorMode="Inline"
                                 SelectionIndicatorBrush="{ThemeResource AccentFillColorDefaultBrush}"
                                 SelectionIndicatorPointerOverBrush="{ThemeResource AccentFillColorSecondaryBrush}"
@@ -271,27 +259,19 @@
                   <ListView.ItemTemplate>
                     <DataTemplate>
                       <Border
-                          Margin="2,1"
-                          CornerRadius="8"
-                          Background="{Binding RowBackground}">
-                        <Grid MinHeight="62" Padding="8,7,10,7" ColumnSpacing="10">
+                          Margin="2,0"
+                          CornerRadius="7"
+                          Background="{Binding RowBackground}"
+                          BorderBrush="{Binding RowBorderBrush}"
+                          BorderThickness="{Binding RowBorderThickness}">
+                        <Grid MinHeight="62" Padding="12,8" ColumnSpacing="12">
                           <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="3" />
                             <ColumnDefinition Width="44" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="32" />
+                            <ColumnDefinition Width="28" />
                           </Grid.ColumnDefinitions>
 
                           <Border
-                              Grid.Column="0"
-                              Width="3"
-                              Margin="0,7,0,7"
-                              CornerRadius="2"
-                              Background="{ThemeResource AccentFillColorDefaultBrush}"
-                              Visibility="{Binding PlayingIndicatorVisibility}" />
-
-                          <Border
-                              Grid.Column="1"
                               Width="44"
                               Height="44"
                               CornerRadius="6"
@@ -299,11 +279,10 @@
                             <Image Source="{Binding Artwork}" Stretch="Uniform" />
                           </Border>
 
-                          <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                             <TextBlock
                                 Text="{Binding Title}"
                                 FontWeight="SemiBold"
-                                Foreground="{Binding TitleBrush}"
                                 TextWrapping="{Binding RowTextWrapping}"
                                 TextTrimming="{Binding RowTextTrimming}"
                                 MaxLines="{Binding RowMaxLines}"
@@ -318,22 +297,14 @@
                                 ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
                           </StackPanel>
 
-                          <Border
-                              Grid.Column="3"
-                              Width="30"
-                              Height="30"
-                              CornerRadius="15"
-                              Background="{Binding StatusBadgeBackground}"
+                          <FontIcon
+                              Grid.Column="2"
+                              Glyph="{Binding StatusGlyph}"
+                              FontSize="14"
+                              Foreground="{Binding StatusBrush}"
                               VerticalAlignment="Center"
                               HorizontalAlignment="Center"
-                              ToolTipService.ToolTip="{Binding StatusText}">
-                            <FontIcon
-                                Glyph="{Binding StatusGlyph}"
-                                FontSize="13"
-                                Foreground="{Binding StatusBrush}"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center" />
-                          </Border>
+                              ToolTipService.ToolTip="{Binding StatusText}" />
                         </Grid>
                       </Border>
                     </DataTemplate>
@@ -619,7 +590,7 @@
                                       Padding="{TemplateBinding Padding}"
                                       HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                       VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                                      SelectionIndicatorVisualEnabled="False"
+                                      SelectionIndicatorVisualEnabled="True"
                                       SelectionIndicatorMode="Inline"
                                       SelectionIndicatorBrush="{ThemeResource AccentFillColorDefaultBrush}"
                                       SelectionIndicatorPointerOverBrush="{ThemeResource AccentFillColorSecondaryBrush}"
@@ -1169,9 +1140,7 @@
                       <MenuFlyoutItem
                           x:Name="PlaylistShowInLibraryItem"
                           Text="Show in library"
-                          Click="PlaylistShowInLibraryItem_Click">
-                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A7;" /></MenuFlyoutItem.Icon>
-                      </MenuFlyoutItem>
+                          Click="PlaylistShowInLibraryItem_Click" />
                     </MenuFlyout>
                   </ListView.ContextFlyout>
                   <ListView.ItemContainerStyle>
@@ -1184,36 +1153,28 @@
                   <ListView.ItemTemplate>
                     <DataTemplate>
                       <Border
-                          Margin="2,1"
-                          CornerRadius="8"
-                          Background="{Binding RowBackground}">
-                        <Grid MinHeight="62" Padding="8,7,10,7" ColumnSpacing="10">
+                          Margin="2,0"
+                          CornerRadius="7"
+                          Background="{Binding RowBackground}"
+                          BorderBrush="{Binding RowBorderBrush}"
+                          BorderThickness="{Binding RowBorderThickness}">
+                        <Grid MinHeight="62" Padding="12,8" ColumnSpacing="12">
                           <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="3" />
                             <ColumnDefinition Width="44" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="32" />
+                            <ColumnDefinition Width="28" />
                           </Grid.ColumnDefinitions>
                           <Border
-                              Grid.Column="0"
-                              Width="3"
-                              Margin="0,7,0,7"
-                              CornerRadius="2"
-                              Background="{ThemeResource AccentFillColorDefaultBrush}"
-                              Visibility="{Binding PlayingIndicatorVisibility}" />
-                          <Border
-                              Grid.Column="1"
                               Width="44"
                               Height="44"
                               CornerRadius="6"
                               Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                             <Image Source="{Binding Artwork}" Stretch="Uniform" />
                           </Border>
-                          <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                             <TextBlock
                                 Text="{Binding Title}"
                                 FontWeight="SemiBold"
-                                Foreground="{Binding TitleBrush}"
                                 TextWrapping="{Binding RowTextWrapping}"
                                 TextTrimming="{Binding RowTextTrimming}"
                                 MaxLines="{Binding RowMaxLines}"
@@ -1227,22 +1188,14 @@
                                 MaxLines="{Binding RowMaxLines}"
                                 ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
                           </StackPanel>
-                          <Border
-                              Grid.Column="3"
-                              Width="30"
-                              Height="30"
-                              CornerRadius="15"
-                              Background="{Binding StatusBadgeBackground}"
+                          <FontIcon
+                              Grid.Column="2"
+                              Glyph="{Binding StatusGlyph}"
+                              FontSize="14"
+                              Foreground="{Binding StatusBrush}"
+                              ToolTipService.ToolTip="{Binding StatusText}"
                               VerticalAlignment="Center"
-                              HorizontalAlignment="Center"
-                              ToolTipService.ToolTip="{Binding StatusText}">
-                            <FontIcon
-                                Glyph="{Binding StatusGlyph}"
-                                FontSize="13"
-                                Foreground="{Binding StatusBrush}"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center" />
-                          </Border>
+                              HorizontalAlignment="Center" />
                         </Grid>
                       </Border>
                     </DataTemplate>
