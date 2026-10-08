@@ -7006,7 +7006,16 @@ public sealed partial class MainWindow : Window
                 && summary.CompletedSourcePaths.Count == entries.Count
                 && deferred == 0;
 
-            if (complete)
+            if (complete && summary.NoLyrics > 0)
+            {
+                ShowInfo(
+                    InfoBarSeverity.Informational,
+                    L("Lyrics checked", "已检查歌词"),
+                    L(
+                        $"{summary.NoLyrics:N0} matched track(s) have no NetEase lyrics.",
+                        $"{summary.NoLyrics:N0} 首匹配歌曲没有可用的网易云歌词。"));
+            }
+            else if (complete)
             {
                 ShowInfo(
                     InfoBarSeverity.Success,
