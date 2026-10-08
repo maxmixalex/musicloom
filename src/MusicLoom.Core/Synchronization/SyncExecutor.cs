@@ -61,6 +61,7 @@ public sealed class SyncExecutor
     private readonly ITrackRecognizer _recognizer;
     private readonly ITrackLyricsProvider _lyricsProvider;
     private readonly ITrackLyricsWriter _lyricsWriter;
+    private readonly ITrackLyricsCache? _lyricsCache;
     private readonly int _checkpointInterval;
 
     public SyncExecutor(
@@ -68,7 +69,8 @@ public sealed class SyncExecutor
         ITrackRecognizer recognizer,
         ITrackLyricsProvider lyricsProvider,
         ITrackLyricsWriter lyricsWriter,
-        int checkpointInterval = 25)
+        int checkpointInterval = 25,
+        ITrackLyricsCache? lyricsCache = null)
     {
         if (checkpointInterval <= 0)
         {
@@ -81,6 +83,7 @@ public sealed class SyncExecutor
         _recognizer = recognizer;
         _lyricsProvider = lyricsProvider;
         _lyricsWriter = lyricsWriter;
+        _lyricsCache = lyricsCache;
         _checkpointInterval = checkpointInterval;
     }
 
@@ -450,10 +453,54 @@ public sealed class SyncExecutor
                     entry.SourcePath,
                     stage));
 
-                LyricsLookupResult lookup =
-                    await _lyricsProvider.GetLyricsAsync(
+                // An already fetched version in SQLite is authoritative.
+                // Network retrieval happens only on a cache miss (or during
+                // an explicit refresh, which updates the cache first).
+                CachedTrackLyrics? cached =
+                    _lyricsCache is null
+                        ? null
+                        : await _lyricsCache.GetAsync(
+                            entry.SourcePath,
+                            songId.Value,
+                            cancellationToken);
+
+                // Preserve configured enrichment TTL semantics. A cache
+                // miss includes a stale record; successfully refreshed data
+                // atomically replaces the canonical row before materializing.
+                if (cached is not null
+                    && !IsLyricsCacheFresh(
+                        cached,
+                        settings,
+                        DateTimeOffset.UtcNow))
+                {
+                    cached = null;
+                }
+
+                LyricsLookupResult lookup;
+                if (cached is not null)
+                {
+                    LrcDocument? lyrics = cached.ToDocument();
+                    lookup = lyrics is null
+                        ? LyricsLookupResult.NoLyrics()
+                        : LyricsLookupResult.Found(lyrics);
+                }
+                else
+                {
+                    lookup = await _lyricsProvider.GetLyricsAsync(
                         songId.Value,
                         cancellationToken);
+
+                    if (_lyricsCache is not null)
+                    {
+                        await _lyricsCache.SaveAsync(
+                            entry.SourcePath,
+                            songId.Value,
+                            lookup.Lyrics is { Lines.Count: > 0 }
+                                ? lookup.Lyrics
+                                : null,
+                            cancellationToken);
+                    }
+                }
 
                 if (lookup.Status == LyricsLookupStatus.NoLyrics
                     || lookup.Lyrics is null
@@ -1082,11 +1129,20 @@ public sealed class SyncExecutor
         string sidecar =
             SidecarLrcLyricsWriter.GetSidecarPath(destinationPath);
 
-        if (File.Exists(sidecar)
-            && MatchesManagedLyrics(sidecar, previousFingerprint))
+        if (!File.Exists(sidecar))
         {
-            File.Delete(sidecar);
+            return;
         }
+
+        if (!MatchesManagedLyrics(sidecar, previousFingerprint))
+        {
+            throw new InvalidOperationException(
+                "The destination contains lyrics that are not the last " +
+                "MusicLoom-managed version. Keep the database cache and " +
+                "resolve the user-edited sidecar before removing it.");
+        }
+
+        File.Delete(sidecar);
     }
 
     private static bool MatchesManagedLyrics(
@@ -1105,6 +1161,25 @@ public sealed class SyncExecutor
             ComputeLyricsFingerprint(existing),
             expectedFingerprint,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLyricsCacheFresh(
+        CachedTrackLyrics cached,
+        MusicLoomSettings settings,
+        DateTimeOffset now)
+    {
+        double hours =
+            settings.Organizer.Lyrics.RefreshIntervalHours;
+        if (!double.IsFinite(hours) || hours <= 0)
+        {
+            return false;
+        }
+
+        TimeSpan ttl = TimeSpan.FromHours(
+            Math.Min(hours, 24 * 365 * 10));
+        TimeSpan age = now - cached.FetchedAt;
+        return age >= TimeSpan.Zero
+            && age <= ttl;
     }
 
     private static string ComputeLyricsFingerprint(

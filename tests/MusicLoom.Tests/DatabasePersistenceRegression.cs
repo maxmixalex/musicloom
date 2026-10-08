@@ -234,6 +234,32 @@ internal static class DatabasePersistenceRegression
                 true,
                 migratedTrack.HasEmbeddedArt);
 
+            // Lyrics cache is independent of the sync_tracks checkpoint.
+            // It also persists a verified "no lyrics" response, and a new
+            // NetEase match cannot reuse the previous song's lyrics.
+            SqliteLyricsCache lyricsCache =
+                new(databasePath);
+            await lyricsCache.SaveAsync(
+                sourcePath,
+                123456789L,
+                MusicLoom.Core.Lyrics.LrcDocument.Parse(
+                    "[00:01.000]Canonical lyric"));
+
+            MusicLoom.Core.Lyrics.CachedTrackLyrics storedLyrics =
+                await lyricsCache.GetAsync(
+                    sourcePath,
+                    123456789L)
+                ?? throw new InvalidOperationException(
+                    "Lyrics cache lost the saved document.");
+
+            Equal(
+                "[00:01.000]Canonical lyric",
+                storedLyrics.Lrc ?? string.Empty);
+
+            True(await lyricsCache.GetAsync(
+                sourcePath,
+                987654321L) is null);
+
             migrated.Tracks[sourcePath] =
                 migratedTrack with
                 {
@@ -249,6 +275,31 @@ internal static class DatabasePersistenceRegression
 
             await sqliteStore.SaveAsync(
                 migrated);
+
+            // Saving sync_tracks rewrites every track, but must never
+            // delete the independent canonical lyrics table.
+            storedLyrics = await new SqliteLyricsCache(
+                databasePath).GetAsync(sourcePath, 123456789L)
+                ?? throw new InvalidOperationException(
+                    "State checkpoint unexpectedly erased lyrics.");
+            Equal(
+                "[00:01.000]Canonical lyric",
+                storedLyrics.Lrc ?? string.Empty);
+
+            await lyricsCache.SaveAsync(
+                sourcePath,
+                987654321L,
+                null);
+            MusicLoom.Core.Lyrics.CachedTrackLyrics noLyrics =
+                await lyricsCache.GetAsync(
+                    sourcePath,
+                    987654321L)
+                ?? throw new InvalidOperationException(
+                    "A cached no-lyrics response must not be a cache miss.");
+            True(!noLyrics.HasLyrics);
+            True(await lyricsCache.GetAsync(
+                sourcePath,
+                123456789L) is null);
 
             SqliteStateStore reloadedStore =
                 new(

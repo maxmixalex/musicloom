@@ -6,7 +6,7 @@ namespace MusicLoom.App;
 
 internal sealed class SqliteStateStore : StateStore
 {
-    private const int DatabaseSchemaVersion = 2;
+    private const int DatabaseSchemaVersion = 3;
     private readonly string? _legacyJsonPath;
 
     public SqliteStateStore(
@@ -563,6 +563,16 @@ internal sealed class SqliteStateStore : StateStore
 
             CREATE INDEX IF NOT EXISTS idx_sync_tracks_netease
                 ON sync_tracks(netease_song_id);
+
+            -- Lyrics are authoritative here, not in the output audio or
+            -- sidecar. This independent table is not cleared by StateStore
+            -- checkpoints or a full sync_tracks rewrite.
+            CREATE TABLE IF NOT EXISTS sync_lyrics (
+                source_path TEXT PRIMARY KEY COLLATE NOCASE,
+                song_id INTEGER NOT NULL,
+                lrc TEXT NULL,
+                fetched_at TEXT NOT NULL
+            );
             """;
 
         await command.ExecuteNonQueryAsync(

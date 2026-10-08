@@ -1760,7 +1760,8 @@ public sealed partial class MainWindow : Window
                     new LocalLibraryMaterializer(),
                     provider,
                     provider,
-                    lyricsWriter);
+                    lyricsWriter,
+                    lyricsCache: new SqliteLyricsCache(DatabasePath));
 
             SyncProgressTracker progressTracker = new();
 
@@ -4034,10 +4035,70 @@ public sealed partial class MainWindow : Window
 
             _currentArtworkBytes =
                 payload.Artwork;
+
+            // Display the same canonical document that future syncs will
+            // materialize. An older .lrc or embedded tag is a fallback only
+            // when no MusicLoom-managed lyrics exist in the database.
+            CachedTrackLyrics? canonical = null;
+            if (_state is not null
+                && _state.Tracks.TryGetValue(
+                    item.Entry.SourcePath,
+                    out TrackState? track)
+                && track.NeteaseSongId is long songId
+                && !track.NeteaseMatchSuppressed)
+            {
+                SqliteLyricsCache cache =
+                    new(DatabasePath);
+                canonical = await cache.GetAsync(
+                    item.Entry.SourcePath,
+                    songId);
+
+                if (requestId != _detailRequestId)
+                {
+                    return;
+                }
+
+                if (canonical is null)
+                {
+                    canonical = await TryImportManagedLyricsAsync(
+                        cache, item.Entry, track, payload.Lyrics);
+                    if (requestId != _detailRequestId)
+                    {
+                        return;
+                    }
+                }
+            }
+
+            bool awaitingCanonical =
+                canonical is null
+                && _state is not null
+                && _state.Tracks.TryGetValue(
+                    item.Entry.SourcePath,
+                    out TrackState? lyricState)
+                && lyricState.NeteaseSongId is not null
+                && lyricState.NeteaseMatchConfirmed
+                && lyricState.Lyrics == LyricsState.Unknown;
+
             _currentLyricsRaw =
-                payload.Lyrics;
+                canonical is not null
+                    ? canonical.Lrc
+                    : awaitingCanonical
+                        ? null
+                        : payload.Lyrics;
             LyricsSourceText.Text =
-                payload.LyricsSource;
+                canonical is not null
+                    ? item.Kind == "synced"
+                        ? L(
+                            "Database · NetEase Music",
+                            "数据库 · 网易云音乐")
+                        : L(
+                            "Database · NetEase Music · awaiting destination sync",
+                            "数据库 · 网易云音乐 · 待写入目标")
+                    : awaitingCanonical
+                        ? L(
+                            "Awaiting database lyrics",
+                            "等待歌词写入数据库")
+                        : payload.LyricsSource;
             ConfigureAuxiliaryLongText();
             RenderLyrics();
 
@@ -4085,6 +4146,60 @@ public sealed partial class MainWindow : Window
                 "Could not inspect track details.",
                 exception);
         }
+    }
+
+    private static async Task<CachedTrackLyrics?>
+        TryImportManagedLyricsAsync(
+            SqliteLyricsCache cache,
+            PlanEntry entry,
+            TrackState track,
+            string? localText)
+    {
+        // One-time lazy migration of previously written sidecars. Never
+        // import an unverified user-edited lyric as canonical NetEase data.
+        if (track.Lyrics != LyricsState.Written
+            || track.NeteaseSongId is not long songId
+            || string.IsNullOrWhiteSpace(track.LyricsFingerprint)
+            || string.IsNullOrWhiteSpace(localText)
+            || entry.DestinationPath is not string destination)
+        {
+            return null;
+        }
+
+        string sidecar =
+            SidecarLrcLyricsWriter.GetSidecarPath(destination);
+        if (!File.Exists(sidecar))
+        {
+            return null;
+        }
+
+        LrcDocument document =
+            LrcDocument.Parse(localText);
+        if (document.Lines.Count == 0)
+        {
+            return null;
+        }
+
+        string checksum = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(
+                    document.ToString()))).ToLowerInvariant();
+
+        if (!string.Equals(
+                checksum,
+                track.LyricsFingerprint,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        await cache.SaveAsync(
+            entry.SourcePath,
+            songId,
+            document);
+        return await cache.GetAsync(
+            entry.SourcePath,
+            songId);
     }
 
     private TrackDetailPayload LoadTrackDetail(
@@ -6874,120 +6989,207 @@ public sealed partial class MainWindow : Window
             return false;
         }
 
-        List<PlanEntry> entries = [];
-        int deferred = 0;
-        foreach (LibraryDisplayItem item in candidates.Distinct())
+        (LibraryDisplayItem Item, long SongId)[] matched =
+            candidates.Distinct()
+                .Select(item =>
+                {
+                    long? id = _state.Tracks.TryGetValue(
+                        item.Entry.SourcePath,
+                        out TrackState? track)
+                        && !track.NeteaseMatchSuppressed
+                            ? track.NeteaseSongId
+                            : null;
+                    return (Item: item, SongId: id);
+                })
+                .Where(static pair => pair.SongId.HasValue)
+                .Select(static pair => (pair.Item, pair.SongId!.Value))
+                .ToArray();
+
+        if (matched.Length == 0)
         {
-            PlanEntry current = item.Entry;
-            if (current.DestinationPath is not string destination
-                || current.Metadata is null
-                || !File.Exists(destination)
-                || !IsPathInside(
-                    destination,
-                    settings.Path.DestinationDirectory)
-                || !_state.Tracks.TryGetValue(
-                    current.SourcePath,
-                    out TrackState? recorded)
-                || recorded.NeteaseSongId is null
-                || !string.Equals(
-                    recorded.DestinationPath,
-                    destination,
-                    StringComparison.OrdinalIgnoreCase)
-                || !File.Exists(current.SourcePath))
-            {
-                deferred++;
-                continue;
-            }
-
-            FileInfo source = new(current.SourcePath);
-            FileInfo target = new(destination);
-            ulong hash = await Task.Run(
-                () => QuickFileHash.Compute(current.SourcePath));
-
-            if (!StateStore.IsSourceVersionUnchanged(
-                    recorded, source, hash)
-                || (StateStore.HasDestinationVersion(recorded)
-                    && !StateStore.IsDestinationVersionUnchanged(
-                        recorded, target)))
-            {
-                // A source/destination drift must be resolved by the
-                // normal sync plan, never hidden by a lyric-only write.
-                deferred++;
-                continue;
-            }
-
-            entries.Add(current with
-            {
-                Status = PlanEntryStatus.Modified,
-                NeedsAudioCopy = false,
-                Detail = "Refresh lyrics after manual NetEase match.",
-            });
-        }
-
-        if (entries.Count == 0)
-        {
-            ShowInfo(
-                InfoBarSeverity.Warning,
-                L("Lyrics pending", "歌词待同步"),
-                L(
-                    "The destination is missing or has changed. Run the normal synchronization first.",
-                    "目标文件不存在或已变化，请先执行正常同步。"));
             return false;
         }
 
         using CancellationTokenSource cancellation = new();
         _operationCancellation = cancellation;
         int generation = ++_syncProgressGeneration;
+        SetBusy(
+            true,
+            L(
+                "Caching matched lyrics…",
+                "正在缓存匹配歌词……"));
 
-        SetBusy(true, L("Updating matched lyrics…", "正在更新匹配歌词……"));
+        SqliteLyricsCache lyricsCache = new(DatabasePath);
+        List<PlanEntry> materialize = [];
+        List<string> fetchErrors = [];
+        int cached = 0;
+        int deferred = 0;
+        int noLyrics = 0;
+
         try
         {
             LibraryPathSafety.ValidateStatePath(
-                settings, DatabasePath);
+                settings,
+                DatabasePath);
 
             using NeteaseClient client = new();
             CompositeFingerprintPcmDecoder decoder = new();
             NeteaseTrackProvider provider = new(client, decoder);
 
-            ITrackLyricsWriter writer =
-                LyricsStorageModes.Normalize(
-                    settings.Organizer.Lyrics.StorageMode)
-                    == LyricsStorageModes.Sidecar
-                        ? new SidecarLrcLyricsWriter()
-                        : new TagLibSharpLyricsWriter();
-
-            SyncExecutor executor = new(
-                new LocalLibraryMaterializer(),
-                provider,
-                provider,
-                writer);
-
-            SyncProgressTracker tracker = new();
-            Progress<SyncExecutionProgress> progress = new(value =>
+            // Phase one: commit the fetched document to SQLite *before*
+            // considering destination drift or even destination existence.
+            // A failed copy can never discard a successfully fetched lyric.
+            foreach (var (item, songId) in matched)
             {
-                if (generation != _syncProgressGeneration
-                    || !tracker.ShouldApply(value))
-                {
-                    return;
-                }
+                cancellation.Token.ThrowIfCancellationRequested();
 
                 SetOperationStatus(
-                    $"{FriendlyStage(value.Stage)} · " +
-                    $"{value.Processed:N0}/{value.Total:N0}");
-                SetProgress(value.Processed, value.Total);
-                UpdateLiveSyncRow(value);
-            });
+                    L(
+                        $"Caching lyrics {cached + fetchErrors.Count + 1:N0}/{matched.Length:N0} · {item.Title}",
+                        $"正在缓存歌词 {cached + fetchErrors.Count + 1:N0}/{matched.Length:N0} · {item.Title}"));
 
-            SyncExecutionSummary summary = await Task.Run(
-                () => executor.ExecuteAsync(
-                    settings,
-                    new LibraryPlan(entries),
-                    _state,
-                    _stateStore,
-                    progress,
-                    cancellation.Token,
-                    lyricsOnly: true),
-                cancellation.Token);
+                try
+                {
+                    LrcDocument? latest =
+                        await client.GetLyricsAsync(
+                            songId,
+                            cancellation.Token);
+
+                    // Match actions are disabled during this operation, but
+                    // still check identity before publishing the canonical
+                    // document to protect against any stale callbacks.
+                    if (_state.Tracks.TryGetValue(
+                            item.Entry.SourcePath,
+                            out TrackState? current)
+                        && current.NeteaseSongId == songId
+                        && !current.NeteaseMatchSuppressed)
+                    {
+                        await lyricsCache.SaveAsync(
+                            item.Entry.SourcePath,
+                            songId,
+                            latest,
+                            cancellation.Token);
+                        cached++;
+
+                        if (latest is null || latest.Lines.Count == 0)
+                        {
+                            noLyrics++;
+                        }
+                    }
+                    else
+                    {
+                        deferred++;
+                        continue;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    fetchErrors.Add(
+                        $"{item.Title}: {exception.Message}");
+                    AppDiagnostics.LogException(
+                        "Could not cache matched lyrics.",
+                        exception);
+                    continue;
+                }
+
+                PlanEntry entry = item.Entry;
+                TrackState track =
+                    _state.Tracks[item.Entry.SourcePath];
+
+                if (entry.DestinationPath is not string destination
+                    || entry.Metadata is null
+                    || !File.Exists(destination)
+                    || !IsPathInside(
+                        destination,
+                        settings.Path.DestinationDirectory)
+                    || !string.Equals(
+                        track.DestinationPath,
+                        destination,
+                        StringComparison.OrdinalIgnoreCase)
+                    || !File.Exists(entry.SourcePath))
+                {
+                    deferred++;
+                    continue;
+                }
+
+                FileInfo source = new(entry.SourcePath);
+                FileInfo target = new(destination);
+                ulong hash = await Task.Run(
+                    () => QuickFileHash.Compute(
+                        entry.SourcePath),
+                    cancellation.Token);
+
+                if (!StateStore.IsSourceVersionUnchanged(
+                        track, source, hash)
+                    || (StateStore.HasDestinationVersion(track)
+                        && !StateStore.IsDestinationVersionUnchanged(
+                            track, target)))
+                {
+                    // The cached lyrics are safe even if the destination is
+                    // not. The regular scanner will repair materialization.
+                    deferred++;
+                    continue;
+                }
+
+                materialize.Add(entry with
+                {
+                    Status = PlanEntryStatus.Modified,
+                    NeedsAudioCopy = false,
+                    Detail = "Materialize canonical cached lyrics.",
+                });
+            }
+
+            // Phase two is optional. Its only input is the canonical DB
+            // record; the NetEase endpoint is never fetched a second time.
+            SyncExecutionSummary? summary = null;
+            if (materialize.Count > 0)
+            {
+                ITrackLyricsWriter writer =
+                    LyricsStorageModes.Normalize(
+                        settings.Organizer.Lyrics.StorageMode)
+                        == LyricsStorageModes.Sidecar
+                            ? new SidecarLrcLyricsWriter()
+                            : new TagLibSharpLyricsWriter();
+
+                SyncExecutor executor = new(
+                    new LocalLibraryMaterializer(),
+                    provider,
+                    provider,
+                    writer,
+                    lyricsCache: lyricsCache);
+
+                SyncProgressTracker tracker = new();
+                Progress<SyncExecutionProgress> progress =
+                    new(value =>
+                    {
+                        if (generation != _syncProgressGeneration
+                            || !tracker.ShouldApply(value))
+                        {
+                            return;
+                        }
+
+                        SetOperationStatus(
+                            $"{FriendlyStage(value.Stage)} · " +
+                            $"{value.Processed:N0}/{value.Total:N0}");
+                        SetProgress(value.Processed, value.Total);
+                        UpdateLiveSyncRow(value);
+                    });
+
+                summary = await Task.Run(
+                    () => executor.ExecuteAsync(
+                        settings,
+                        new LibraryPlan(materialize),
+                        _state,
+                        _stateStore,
+                        progress,
+                        cancellation.Token,
+                        lyricsOnly: true),
+                    cancellation.Token);
+            }
 
             ++_syncProgressGeneration;
             await RefreshLibraryAfterSyncAsync(
@@ -7000,40 +7202,54 @@ public sealed partial class MainWindow : Window
                 await ShowTrackDetailsAsync(selected);
             }
 
+            int materializationErrors = summary?.Errors.Count ?? 0;
             bool complete =
-                summary.Errors.Count == 0
-                && summary.Warnings.Count == 0
-                && summary.CompletedSourcePaths.Count == entries.Count
-                && deferred == 0;
+                cached == matched.Length
+                && deferred == 0
+                && fetchErrors.Count == 0
+                && materializationErrors == 0
+                && (summary?.CompletedSourcePaths.Count ?? 0)
+                    == materialize.Count;
 
-            if (complete && summary.NoLyrics > 0)
+            if (fetchErrors.Count > 0
+                || materializationErrors > 0)
+            {
+                string message = fetchErrors.FirstOrDefault()
+                    ?? summary?.Errors.FirstOrDefault()?.Message
+                    ?? L(
+                        "Could not materialize cached lyrics.",
+                        "无法写入数据库中缓存的歌词。");
+                ShowInfo(
+                    InfoBarSeverity.Warning,
+                    L("Some lyrics still need attention", "部分歌词需要处理"),
+                    message);
+            }
+            else if (deferred > 0)
+            {
+                ShowInfo(
+                    InfoBarSeverity.Informational,
+                    L("Lyrics cached", "歌词已缓存"),
+                    L(
+                        $"{cached:N0} track(s) are saved in the database; {deferred:N0} await destination synchronization.",
+                        $"已将 {cached:N0} 首歌曲的歌词保存到数据库；其中 {deferred:N0} 首等待目标文件同步。"));
+            }
+            else if (noLyrics > 0)
             {
                 ShowInfo(
                     InfoBarSeverity.Informational,
                     L("Lyrics checked", "已检查歌词"),
                     L(
-                        $"{summary.NoLyrics:N0} matched track(s) have no NetEase lyrics.",
-                        $"{summary.NoLyrics:N0} 首匹配歌曲没有可用的网易云歌词。"));
+                        $"{noLyrics:N0} matching track(s) have no available NetEase lyrics.",
+                        $"{noLyrics:N0} 首匹配歌曲没有可用的网易云歌词。"));
             }
-            else if (complete)
+            else
             {
                 ShowInfo(
                     InfoBarSeverity.Success,
                     L("Lyrics synchronized", "歌词已同步"),
                     L(
-                        $"{entries.Count:N0} matched track(s) refreshed.",
-                        $"已更新 {entries.Count:N0} 首歌曲的匹配歌词。"));
-            }
-            else
-            {
-                string? firstError = summary.Errors.FirstOrDefault()
-                    ?.Message;
-                ShowInfo(
-                    InfoBarSeverity.Warning,
-                    L("Some lyrics remain pending", "部分歌词仍待同步"),
-                    firstError ?? L(
-                        "Some tracks need a normal sync or match review.",
-                        "部分歌曲仍需要正常同步或人工确认。"));
+                        $"{cached:N0} track(s) cached and synchronized.",
+                        $"已缓存并同步 {cached:N0} 首歌曲的歌词。"));
             }
 
             return complete;
@@ -7042,19 +7258,26 @@ public sealed partial class MainWindow : Window
         {
             ++_syncProgressGeneration;
             await RefreshLibraryAfterSyncAsync(
-                settings, null, CancellationToken.None);
+                settings,
+                null,
+                CancellationToken.None);
             return false;
         }
         catch (Exception exception)
         {
             ++_syncProgressGeneration;
             AppDiagnostics.LogException(
-                "Could not synchronize matched lyrics.", exception);
+                "Could not update the lyrics cache.",
+                exception);
+
             await RefreshLibraryAfterSyncAsync(
-                settings, null, CancellationToken.None);
+                settings,
+                null,
+                CancellationToken.None);
+
             ShowInfo(
                 InfoBarSeverity.Warning,
-                L("Lyrics pending", "歌词待同步"),
+                L("Lyrics update failed", "歌词更新失败"),
                 UserFacingErrors.Describe(exception));
             return false;
         }

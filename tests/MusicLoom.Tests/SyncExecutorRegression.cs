@@ -22,6 +22,8 @@ internal static class SyncExecutorRegression
         await NoMatchIsNonFatalAsync();
         await LyricsOnlyRefreshAvoidsOtherWritesAsync();
         await LyricsOnlyRefreshProtectsUserSidecarAsync();
+        await CachedLyricsAvoidsSecondNetworkFetchAsync();
+        await FetchSuccessSurvivesOutputFailureAsync();
         MatchWarningHandlesChineseAndArtistSubsets();
         ProgressTrackerRejectsStaleStages();
         await WarningGatesLyricsUntilConfirmationAsync();
@@ -307,6 +309,77 @@ internal static class SyncExecutorRegression
         Equal(
             "[00:01.000]User-edited lyric",
             await File.ReadAllTextAsync(sidecar));
+    }
+
+    private static async Task CachedLyricsAvoidsSecondNetworkFetchAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: true);
+
+        InMemoryLyricsCache lyricsCache = new();
+        await lyricsCache.SaveAsync(
+            fixture.SourcePath, 42,
+            LrcDocument.Parse("[00:01.000]canonical"));
+
+        FakeLyricsProvider provider = new(
+            LyricsLookupResult.NoLyrics());
+        FakeLyricsWriter writer = new(
+            LyricsProbeStatus.Missing);
+
+        SyncExecutionSummary summary = await new SyncExecutor(
+            new LocalLibraryMaterializer(),
+            new FakeRecognizer(
+                TrackRecognitionResult.Matched(42)),
+            provider,
+            writer,
+            lyricsCache: lyricsCache).ExecuteAsync(
+                fixture.Settings,
+                fixture.Plan,
+                fixture.State,
+                fixture.StateStore);
+
+        Equal(1, summary.WrittenLyrics);
+        Equal(0, provider.CallCount);
+        Equal(1, writer.WriteCalls);
+    }
+
+    private static async Task FetchSuccessSurvivesOutputFailureAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: true);
+
+        InMemoryLyricsCache lyricsCache = new();
+        FakeLyricsProvider provider = new(
+            LyricsLookupResult.Found(
+                LrcDocument.Parse("[00:01.000]saved before output")));
+
+        SyncExecutionSummary summary = await new SyncExecutor(
+            new LocalLibraryMaterializer(),
+            new FakeRecognizer(
+                TrackRecognitionResult.Matched(42)),
+            provider,
+            new ThrowingLyricsWriter(),
+            lyricsCache: lyricsCache).ExecuteAsync(
+                fixture.Settings,
+                fixture.Plan,
+                fixture.State,
+                fixture.StateStore);
+
+        Equal(1, summary.Errors.Count);
+        Equal(0, summary.CompletedTracks);
+        Equal(1, provider.CallCount);
+
+        CachedTrackLyrics cached = await lyricsCache.GetAsync(
+            fixture.SourcePath,
+            42) ?? throw new InvalidOperationException(
+                "A write failure must not lose the fetched canonical lyrics.");
+
+        Equal(
+            "[00:01.000]saved before output",
+            cached.Lrc ?? string.Empty);
+        True(await lyricsCache.GetAsync(fixture.SourcePath, 99) is null);
     }
 
     private static void MatchWarningHandlesChineseAndArtistSubsets()
@@ -1042,6 +1115,54 @@ internal static class SyncExecutorRegression
             WriteCalls++;
             return ValueTask.FromResult(
                 new LyricsWriteResult(_writeStatus));
+        }
+    }
+
+    private sealed class ThrowingLyricsWriter : ITrackLyricsWriter
+    {
+        public ValueTask<LyricsProbeResult> ProbeAsync(
+            string path,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new LyricsProbeResult(
+                LyricsProbeStatus.Missing));
+
+        public ValueTask<LyricsWriteResult> WriteAsync(
+            string path,
+            LrcDocument lyrics,
+            bool overrideExisting,
+            CancellationToken cancellationToken = default) =>
+            throw new IOException("Simulated output write failure.");
+    }
+
+    private sealed class InMemoryLyricsCache : ITrackLyricsCache
+    {
+        private readonly Dictionary<string, CachedTrackLyrics> _cache =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        public Task<CachedTrackLyrics?> GetAsync(
+            string sourcePath,
+            long songId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _cache.TryGetValue(sourcePath, out CachedTrackLyrics? entry);
+            return Task.FromResult(
+                entry?.SongId == songId ? entry : null);
+        }
+
+        public Task SaveAsync(
+            string sourcePath,
+            long songId,
+            LrcDocument? lyrics,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _cache[sourcePath] = new CachedTrackLyrics(
+                sourcePath,
+                songId,
+                lyrics?.ToString(),
+                DateTimeOffset.UtcNow);
+            return Task.CompletedTask;
         }
     }
 
