@@ -468,6 +468,7 @@ public sealed class SyncExecutor
                 // miss includes a stale record; successfully refreshed data
                 // atomically replaces the canonical row before materializing.
                 if (cached is not null
+                    && !lyricsOnly
                     && !IsLyricsCacheFresh(
                         cached,
                         settings,

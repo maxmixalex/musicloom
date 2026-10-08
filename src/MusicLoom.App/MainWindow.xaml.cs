@@ -4047,25 +4047,37 @@ public sealed partial class MainWindow : Window
                 && track.NeteaseSongId is long songId
                 && !track.NeteaseMatchSuppressed)
             {
-                SqliteLyricsCache cache =
-                    new(DatabasePath);
-                canonical = await cache.GetAsync(
-                    item.Entry.SourcePath,
-                    songId);
-
-                if (requestId != _detailRequestId)
+                try
                 {
-                    return;
-                }
+                    SqliteLyricsCache cache =
+                        new(DatabasePath);
+                    canonical = await cache.GetAsync(
+                        item.Entry.SourcePath,
+                        songId);
 
-                if (canonical is null)
-                {
-                    canonical = await TryImportManagedLyricsAsync(
-                        cache, item.Entry, track, payload.Lyrics);
                     if (requestId != _detailRequestId)
                     {
                         return;
                     }
+
+                    if (canonical is null)
+                    {
+                        canonical = await TryImportManagedLyricsAsync(
+                            cache, item.Entry, track, payload.Lyrics);
+                        if (requestId != _detailRequestId)
+                        {
+                            return;
+                        }
+                    }
+                }
+                catch (Exception exception)
+                {
+                    // A transient SQLite lock must not prevent artwork,
+                    // metadata, and safely available local lyrics from
+                    // appearing in the detail pane.
+                    AppDiagnostics.LogException(
+                        "Could not read canonical lyrics.",
+                        exception);
                 }
             }
 
