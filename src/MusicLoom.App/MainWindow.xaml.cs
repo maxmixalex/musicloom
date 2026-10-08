@@ -2080,7 +2080,8 @@ public sealed partial class MainWindow : Window
             maxWidth: 740,
             maxHeight: 620,
             onClosed: () =>
-                completion.TrySetResult(false));
+                completion.TrySetResult(false),
+            compact: true);
 
         return await completion.Task;
     }
@@ -5583,8 +5584,13 @@ public sealed partial class MainWindow : Window
         UIElement content,
         double maxWidth,
         double maxHeight,
-        Action? onClosed = null)
+        Action? onClosed = null,
+        bool compact = false)
     {
+        MatchDialogSurface.VerticalAlignment =
+            compact
+                ? VerticalAlignment.Center
+                : VerticalAlignment.Stretch;
         MatchDialogTitleText.Text =
             title;
         MatchDialogSurface.MaxWidth =

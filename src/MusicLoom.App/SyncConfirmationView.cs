@@ -76,7 +76,7 @@ internal static class SyncConfirmationView
         }
         (int Count, string Label)[] values =
         [
-            (plan.PendingTrackCount, localize("Tracks", "歌曲")),
+            (plan.PendingTrackCount, localize("Pending", "待同步")),
             (plan.AudioCopyCount, localize("Audio copies", "音频复制")),
             (plan.CoverWriteCount, localize("Covers", "封面")),
             (plan.PlaylistWriteCount, localize("Playlists", "播放列表")),
@@ -229,7 +229,7 @@ internal static class SyncConfirmationView
         footer.Children.Add(new TextBlock
         {
             Text = errors.Count == 0
-                ? localize("Nothing is written until you start.", "点击开始前不会写入文件。")
+                ? localize("Destination files are unchanged until you start.", "点击开始前不会修改目标音乐库。")
                 : localize("Synchronization is blocked by scan errors.", "存在扫描错误，无法开始同步。"),
             FontSize = 12,
             Foreground = muted,
