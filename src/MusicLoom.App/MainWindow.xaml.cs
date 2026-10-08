@@ -7032,6 +7032,31 @@ public sealed partial class MainWindow : Window
                 settings,
                 DatabasePath);
 
+            // Make the new canonical version a pending output *before*
+            // network access. A crash between fetching and materializing
+            // cannot leave an old recipe falsely marked synchronized.
+            foreach (var (item, songId) in matched)
+            {
+                if (_state.Tracks.TryGetValue(
+                        item.Entry.SourcePath,
+                        out TrackState? track)
+                    && track.NeteaseSongId == songId)
+                {
+                    _state.Tracks[item.Entry.SourcePath] =
+                        track with
+                        {
+                            RecipeVersion = string.Empty,
+                            Lyrics = LyricsState.Unknown,
+                            LyricsCheckedAt = null,
+                            ProcessedAt = DateTimeOffset.UtcNow,
+                        };
+                }
+            }
+
+            await _stateStore.SaveAsync(
+                _state,
+                cancellation.Token);
+
             using NeteaseClient client = new();
             CompositeFingerprintPcmDecoder decoder = new();
             NeteaseTrackProvider provider = new(client, decoder);
