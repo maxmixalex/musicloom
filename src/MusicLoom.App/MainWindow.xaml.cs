@@ -1400,6 +1400,14 @@ public sealed partial class MainWindow : Window
                     settings,
                     state);
 
+            // The saved UI snapshot can predate a completed/cancelled sync.
+            // Derive display readiness from the more recent state, but still
+            // require a fresh scanner pass before enabling synchronization.
+            cachedPlan = CachedPlanReconciler.Reconcile(
+                cachedPlan,
+                state,
+                settings);
+
             if (cachedPlan.TotalCount == 0)
             {
                 return;

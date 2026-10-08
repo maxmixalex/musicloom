@@ -23,6 +23,7 @@ List<(string Name, Action Test)> tests =
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
     ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),
+    ("Stale startup snapshots reconcile against persisted sync state", CachedSnapshotReconciliation),
     ("Legacy metadata cache migrates multi-artist separators", LegacyMetadataMigratesMultiArtist),
     ("Fingerprint window preserves legacy silence semantics", FingerprintWindowCollectorRegression.Run),
     ("WEAPI crypto matches PyNCM reference vector", WeApiCryptoReference),
@@ -354,6 +355,88 @@ static void PlaylistParsing()
     Equal(
         "/storage/emulated/0/Custom Music/Artist/Album/Example.flac",
         mapped[0]);
+}
+
+static void CachedSnapshotReconciliation()
+{
+    string root = Path.Combine(
+        Path.GetTempPath(), "musicloom-cache-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+
+    try
+    {
+        string source = Path.Combine(root, "source.mp3");
+        string destination = Path.Combine(root, "destination.mp3");
+        File.WriteAllBytes(source, [1, 2, 3]);
+        File.WriteAllBytes(destination, [1, 2, 3]);
+
+        MusicLoomSettings settings = new()
+        {
+            Path = new PathSettings
+            {
+                SourceDirectory = root,
+                DestinationDirectory = root,
+            },
+            Organizer = new OrganizerSettings
+            {
+                Lyrics = new LyricsSettings { Enabled = false },
+            },
+        };
+
+        FileInfo sourceInfo = new(source);
+        FileInfo destinationInfo = new(destination);
+        TrackState recorded = new()
+        {
+            SourcePath = source,
+            SourceSize = sourceInfo.Length,
+            SourceLastWriteUtcTicks = sourceInfo.LastWriteTimeUtc.Ticks,
+            DestinationPath = destination,
+            DestinationSize = destinationInfo.Length,
+            DestinationLastWriteUtcTicks = destinationInfo.LastWriteTimeUtc.Ticks,
+            RecipeVersion = SyncRecipe.For(settings),
+        };
+
+        StateDocument state = new();
+        state.Tracks[source] = recorded;
+        LibraryPlan oldSnapshot = new(
+        [
+            new PlanEntry(
+                source,
+                destination,
+                PlanEntryStatus.Modified,
+                new TrackMetadata(
+                    Artist: "Artist",
+                    AlbumArtist: null,
+                    Album: null,
+                    HasEmbeddedArt: false),
+                NeedsAudioCopy: true),
+        ]);
+
+        LibraryPlan refreshed = CachedPlanReconciler.Reconcile(
+            oldSnapshot,
+            state,
+            settings);
+        Equal(PlanEntryStatus.Unchanged, refreshed.Entries[0].Status);
+        True(!refreshed.Entries[0].NeedsAudioCopy);
+
+        state.Tracks[source] = recorded with
+        {
+            RecipeVersion = "old-recipe",
+        };
+        refreshed = CachedPlanReconciler.Reconcile(
+            oldSnapshot, state, settings);
+        Equal(PlanEntryStatus.Modified, refreshed.Entries[0].Status);
+        True(!refreshed.Entries[0].NeedsAudioCopy);
+
+        File.AppendAllText(source, "changed");
+        refreshed = CachedPlanReconciler.Reconcile(
+            oldSnapshot, state, settings);
+        True(refreshed.Entries[0].NeedsAudioCopy);
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
 }
 
 static void WarmScanSkipsMetadata()
