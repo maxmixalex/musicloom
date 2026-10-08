@@ -21,6 +21,7 @@ internal static class SyncExecutorRegression
         await UnsupportedLyricsUsesZeroProbeAsync();
         await NoMatchIsNonFatalAsync();
         MatchWarningHandlesChineseAndArtistSubsets();
+        ProgressTrackerRejectsStaleStages();
         await WarningGatesLyricsUntilConfirmationAsync();
         await SuppressedMatchSkipsRecognitionAsync();
         await LyricsWritePersistsEnrichmentStateAsync();
@@ -171,6 +172,8 @@ internal static class SyncExecutorRegression
             writer);
 
         Equal(1, summary.NoMatch);
+        Equal(1, summary.CompletedSourcePaths.Count);
+        Equal(fixture.SourcePath, summary.CompletedSourcePaths[0]);
         Equal(0, summary.Errors.Count);
         Equal(1, recognizer.CallCount);
         Equal(0, lyricsProvider.CallCount);
@@ -243,6 +246,69 @@ internal static class SyncExecutorRegression
                 }));
     }
 
+    private static void ProgressTrackerRejectsStaleStages()
+    {
+        SyncProgressTracker tracker = new();
+        TrackSyncWarning warning =
+            new(
+                "warning.flac",
+                "Local",
+                "Remote",
+                null,
+                null,
+                true,
+                false);
+
+        True(tracker.ShouldApply(
+            new SyncExecutionProgress(
+                0,
+                2,
+                "warning.flac",
+                "recognize")));
+        True(tracker.ShouldApply(
+            new SyncExecutionProgress(
+                0,
+                2,
+                "warning.flac",
+                "match",
+                Warning: warning)));
+
+        // The warning is terminal for the song until manual review.
+        True(!tracker.ShouldApply(
+            new SyncExecutionProgress(
+                0,
+                2,
+                "warning.flac",
+                "copy-audio")));
+
+        // Persistence may fail after the warning was reported.
+        True(tracker.ShouldApply(
+            new SyncExecutionProgress(
+                1,
+                2,
+                "warning.flac",
+                "failed")));
+        True(!tracker.ShouldApply(
+            new SyncExecutionProgress(
+                1,
+                2,
+                "warning.flac",
+                "complete")));
+
+        True(tracker.ShouldApply(
+            new SyncExecutionProgress(
+                2,
+                2,
+                "success.flac",
+                "complete")));
+        True(!tracker.ShouldApply(
+            new SyncExecutionProgress(
+                1,
+                2,
+                "success.flac",
+                "fetch-lyrics")));
+    }
+
     private static async Task WarningGatesLyricsUntilConfirmationAsync()
     {
         await using Fixture fixture =
@@ -276,6 +342,7 @@ internal static class SyncExecutorRegression
 
         Equal(1, summary.Warnings.Count);
         Equal(0, summary.CompletedTracks);
+        Equal(0, summary.CompletedSourcePaths.Count);
         Equal(0, lyricsProvider.CallCount);
         Equal(0, writer.WriteCalls);
 
@@ -386,6 +453,8 @@ internal static class SyncExecutorRegression
             writer);
 
         Equal(1, summary.WrittenLyrics);
+        Equal(1, summary.CompletedSourcePaths.Count);
+        Equal(fixture.SourcePath, summary.CompletedSourcePaths[0]);
         Equal(0, summary.Errors.Count);
         Equal(1, recognizer.CallCount);
         Equal(1, lyricsProvider.CallCount);
@@ -420,6 +489,7 @@ internal static class SyncExecutorRegression
             writer);
 
         Equal(1, summary.Errors.Count);
+        Equal(0, summary.CompletedSourcePaths.Count);
         Equal("recognize", summary.Errors[0].Stage);
         True(File.Exists(fixture.DestinationPath));
 

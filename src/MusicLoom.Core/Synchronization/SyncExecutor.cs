@@ -32,7 +32,8 @@ public sealed record SyncExecutionSummary(
     int NoLyrics,
     int UnsupportedLyrics,
     IReadOnlyList<TrackSyncWarning> Warnings,
-    IReadOnlyList<TrackSyncError> Errors);
+    IReadOnlyList<TrackSyncError> Errors,
+    IReadOnlyList<string> CompletedSourcePaths);
 
 public sealed record SyncExecutionProgress(
     int Processed,
@@ -217,6 +218,7 @@ public sealed class SyncExecutor
         };
 
         int completedTracks = 0;
+        List<string> completedSources = [];
         int existingLyrics = 0;
         int writtenLyrics = 0;
         int noMatch = 0;
@@ -565,7 +567,8 @@ public sealed class SyncExecutor
             noLyrics,
             unsupportedLyrics,
             warnings,
-            errors);
+            errors,
+            completedSources);
 
         async Task CompleteAsync(
             PlanEntry entry,
@@ -586,6 +589,7 @@ public sealed class SyncExecutor
                     ?? throw new InvalidOperationException(
                         "Completed plan entry has no destination path."));
             completedTracks++;
+            completedSources.Add(entry.SourcePath);
 
             progress?.Report(new SyncExecutionProgress(
                 processed,

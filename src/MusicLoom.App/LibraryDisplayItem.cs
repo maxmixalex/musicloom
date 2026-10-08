@@ -96,55 +96,25 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
     public bool IsPlaying =>
         _isPlaying;
 
-    public Brush RowBackground =>
-        Kind switch
-        {
-            "error" =>
-                new SolidColorBrush(
-                    Color.FromArgb(
-                        34, 196, 43, 28)),
-            "warning" =>
-                new SolidColorBrush(
-                    Color.FromArgb(
-                        32, 202, 116, 0)),
-            _ when _isPlaying =>
-                Application.Current.Resources[
-                    "AccentFillColorTertiaryBrush"]
-                as Brush
-                ?? new SolidColorBrush(
-                    Color.FromArgb(
-                        28, 0, 120, 212)),
-            _ =>
-                new SolidColorBrush(
-                    Color.FromArgb(
-                        0, 0, 0, 0)),
-        };
-
-    public Brush RowBorderBrush =>
+    // Selection remains a ListView concern. Playback and sync problems are
+    // independent, so neither changes the selection background or indicator.
+    public Visibility PlayingIndicatorVisibility =>
         _isPlaying
-            ? Application.Current.Resources[
-                "AccentFillColorDefaultBrush"]
-                as Brush
-                ?? new SolidColorBrush(
-                    Color.FromArgb(
-                        255, 0, 120, 212))
-            : Kind switch
-            {
-                "error" =>
-                    StatusBrush,
-                "warning" =>
-                    StatusBrush,
-                _ =>
-                    new SolidColorBrush(
-                        Color.FromArgb(
-                            0, 0, 0, 0)),
-            };
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
-    public Thickness RowBorderThickness =>
-        _isPlaying
-        || Kind is "warning" or "error"
-            ? new Thickness(1)
-            : new Thickness(0);
+    public Brush StatusBadgeBackground => Kind switch
+    {
+        "warning" =>
+            new SolidColorBrush(
+                Color.FromArgb(24, 202, 116, 0)),
+        "error" =>
+            new SolidColorBrush(
+                Color.FromArgb(24, 196, 43, 28)),
+        _ =>
+            new SolidColorBrush(
+                Color.FromArgb(0, 0, 0, 0)),
+    };
 
     public Brush StatusBrush => Kind switch
     {
@@ -226,11 +196,7 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
             OnPropertyChanged(
                 nameof(StatusGlyph));
             OnPropertyChanged(
-                nameof(RowBackground));
-            OnPropertyChanged(
-                nameof(RowBorderBrush));
-            OnPropertyChanged(
-                nameof(RowBorderThickness));
+                nameof(StatusBadgeBackground));
         }
     }
 
@@ -246,11 +212,7 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
         OnPropertyChanged(
             nameof(IsPlaying));
         OnPropertyChanged(
-            nameof(RowBackground));
-        OnPropertyChanged(
-            nameof(RowBorderBrush));
-        OnPropertyChanged(
-            nameof(RowBorderThickness));
+            nameof(PlayingIndicatorVisibility));
     }
 
     public void ApplyLongTextMode(

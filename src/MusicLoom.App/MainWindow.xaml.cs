@@ -79,6 +79,7 @@ public sealed partial class MainWindow : Window
     private LibraryDisplayItem? _playlistContextItem;
     private CancellationTokenSource? _operationCancellation;
     private CancellationTokenSource? _settingsSaveCancellation;
+    private int _syncProgressGeneration;
     private CancellationTokenSource? _playbackTransitionCancellation;
     private bool _busy;
     private bool _loadingSettings = true;
@@ -1583,6 +1584,9 @@ public sealed partial class MainWindow : Window
 
     private async Task RunBackgroundSyncAsync()
     {
+        int runGeneration =
+            ++_syncProgressGeneration;
+
         using CancellationTokenSource
             cancellation = new();
 
@@ -1739,9 +1743,17 @@ public sealed partial class MainWindow : Window
                     provider,
                     lyricsWriter);
 
+            SyncProgressTracker progressTracker = new();
+
             Progress<SyncExecutionProgress>
                 syncProgress = new(value =>
                 {
+                    if (runGeneration != _syncProgressGeneration
+                        || !progressTracker.ShouldApply(value))
+                    {
+                        return;
+                    }
+
                     SetOperationStatus(
                         $"{FriendlyStage(value.Stage)} · " +
                         $"{value.Processed:N0}/{value.Total:N0} · " +
@@ -1768,6 +1780,10 @@ public sealed partial class MainWindow : Window
                             syncProgress,
                             cancellation.Token),
                     cancellation.Token);
+
+            // Progress<T> dispatches asynchronously onto the UI thread.
+            // Ignore late events once the persisted final state is being read.
+            ++_syncProgressGeneration;
 
             string summaryText =
                 L(
@@ -1852,17 +1868,18 @@ public sealed partial class MainWindow : Window
                     .ToHashSet(
                         StringComparer
                             .OrdinalIgnoreCase);
+            HashSet<string> completedSources =
+                summary.CompletedSourcePaths.ToHashSet(
+                    StringComparer.OrdinalIgnoreCase);
 
+            // Completion is a positive acknowledgement from the executor,
+            // not merely the absence of an error. In particular a warning
+            // is an intentionally incomplete, review-required track.
             foreach (PlanEntry entry
                 in plan.Entries.Where(
                     entry =>
-                        entry.Status
-                            != PlanEntryStatus
-                                .Unchanged
-                        && entry.Status
-                            != PlanEntryStatus.Error
-                        && !failedSources.Contains(
-                            entry.SourcePath)))
+                        completedSources.Contains(entry.SourcePath)
+                        && !failedSources.Contains(entry.SourcePath)))
             {
                 SetTrackSyncState(
                     entry.SourcePath,
@@ -1912,7 +1929,7 @@ public sealed partial class MainWindow : Window
 
             await RefreshLibraryAfterSyncAsync(
                 settings,
-                summary.Errors,
+                summary,
                 cancellation.Token);
 
             if (summary.Errors.Count > 0)
@@ -1965,6 +1982,7 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
+            ++_syncProgressGeneration;
             _operationCancellation = null;
             SetBusy(
                 false,
@@ -1982,10 +2000,9 @@ public sealed partial class MainWindow : Window
                     state.Tracks.TryGetValue(
                         entry.SourcePath,
                         out TrackState? trackState)
-                        ? SyncExecutor
-                            .DetectMatchWarning(
-                                entry,
-                                trackState)
+                        ? SyncExecutor.DetectMatchWarning(
+                            entry,
+                            trackState)
                         : null)
                 .OfType<TrackSyncWarning>()
                 .ToArray();
@@ -1993,186 +2010,39 @@ public sealed partial class MainWindow : Window
         PlanEntry[] errors =
             plan.Entries
                 .Where(static entry =>
-                    entry.Status
-                        == PlanEntryStatus.Error)
+                    entry.Status == PlanEntryStatus.Error)
                 .ToArray();
 
-        TextBlock summary = new()
+        (Grid content, Button cancel, Button confirm) =
+            SyncConfirmationView.Create(
+                plan,
+                warnings,
+                errors,
+                L,
+                FormatTrackMatchWarning);
+
+        TaskCompletionSource<bool> completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        cancel.Click += (_, _) =>
         {
-            Text =
-                L(
-                    $"{plan.PendingTrackCount:N0} tracks pending · {plan.AudioCopyCount:N0} audio copies · {plan.CoverWriteCount:N0} covers · {plan.PlaylistWriteCount:N0} playlists · {warnings.Length:N0} warnings · {errors.Length:N0} errors",
-                    $"{plan.PendingTrackCount:N0} 首歌曲待处理 · {plan.AudioCopyCount:N0} 个音频复制 · {plan.CoverWriteCount:N0} 个封面 · {plan.PlaylistWriteCount:N0} 个播放列表 · {warnings.Length:N0} 个警告 · {errors.Length:N0} 个错误"),
-            TextWrapping =
-                TextWrapping.WrapWholeWords,
+            completion.TrySetResult(false);
+            CloseMatchOverlay();
         };
-
-        StackPanel issues = new()
+        confirm.Click += (_, _) =>
         {
-            Spacing = 8,
+            completion.TrySetResult(true);
+            CloseMatchOverlay();
         };
-
-        foreach (TrackSyncWarning warning
-            in warnings)
-        {
-            issues.Children.Add(
-                new TextBlock
-                {
-                    Text =
-                        $"⚠ {Path.GetFileName(warning.SourcePath)} · " +
-                        FormatTrackMatchWarning(
-                            warning),
-                    TextWrapping =
-                        TextWrapping.WrapWholeWords,
-                    Foreground =
-                        new SolidColorBrush(
-                            Color.FromArgb(
-                                255,
-                                202,
-                                116,
-                                0)),
-                });
-        }
-
-        foreach (PlanEntry error
-            in errors)
-        {
-            issues.Children.Add(
-                new TextBlock
-                {
-                    Text =
-                        $"✕ {Path.GetFileName(error.SourcePath)} · " +
-                        (error.Detail
-                            ?? L(
-                                "Unknown scan error.",
-                                "未知扫描错误。")),
-                    TextWrapping =
-                        TextWrapping.WrapWholeWords,
-                    Foreground =
-                        new SolidColorBrush(
-                            Color.FromArgb(
-                                255,
-                                196,
-                                43,
-                                28)),
-                });
-        }
-
-        if (warnings.Length > 0)
-        {
-            issues.Children.Insert(
-                0,
-                new TextBlock
-                {
-                    Text =
-                        L(
-                            "Warning tracks are skipped until you manually confirm their NetEase match.",
-                            "警告歌曲会被跳过，直到你手动确认其网易云匹配。"),
-                    TextWrapping =
-                        TextWrapping.WrapWholeWords,
-                    Foreground =
-                        Application.Current.Resources[
-                            "TextFillColorSecondaryBrush"]
-                        as Brush,
-                });
-        }
-
-        ScrollViewer issueScroller =
-            new()
-            {
-                MaxHeight = 320,
-                VerticalScrollBarVisibility =
-                    ScrollBarVisibility.Auto,
-                Content = issues,
-            };
-
-        Button cancelButton = new()
-        {
-            Content =
-                L("Cancel", "取消"),
-        };
-
-        Button syncButton = new()
-        {
-            Content =
-                errors.Length > 0
-                    ? L(
-                        "Resolve errors first",
-                        "请先解决错误")
-                    : L(
-                        "Sync now",
-                        "立即同步"),
-            IsEnabled =
-                errors.Length == 0,
-            Style =
-                Application.Current.Resources[
-                    "AccentButtonStyle"]
-                as Style,
-        };
-
-        StackPanel footer = new()
-        {
-            Orientation =
-                Orientation.Horizontal,
-            HorizontalAlignment =
-                HorizontalAlignment.Right,
-            Spacing = 8,
-        };
-        footer.Children.Add(
-            cancelButton);
-        footer.Children.Add(
-            syncButton);
-
-        StackPanel content = new()
-        {
-            Spacing = 14,
-        };
-        content.Children.Add(
-            summary);
-
-        if (warnings.Length > 0
-            || errors.Length > 0)
-        {
-            content.Children.Add(
-                issueScroller);
-        }
-
-        content.Children.Add(
-            footer);
-
-        TaskCompletionSource<bool>
-            completion =
-                new(
-                    TaskCreationOptions
-                        .RunContinuationsAsynchronously);
-
-        cancelButton.Click +=
-            (_, _) =>
-            {
-                completion.TrySetResult(
-                    false);
-                CloseMatchOverlay();
-            };
-
-        syncButton.Click +=
-            (_, _) =>
-            {
-                completion.TrySetResult(
-                    true);
-                CloseMatchOverlay();
-            };
 
         CloseMatchOverlay();
         ShowAppOverlay(
-            L(
-                "Confirm synchronization",
-                "确认同步"),
+            L("Confirm synchronization", "确认同步"),
             content,
-            maxWidth: 760,
+            maxWidth: 740,
             maxHeight: 620,
             onClosed: () =>
-                completion.TrySetResult(
-                    false));
+                completion.TrySetResult(false));
 
         return await completion.Task;
     }
@@ -2521,7 +2391,7 @@ public sealed partial class MainWindow : Window
 
     private async Task RefreshLibraryAfterSyncAsync(
         MusicLoomSettings settings,
-        IReadOnlyList<TrackSyncError> syncErrors,
+        SyncExecutionSummary summary,
         CancellationToken cancellationToken)
     {
         try
@@ -2563,6 +2433,10 @@ public sealed partial class MainWindow : Window
             _state = state;
             _plan = freshPlan;
             _liveNeteaseMatches.Clear();
+            _trackSyncStates.Clear();
+
+            string? selectedSource =
+                _selectedLibraryItem?.Entry.SourcePath;
 
             Dictionary<string, PlanEntry>
                 freshBySource =
@@ -2585,6 +2459,19 @@ public sealed partial class MainWindow : Window
                 PopulateLibrary(
                     settings,
                     freshPlan);
+
+                LibraryDisplayItem? restored =
+                    _allLibraryItems.FirstOrDefault(
+                        item => string.Equals(
+                            item.Entry.SourcePath,
+                            selectedSource,
+                            StringComparison.OrdinalIgnoreCase));
+
+                if (restored is not null
+                    && LibraryList.Items.Contains(restored))
+                {
+                    LibraryList.SelectedItem = restored;
+                }
             }
             else
             {
@@ -2613,34 +2500,101 @@ public sealed partial class MainWindow : Window
 
             _manualPendingSources.RemoveWhere(
                 sourcePath =>
-                    freshBySource.TryGetValue(
+                    !freshBySource.TryGetValue(
                         sourcePath,
                         out PlanEntry? freshEntry)
-                    && freshEntry.Status
+                    || freshEntry.Status
                         == PlanEntryStatus.Unchanged);
 
-            UpdateLibrarySummary(
-                freshPlan);
+            // The refreshed scan is authoritative. Rebuild only diagnostics
+            // that still correspond to the actual status of each source,
+            // rather than retaining a stale "Syncing" or "Synced" log.
+            HashSet<string> failedSources =
+                summary.Errors
+                    .Select(static error =>
+                        error.SourcePath)
+                    .ToHashSet(
+                        StringComparer.OrdinalIgnoreCase);
+
+            foreach (LibraryDisplayItem item
+                in _allLibraryItems)
+            {
+                if (item.Kind != "warning")
+                {
+                    continue;
+                }
+
+                TrackSyncWarning? warning =
+                    GetStoredMatchWarning(item.Entry);
+                if (warning is not null)
+                {
+                    SetTrackSyncState(
+                        item.Entry.SourcePath,
+                        L("Warning", "警告"),
+                        FormatTrackMatchWarning(warning));
+                }
+            }
+
+            foreach (string sourcePath
+                in summary.CompletedSourcePaths)
+            {
+                LibraryDisplayItem? completed =
+                    _allLibraryItems.FirstOrDefault(
+                        item => string.Equals(
+                            item.Entry.SourcePath,
+                            sourcePath,
+                            StringComparison.OrdinalIgnoreCase));
+
+                if (completed?.Kind == "synced"
+                    && !failedSources.Contains(sourcePath))
+                {
+                    SetTrackSyncState(
+                        sourcePath,
+                        L("Synced", "已同步"),
+                        L(
+                            "Sync completed successfully.",
+                            "同步已成功完成。"));
+                }
+            }
 
             foreach (TrackSyncError error
-                in syncErrors)
+                in summary.Errors)
             {
                 LibraryDisplayItem? errorItem =
-                    _allLibraryItems
-                        .FirstOrDefault(
-                            item =>
-                                string.Equals(
-                                    item.Entry.SourcePath,
-                                    error.SourcePath,
-                                    StringComparison.OrdinalIgnoreCase));
+                    _allLibraryItems.FirstOrDefault(
+                        item => string.Equals(
+                            item.Entry.SourcePath,
+                            error.SourcePath,
+                            StringComparison.OrdinalIgnoreCase));
 
-                errorItem?.SetStatus(
+                if (errorItem is null)
+                {
+                    continue;
+                }
+
+                errorItem.SetStatus(
                     "error",
-                    StatusLabel(
-                        "error"));
+                    StatusLabel("error"));
+                SetTrackSyncState(
+                    error.SourcePath,
+                    L("Error", "错误"),
+                    $"[{error.Stage}] {error.Message}",
+                    isError: true);
             }
 
             RefreshLiveSyncCounters();
+
+            // Status and cached NetEase data may have changed while syncing.
+            // Refresh details for the selected row, never for the playing row.
+            if (LibraryList.SelectedItem
+                is LibraryDisplayItem selected)
+            {
+                TrackStatusText.Text = selected.StatusText;
+                TrackStatusIcon.Glyph = selected.StatusGlyph;
+                TrackStatusIcon.Foreground = selected.StatusBrush;
+                RefreshTrackSyncTab(selected);
+                RefreshCurrentMatchCard(selected);
+            }
 
             await LibraryDatabase.SavePlanAsync(
                 DatabasePath,
@@ -2839,6 +2793,20 @@ public sealed partial class MainWindow : Window
             _state = state;
             _stateStore = stateStore;
             _plan = plan;
+            _liveNeteaseMatches.Clear();
+            _trackSyncStates.Clear();
+
+            // A manual pending override only matters until the next scan
+            // includes that source as actual pending work.
+            HashSet<string> pendingSources =
+                plan.Entries
+                    .Where(static entry =>
+                        entry.Status
+                        is PlanEntryStatus.New or PlanEntryStatus.Modified)
+                    .Select(static entry =>
+                        entry.SourcePath)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _manualPendingSources.IntersectWith(pendingSources);
 
             OperationStatusText.Text =
                 L(
@@ -7287,6 +7255,7 @@ public sealed partial class MainWindow : Window
                     out TrackState? state)
                 && state.NeteaseSongId
                     == songId
+                && !_busy
                 && string.IsNullOrWhiteSpace(
                     state.NeteaseCoverUrl))
             {
