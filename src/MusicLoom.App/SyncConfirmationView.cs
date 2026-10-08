@@ -26,9 +26,6 @@ internal static class SyncConfirmationView
         Brush neutral = Resource(
             "CardBackgroundFillColorSecondaryBrush",
             Color.FromArgb(14, 128, 128, 128));
-        Brush foreground = Resource(
-            "TextFillColorPrimaryBrush",
-            Color.FromArgb(255, 230, 230, 230));
         Brush muted = Resource(
             "TextFillColorSecondaryBrush",
             Color.FromArgb(255, 140, 140, 140));
@@ -97,7 +94,6 @@ internal static class SyncConfirmationView
                 FontSize = 21,
                 FontWeight = SemiBold,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                Foreground = foreground,
             });
             metric.Children.Add(new TextBlock
             {

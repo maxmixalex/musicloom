@@ -1586,6 +1586,7 @@ public sealed partial class MainWindow : Window
     {
         int runGeneration =
             ++_syncProgressGeneration;
+        bool executionStarted = false;
 
         using CancellationTokenSource
             cancellation = new();
@@ -1620,9 +1621,17 @@ public sealed partial class MainWindow : Window
                 await stateStore.LoadAsync(
                     cancellation.Token);
 
+            bool checkingPlan = true;
+
             Progress<ScanProgress>
                 scanProgress = new(value =>
                 {
+                    if (!checkingPlan
+                        || runGeneration != _syncProgressGeneration)
+                    {
+                        return;
+                    }
+
                     if (value.Stage
                         == "ancillary")
                     {
@@ -1667,6 +1676,8 @@ public sealed partial class MainWindow : Window
                             scanProgress,
                             cancellation.Token),
                     cancellation.Token);
+
+            checkingPlan = false;
 
             await stateStore.SaveAsync(
                 state,
@@ -1768,6 +1779,8 @@ public sealed partial class MainWindow : Window
                 });
 
             _liveNeteaseMatches.Clear();
+
+            executionStarted = true;
 
             SyncExecutionSummary summary =
                 await Task.Run(
@@ -1949,6 +1962,20 @@ public sealed partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
+            ++_syncProgressGeneration;
+
+            // An interrupted sync may already have checkpointed successful
+            // tracks. Replace any lingering "Syncing" row with the actual
+            // persisted pending/synced/warning state.
+            if (executionStarted
+                && _settings is MusicLoomSettings cancelledSettings)
+            {
+                await RefreshLibraryAfterSyncAsync(
+                    cancelledSettings,
+                    null,
+                    CancellationToken.None);
+            }
+
             AppDiagnostics.Log(
                 "Sync cancelled by user.");
 
@@ -1968,6 +1995,17 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            ++_syncProgressGeneration;
+
+            if (executionStarted
+                && _settings is MusicLoomSettings failedSettings)
+            {
+                await RefreshLibraryAfterSyncAsync(
+                    failedSettings,
+                    null,
+                    CancellationToken.None);
+            }
+
             AppDiagnostics.LogException(
                 "Background sync failed.",
                 exception);
@@ -2189,12 +2227,24 @@ public sealed partial class MainWindow : Window
         string detail,
         bool isError = false)
     {
+        string kind =
+            isError
+                ? "error"
+                : status == L("Warning", "警告")
+                    ? "warning"
+                    : status == L("Synced", "已同步")
+                        ? "synced"
+                        : status == L("Pending sync", "待同步")
+                            ? "pending"
+                            : "syncing";
+
         _trackSyncStates[sourcePath] =
             new TrackSyncViewState(
                 status,
                 detail,
                 DateTimeOffset.Now,
-                isError);
+                isError,
+                kind);
 
         if (_selectedLibraryItem
                 is LibraryDisplayItem selected
@@ -2367,6 +2417,28 @@ public sealed partial class MainWindow : Window
             };
     }
 
+    private void ReconcileSyncLogsWithCurrentRows()
+    {
+        Dictionary<string, string> currentKinds =
+            _allLibraryItems.ToDictionary(
+                static item => item.Entry.SourcePath,
+                static item => item.Kind,
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (string sourcePath in
+            _trackSyncStates.Keys.ToArray())
+        {
+            if (!currentKinds.TryGetValue(
+                    sourcePath,
+                    out string? kind)
+                || _trackSyncStates[sourcePath].Kind
+                    != kind)
+            {
+                _trackSyncStates.Remove(sourcePath);
+            }
+        }
+    }
+
     private void RefreshLiveSyncCounters()
     {
         PendingCountText.Text =
@@ -2391,11 +2463,16 @@ public sealed partial class MainWindow : Window
 
     private async Task RefreshLibraryAfterSyncAsync(
         MusicLoomSettings settings,
-        SyncExecutionSummary summary,
+        SyncExecutionSummary? summary,
         CancellationToken cancellationToken)
     {
         try
         {
+            IReadOnlyList<TrackSyncError> runErrors =
+                summary?.Errors ?? [];
+            IReadOnlyList<string> completedSources =
+                summary?.CompletedSourcePaths ?? [];
+
             SetOperationStatus(
                 L(
                     "Refreshing sync state…",
@@ -2510,7 +2587,7 @@ public sealed partial class MainWindow : Window
             // that still correspond to the actual status of each source,
             // rather than retaining a stale "Syncing" or "Synced" log.
             HashSet<string> failedSources =
-                summary.Errors
+                runErrors
                     .Select(static error =>
                         error.SourcePath)
                     .ToHashSet(
@@ -2536,7 +2613,7 @@ public sealed partial class MainWindow : Window
             }
 
             foreach (string sourcePath
-                in summary.CompletedSourcePaths)
+                in completedSources)
             {
                 LibraryDisplayItem? completed =
                     _allLibraryItems.FirstOrDefault(
@@ -2558,7 +2635,7 @@ public sealed partial class MainWindow : Window
             }
 
             foreach (TrackSyncError error
-                in summary.Errors)
+                in runErrors)
             {
                 LibraryDisplayItem? errorItem =
                     _allLibraryItems.FirstOrDefault(
@@ -2685,6 +2762,7 @@ public sealed partial class MainWindow : Window
             cancellation = new();
         _operationCancellation =
             cancellation;
+        bool scanning = true;
 
         SetBusy(
             true,
@@ -2726,6 +2804,11 @@ public sealed partial class MainWindow : Window
             Progress<ScanProgress>
                 progress = new(value =>
                 {
+                    if (!scanning)
+                    {
+                        return;
+                    }
+
                     if (value.Stage == "ancillary")
                     {
                         OperationProgressBar.Visibility =
@@ -2784,6 +2867,8 @@ public sealed partial class MainWindow : Window
                             cancellation.Token),
                     cancellation.Token);
 
+            scanning = false;
+
             // Scans may enrich MusicLoom's private state cache (for example
             // migrating TITLE metadata) but never mutate the source library.
             await stateStore.SaveAsync(
@@ -2794,7 +2879,6 @@ public sealed partial class MainWindow : Window
             _stateStore = stateStore;
             _plan = plan;
             _liveNeteaseMatches.Clear();
-            _trackSyncStates.Clear();
 
             // A manual pending override only matters until the next scan
             // includes that source as actual pending work.
@@ -2819,6 +2903,7 @@ public sealed partial class MainWindow : Window
             PopulateLibrary(
                 settings,
                 plan);
+            ReconcileSyncLogsWithCurrentRows();
 
             await LibraryDatabase.SavePlanAsync(
                 DatabasePath,
@@ -2895,6 +2980,7 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
+            scanning = false;
             _operationCancellation = null;
             SetBusy(
                 false,
@@ -9919,7 +10005,8 @@ public sealed partial class MainWindow : Window
         string Status,
         string Detail,
         DateTimeOffset UpdatedAt,
-        bool IsError);
+        bool IsError,
+        string Kind);
 
     private sealed record TrackDetailPayload(
         byte[]? Artwork,
