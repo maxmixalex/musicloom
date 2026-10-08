@@ -90,7 +90,8 @@ public sealed class SyncExecutor
         StateDocument state,
         StateStore stateStore,
         IProgress<SyncExecutionProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool lyricsOnly = false)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(plan);
@@ -114,7 +115,9 @@ public sealed class SyncExecutor
                 plan,
                 materializeProgress,
                 cancellationToken:
-                    cancellationToken);
+                    cancellationToken,
+                includeAncillary:
+                    !lyricsOnly);
 
         List<TrackSyncError> errors = local.Errors
             .Select(static error => new TrackSyncError(
@@ -271,7 +274,8 @@ public sealed class SyncExecutor
                     continue;
                 }
 
-                if (!settings.Organizer.Lyrics.OverrideExisting)
+                if (!settings.Organizer.Lyrics.OverrideExisting
+                    && !lyricsOnly)
                 {
                     stage = "inspect-lyrics";
                     progress?.Report(new SyncExecutionProgress(
@@ -455,10 +459,18 @@ public sealed class SyncExecutor
                     || lookup.Lyrics is null
                     || lookup.Lyrics.Lines.Count == 0)
                 {
+                    if (lyricsOnly)
+                    {
+                        RemoveManagedSidecarIfUnchanged(
+                            entry.DestinationPath,
+                            partial.LyricsFingerprint);
+                    }
+
                     partial = partial with
                     {
                         Lyrics = LyricsState.NoLyrics,
                         LyricsCheckedAt = DateTimeOffset.UtcNow,
+                        LyricsFingerprint = null,
                     };
                     noLyrics++;
                     await CompleteAsync(entry, partial, expectedRecipe, index + 1);
@@ -466,6 +478,13 @@ public sealed class SyncExecutor
                 }
 
                 stage = "write-lyrics";
+                if (lyricsOnly)
+                {
+                    EnsureManualLyricsWriteSafe(
+                        entry.DestinationPath,
+                        partial.LyricsFingerprint);
+                }
+
                 progress?.Report(new SyncExecutionProgress(
                     index,
                     work.Length,
@@ -475,7 +494,8 @@ public sealed class SyncExecutor
                 LyricsWriteResult write = await _lyricsWriter.WriteAsync(
                     entry.DestinationPath,
                     lookup.Lyrics,
-                    settings.Organizer.Lyrics.OverrideExisting,
+                    settings.Organizer.Lyrics.OverrideExisting
+                        || lyricsOnly,
                     cancellationToken);
 
                 LyricsState lyricsState = write.Status switch
@@ -1024,6 +1044,68 @@ public sealed class SyncExecutor
             OperatingSystem.IsWindows()
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal);
+
+    private void EnsureManualLyricsWriteSafe(
+        string destinationPath,
+        string? previousFingerprint)
+    {
+        if (_lyricsWriter is not SidecarLrcLyricsWriter)
+        {
+            return;
+        }
+
+        string sidecar =
+            SidecarLrcLyricsWriter.GetSidecarPath(destinationPath);
+        if (!File.Exists(sidecar))
+        {
+            return;
+        }
+
+        if (!MatchesManagedLyrics(sidecar, previousFingerprint))
+        {
+            throw new InvalidOperationException(
+                "Existing sidecar lyrics cannot be replaced automatically " +
+                "because they were not written by MusicLoom or were edited. " +
+                "Review the destination LRC before proceeding.");
+        }
+    }
+
+    private void RemoveManagedSidecarIfUnchanged(
+        string destinationPath,
+        string? previousFingerprint)
+    {
+        if (_lyricsWriter is not SidecarLrcLyricsWriter)
+        {
+            return;
+        }
+
+        string sidecar =
+            SidecarLrcLyricsWriter.GetSidecarPath(destinationPath);
+
+        if (File.Exists(sidecar)
+            && MatchesManagedLyrics(sidecar, previousFingerprint))
+        {
+            File.Delete(sidecar);
+        }
+    }
+
+    private static bool MatchesManagedLyrics(
+        string sidecarPath,
+        string? expectedFingerprint)
+    {
+        if (string.IsNullOrWhiteSpace(expectedFingerprint))
+        {
+            return false;
+        }
+
+        LrcDocument existing = LrcDocument.Parse(
+            File.ReadAllText(sidecarPath));
+
+        return string.Equals(
+            ComputeLyricsFingerprint(existing),
+            expectedFingerprint,
+            StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string ComputeLyricsFingerprint(
         LrcDocument lyrics)

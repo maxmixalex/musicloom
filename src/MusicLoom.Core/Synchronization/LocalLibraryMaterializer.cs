@@ -42,7 +42,8 @@ public sealed class LocalLibraryMaterializer
         LibraryPlan plan,
         IProgress<LocalMaterializeProgress>? progress = null,
         int? maxParallelTrackCopies = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool includeAncillary = true)
     {
         string destinationRoot =
             Path.GetFullPath(
@@ -50,13 +51,18 @@ public sealed class LocalLibraryMaterializer
         Directory.CreateDirectory(destinationRoot);
 
         IReadOnlyList<CoverPlanEntry> covers =
-            plan.Covers;
+            includeAncillary
+                ? plan.Covers
+                : [];
         IReadOnlyList<PlaylistPlanEntry> playlists =
-            plan.Playlists;
+            includeAncillary
+                ? plan.Playlists
+                : [];
 
         // Preserve compatibility for tests/callers that manually construct a
         // track-only plan. Real scans already contain ancillary work.
-        if (covers.Count == 0
+        if (includeAncillary
+            && covers.Count == 0
             && playlists.Count == 0)
         {
             AncillaryPlan ancillary =

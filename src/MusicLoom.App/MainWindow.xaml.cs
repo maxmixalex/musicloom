@@ -2089,6 +2089,11 @@ public sealed partial class MainWindow : Window
     private void UpdateLiveSyncRow(
         SyncExecutionProgress progress)
     {
+        if (progress.Stage == "write-playlist")
+        {
+            RefreshPlaylistReadinessFromDisk();
+        }
+
         LibraryDisplayItem? item =
             _allLibraryItems
                 .FirstOrDefault(
@@ -2220,6 +2225,7 @@ public sealed partial class MainWindow : Window
         }
 
         RefreshLiveSyncCounters();
+        UpdateBatchMatchActions();
     }
 
     private void SetTrackSyncState(
@@ -3440,13 +3446,30 @@ public sealed partial class MainWindow : Window
         object sender,
         SelectionChangedEventArgs e)
     {
-        if (LibraryList.SelectedItem
-            is not LibraryDisplayItem item)
+        UpdateBatchMatchActions();
+
+        // Extended selection is for Ctrl/Shift batch operations. The right
+        // detail pane still follows the most recently selected item and
+        // never switches to the playing track.
+        LibraryDisplayItem? item =
+            e.AddedItems.OfType<LibraryDisplayItem>().LastOrDefault()
+            ?? (_selectedLibraryItem is not null
+                && LibraryList.SelectedItems.Contains(_selectedLibraryItem)
+                    ? _selectedLibraryItem
+                    : LibraryList.SelectedItem as LibraryDisplayItem);
+
+        if (item is null)
         {
+            ++_detailRequestId;
             _selectedLibraryItem = null;
             OpenMatchDialogButton.IsEnabled = false;
             HideDetailPane();
             ResetTrackDetails();
+            return;
+        }
+
+        if (ReferenceEquals(_selectedLibraryItem, item))
+        {
             return;
         }
 
@@ -4383,18 +4406,43 @@ public sealed partial class MainWindow : Window
 
 
 
+    private async void LyricsList_DoubleTapped(
+        object sender,
+        DoubleTappedRoutedEventArgs e)
+    {
+        LyricDisplayLine? line =
+            (e.OriginalSource as FrameworkElement)
+                ?.DataContext as LyricDisplayLine
+            ?? LyricsList.SelectedItem as LyricDisplayLine;
+
+        if (line?.Timestamp is null)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await SeekLyricLineAsync(line);
+    }
+
     private async void SeekLyricLineItem_Click(
         object sender,
         RoutedEventArgs e)
     {
         LyricDisplayLine? line =
             (sender as MenuFlyoutItem)
-                ?.Tag
-                as LyricDisplayLine
-            ?? LyricsList.SelectedItem
-                as LyricDisplayLine;
+                ?.Tag as LyricDisplayLine
+            ?? LyricsList.SelectedItem as LyricDisplayLine;
 
-        if (line?.Timestamp
+        if (line?.Timestamp is not null)
+        {
+            await SeekLyricLineAsync(line);
+        }
+    }
+
+    private async Task SeekLyricLineAsync(
+        LyricDisplayLine line)
+    {
+        if (line.Timestamp
             is not TimeSpan timestamp)
         {
             return;
@@ -4623,286 +4671,47 @@ public sealed partial class MainWindow : Window
     }
 
 
-    private static LyricDisplayLine[]
-        BuildLyricLines(
-            string? raw,
-            string displayMode)
+    private static LyricDisplayLine[] BuildLyricLines(
+        string? raw,
+        string displayMode)
     {
         if (string.IsNullOrWhiteSpace(raw))
         {
             return [];
         }
 
-        string normalizedMode =
-            LyricsDisplayModes.Normalize(
-                displayMode);
+        string mode = LyricsDisplayModes.Normalize(displayMode);
+        LrcDocument document = LrcDocument.Parse(raw);
 
-        LrcDocument document =
-            LrcDocument.Parse(raw);
-
-        List<LyricDisplayLine> result = [];
-
-        if (document.Lines.Count > 0)
-        {
-            foreach (IGrouping<TimeSpan, LrcLine>
-                group in document.Lines
-                    .GroupBy(
-                        static line =>
-                            line.Timestamp))
-            {
-                string[] texts =
-                    group
-                        .Select(
-                            static line =>
-                                line.Text.Trim())
-                        .Where(
-                            static text =>
-                                text.Length > 0)
-                        .ToArray();
-
-                if (texts.Length == 0)
-                {
-                    continue;
-                }
-
-                string[] creditLines =
-                    texts
-                        .Where(
-                            static text =>
-                                LooksLikeCreditLine(
-                                    text))
-                        .ToArray();
-
-                foreach (string creditLine
-                    in creditLines)
-                {
-                    result.Add(
-                        new LyricDisplayLine(
-                            creditLine,
-                            null,
-                            normalizedMode,
-                            group.Key));
-                }
-
-                string[] lyricLines =
-                    texts
-                        .Where(
-                            static text =>
-                                !LooksLikeCreditLine(
-                                    text))
-                        .ToArray();
-
-                if (lyricLines.Length == 0)
-                {
-                    continue;
-                }
-
-                (string original,
-                    string? translation) =
-                    SplitTranslation(
-                        lyricLines[0]);
-
-                if (translation is null
-                    && lyricLines.Length > 1)
-                {
-                    string[] candidates =
-                        lyricLines
-                            .Skip(1)
-                            .Where(text =>
-                                !string.Equals(
-                                    NormalizeLyricForComparison(
-                                        text),
-                                    NormalizeLyricForComparison(
-                                        original),
-                                    StringComparison
-                                        .OrdinalIgnoreCase))
-                            .ToArray();
-
-                    if (candidates.Length > 0)
+        IReadOnlyList<LrcPresentationLine> projected =
+            document.Lines.Count > 0
+                ? LrcPresentation.Project(document)
+                : raw.Split(
+                    ['\r', '\n'],
+                    StringSplitOptions.RemoveEmptyEntries)
+                    .Select(static line => line.Trim())
+                    .Where(static text =>
+                        text.Length > 0
+                        && !(text.StartsWith('[')
+                            && text.Contains(':')
+                            && text.EndsWith(']')))
+                    .Select(text =>
                     {
-                        translation =
-                            string.Join(
-                                Environment.NewLine,
-                                candidates);
-                    }
-                }
+                        (string original, string? translation) =
+                            LrcPresentation.SplitInline(text);
+                        return new LrcPresentationLine(
+                            null,
+                            original,
+                            translation);
+                    })
+                    .ToArray();
 
-                result.Add(
-                    new LyricDisplayLine(
-                        original,
-                        translation,
-                        normalizedMode,
-                        group.Key));
-            }
-
-            return [.. result];
-        }
-
-        foreach (string rawLine
-            in raw.Split(
-                ['\r', '\n'],
-                StringSplitOptions
-                    .RemoveEmptyEntries))
-        {
-            string text =
-                rawLine.Trim();
-
-            if (text.Length == 0
-                || (text.StartsWith('[')
-                    && text.Contains(':')
-                    && text.EndsWith(']')))
-            {
-                continue;
-            }
-
-            (string original,
-                string? translation) =
-                SplitTranslation(text);
-
-            result.Add(
-                new LyricDisplayLine(
-                    original,
-                    translation,
-                    normalizedMode));
-        }
-
-        return [.. result];
-    }
-
-    private static (string Original,
-        string? Translation)
-        SplitTranslation(string text)
-    {
-        if (text.Contains(
-                "://",
-                StringComparison.Ordinal)
-            || LooksLikeCreditLine(text))
-        {
-            return (text, null);
-        }
-
-        int slash =
-            text.IndexOf('/');
-
-        if (slash <= 0
-            || slash >= text.Length - 1
-            || slash
-                != text.LastIndexOf('/'))
-        {
-            return (text, null);
-        }
-
-        string left =
-            text[..slash].Trim();
-        string right =
-            text[(slash + 1)..].Trim();
-
-        if (left.Length == 0
-            || right.Length == 0
-            || string.Equals(
-                NormalizeLyricForComparison(
-                    left),
-                NormalizeLyricForComparison(
-                    right),
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return (text, null);
-        }
-
-        return (left, right);
-    }
-
-    private static string NormalizeLyricForComparison(
-        string text) =>
-        string.Concat(
-            text
-                .Where(
-                    static character =>
-                        !char.IsWhiteSpace(
-                            character)
-                        && !char.IsPunctuation(
-                            character)))
-            .Trim();
-
-    private static bool LooksLikeCreditLine(
-        string text)
-    {
-        int asciiColon =
-            text.IndexOf(':');
-        int fullWidthColon =
-            text.IndexOf('：');
-
-        int colon =
-            asciiColon < 0
-                ? fullWidthColon
-                : fullWidthColon < 0
-                    ? asciiColon
-                    : Math.Min(
-                        asciiColon,
-                        fullWidthColon);
-
-        if (colon <= 0 || colon > 24)
-        {
-            return false;
-        }
-
-        string label =
-            text[..colon]
-                .Trim();
-
-        string[] creditLabels =
-        [
-            "器乐",
-            "演奏",
-            "作词",
-            "作詞",
-            "作曲",
-            "编曲",
-            "編曲",
-            "制作",
-            "制作人",
-            "演唱",
-            "和声",
-            "和聲",
-            "吉他",
-            "贝斯",
-            "貝斯",
-            "鼓",
-            "键盘",
-            "鍵盤",
-            "弦乐",
-            "弦楽",
-            "混音",
-            "母带",
-            "母帶",
-            "录音",
-            "錄音",
-            "监制",
-            "監製",
-            "lyrics",
-            "lyricist",
-            "composer",
-            "arranger",
-            "arrangement",
-            "instrumental",
-            "guitar",
-            "bass",
-            "drums",
-            "keyboard",
-            "producer",
-            "mix",
-            "mixing",
-            "mastering",
-            "recording",
-        ];
-
-        return creditLabels.Any(
-            credit =>
-                string.Equals(
-                    label,
-                    credit,
-                    StringComparison
-                        .OrdinalIgnoreCase));
+        return projected.Select(line =>
+            new LyricDisplayLine(
+                line.Original,
+                line.Translation,
+                mode,
+                line.Timestamp)).ToArray();
     }
 
     private async Task
@@ -4910,11 +4719,15 @@ public sealed partial class MainWindow : Window
             MusicLoomSettings settings,
             int generation)
     {
+        // A rescan can replace the live list while an awaited decode is in
+        // progress. Enumerate a snapshot to avoid invalidating the iterator.
+        LibraryDisplayItem[] snapshot = _allLibraryItems.ToArray();
+
         // Embedded artwork belongs to the track, not to the album folder.
         // Load these individually so one song's embedded cover never leaks to
         // neighboring tracks that happen to share Artist/Album.
         foreach (LibraryDisplayItem item
-            in _allLibraryItems.Where(
+            in snapshot.Where(
                 static item =>
                     item.Entry.Metadata
                         ?.HasEmbeddedArt
@@ -4957,7 +4770,7 @@ public sealed partial class MainWindow : Window
         // cover. Group those for efficient I/O.
         IGrouping<string, LibraryDisplayItem>[]
             groups =
-                _allLibraryItems
+                snapshot
                     .Where(
                         static item =>
                             item.Entry.Metadata
@@ -6762,7 +6575,10 @@ public sealed partial class MainWindow : Window
             Lyrics =
                 LyricsState.Unknown,
             LyricsCheckedAt = null,
-            LyricsFingerprint = null,
+            // Keep the fingerprint of the old managed lyrics until a
+            // successful replacement, so external edits can be detected.
+            LyricsFingerprint =
+                previous?.LyricsFingerprint,
             RecipeVersion =
                 string.Empty,
             ProcessedAt =
@@ -6772,6 +6588,8 @@ public sealed partial class MainWindow : Window
         _state.Tracks[
             item.Entry.SourcePath] =
             updated;
+        _liveNeteaseMatches.Remove(
+            item.Entry.SourcePath);
 
         await _stateStore.SaveAsync(
             _state);
@@ -6786,14 +6604,7 @@ public sealed partial class MainWindow : Window
                 "NetEase match changed. Lyrics need to be synchronized.",
                 "网易云匹配已更改，需要重新同步歌词。"));
 
-        ShowInfo(
-            InfoBarSeverity.Success,
-            L(
-                "Match saved",
-                "匹配已保存"),
-            L(
-                "The next sync will use the selected NetEase track.",
-                "下次同步会使用所选的网易云歌曲。"));
+        await SynchronizeMatchedLyricsAsync([item]);
     }
 
     private async void ConfirmMatchButton_Click(
@@ -6823,58 +6634,106 @@ public sealed partial class MainWindow : Window
     private async Task ConfirmNeteaseMatchAsync(
         LibraryDisplayItem item)
     {
-        if (_state is null
-            || _stateStore is null
-            || !_state.Tracks.TryGetValue(
-                item.Entry.SourcePath,
-                out TrackState? state)
-            || state.NeteaseSongId is null
-            || SyncExecutor.DetectMatchWarning(
-                item.Entry,
-                state)
-                is null)
+        await ConfirmNeteaseMatchesAsync([item]);
+    }
+
+    private LibraryDisplayItem[] GetSelectedWarningMatches() =>
+        LibraryList.SelectedItems
+            .OfType<LibraryDisplayItem>()
+            .Where(item => GetStoredMatchWarning(item.Entry) is not null)
+            .Distinct()
+            .ToArray();
+
+    private void UpdateBatchMatchActions()
+    {
+        if (ConfirmSelectedMatchesButton is null)
         {
             return;
         }
 
-        TrackState updated =
-            state with
+        int count = GetSelectedWarningMatches().Length;
+        ConfirmSelectedMatchesButton.Visibility =
+            count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ConfirmSelectedMatchesButton.IsEnabled =
+            !_busy && count > 0;
+    }
+
+    private async void ConfirmSelectedMatchesButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await ConfirmNeteaseMatchesAsync(GetSelectedWarningMatches());
+    }
+
+    private async void ContextConfirmSelectedMatchesItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await ConfirmNeteaseMatchesAsync(GetSelectedWarningMatches());
+    }
+
+    private async Task ConfirmNeteaseMatchesAsync(
+        IReadOnlyList<LibraryDisplayItem> candidates)
+    {
+        if (_busy || _state is null || _stateStore is null)
+        {
+            return;
+        }
+
+        List<LibraryDisplayItem> confirmed = [];
+        foreach (LibraryDisplayItem item in candidates.Distinct())
+        {
+            if (!_state.Tracks.TryGetValue(
+                    item.Entry.SourcePath,
+                    out TrackState? state)
+                || state.NeteaseSongId is null
+                || SyncExecutor.DetectMatchWarning(
+                    item.Entry,
+                    state) is null)
             {
-                NeteaseMatchConfirmed = true,
-                NeteaseMatchSuppressed = false,
-                Lyrics = LyricsState.Unknown,
-                LyricsCheckedAt = null,
-                LyricsFingerprint = null,
-                RecipeVersion = string.Empty,
-                ProcessedAt =
-                    DateTimeOffset.UtcNow,
-            };
+                continue;
+            }
 
-        _state.Tracks[
-            item.Entry.SourcePath] =
-            updated;
-        _liveNeteaseMatches.Remove(
-            item.Entry.SourcePath);
+            _state.Tracks[item.Entry.SourcePath] =
+                state with
+                {
+                    NeteaseMatchConfirmed = true,
+                    NeteaseMatchSuppressed = false,
+                    Lyrics = LyricsState.Unknown,
+                    LyricsCheckedAt = null,
+                    // Retain provenance for a safe lyric replacement.
+                    LyricsFingerprint = state.LyricsFingerprint,
+                    RecipeVersion = string.Empty,
+                    ProcessedAt = DateTimeOffset.UtcNow,
+                };
 
-        await _stateStore.SaveAsync(
-            _state);
+            _liveNeteaseMatches.Remove(item.Entry.SourcePath);
+            confirmed.Add(item);
+        }
 
-        MarkTrackForEnrichmentSync(
-            item,
-            L(
-                "NetEase match was manually confirmed. Lyrics are ready to synchronize.",
-                "已手动确认网易云匹配，歌词可以继续同步。"));
-        RefreshCurrentMatchCard(
-            item);
+        if (confirmed.Count == 0)
+        {
+            return;
+        }
 
-        ShowInfo(
-            InfoBarSeverity.Success,
-            L(
-                "Match confirmed",
-                "匹配已确认"),
-            L(
-                "The warning is cleared. This track is now pending synchronization.",
-                "警告已清除，这首歌曲现在处于待同步状态。"));
+        await _stateStore.SaveAsync(_state);
+
+        foreach (LibraryDisplayItem item in confirmed)
+        {
+            MarkTrackForEnrichmentSync(
+                item,
+                L(
+                    "NetEase match confirmed; lyrics need to be refreshed.",
+                    "已确认网易云匹配，歌词需要更新。"));
+        }
+
+        if (_selectedLibraryItem is not null)
+        {
+            RefreshCurrentMatchCard(_selectedLibraryItem);
+        }
+
+        UpdateBatchMatchActions();
+        await SynchronizeMatchedLyricsAsync(confirmed);
     }
 
     private async Task SuppressNeteaseMatchAsync(
@@ -6987,6 +6846,209 @@ public sealed partial class MainWindow : Window
                 "在你手动选择匹配前，这首歌曲不会再次触发自动识别。"));
     }
 
+    private async Task<bool> SynchronizeMatchedLyricsAsync(
+        IReadOnlyList<LibraryDisplayItem> candidates)
+    {
+        if (_busy || _state is null || _stateStore is null
+            || _settings is not MusicLoomSettings settings)
+        {
+            return false;
+        }
+
+        if (!settings.Organizer.Lyrics.Enabled)
+        {
+            ShowInfo(
+                InfoBarSeverity.Informational,
+                L("Match saved", "匹配已保存"),
+                L(
+                    "Automatic lyric synchronization is disabled in Settings.",
+                    "设置中已关闭自动歌词同步，匹配已保留为待同步。"));
+            return false;
+        }
+
+        List<PlanEntry> entries = [];
+        int deferred = 0;
+        foreach (LibraryDisplayItem item in candidates.Distinct())
+        {
+            PlanEntry current = item.Entry;
+            if (current.DestinationPath is not string destination
+                || current.Metadata is null
+                || !File.Exists(destination)
+                || !IsPathInside(
+                    destination,
+                    settings.Path.DestinationDirectory)
+                || !_state.Tracks.TryGetValue(
+                    current.SourcePath,
+                    out TrackState? recorded)
+                || recorded.NeteaseSongId is null
+                || !string.Equals(
+                    recorded.DestinationPath,
+                    destination,
+                    StringComparison.OrdinalIgnoreCase)
+                || !File.Exists(current.SourcePath))
+            {
+                deferred++;
+                continue;
+            }
+
+            FileInfo source = new(current.SourcePath);
+            FileInfo target = new(destination);
+            ulong hash = await Task.Run(
+                () => QuickFileHash.Compute(current.SourcePath));
+
+            if (!StateStore.IsSourceVersionUnchanged(
+                    recorded, source, hash)
+                || (StateStore.HasDestinationVersion(recorded)
+                    && !StateStore.IsDestinationVersionUnchanged(
+                        recorded, target)))
+            {
+                // A source/destination drift must be resolved by the
+                // normal sync plan, never hidden by a lyric-only write.
+                deferred++;
+                continue;
+            }
+
+            entries.Add(current with
+            {
+                Status = PlanEntryStatus.Modified,
+                NeedsAudioCopy = false,
+                Detail = "Refresh lyrics after manual NetEase match.",
+            });
+        }
+
+        if (entries.Count == 0)
+        {
+            ShowInfo(
+                InfoBarSeverity.Warning,
+                L("Lyrics pending", "歌词待同步"),
+                L(
+                    "The destination is missing or has changed. Run the normal synchronization first.",
+                    "目标文件不存在或已变化，请先执行正常同步。"));
+            return false;
+        }
+
+        using CancellationTokenSource cancellation = new();
+        _operationCancellation = cancellation;
+        int generation = ++_syncProgressGeneration;
+
+        SetBusy(true, L("Updating matched lyrics…", "正在更新匹配歌词……"));
+        try
+        {
+            LibraryPathSafety.ValidateStatePath(
+                settings, DatabasePath);
+
+            using NeteaseClient client = new();
+            CompositeFingerprintPcmDecoder decoder = new();
+            NeteaseTrackProvider provider = new(client, decoder);
+
+            ITrackLyricsWriter writer =
+                LyricsStorageModes.Normalize(
+                    settings.Organizer.Lyrics.StorageMode)
+                    == LyricsStorageModes.Sidecar
+                        ? new SidecarLrcLyricsWriter()
+                        : new TagLibSharpLyricsWriter();
+
+            SyncExecutor executor = new(
+                new LocalLibraryMaterializer(),
+                provider,
+                provider,
+                writer);
+
+            SyncProgressTracker tracker = new();
+            Progress<SyncExecutionProgress> progress = new(value =>
+            {
+                if (generation != _syncProgressGeneration
+                    || !tracker.ShouldApply(value))
+                {
+                    return;
+                }
+
+                SetOperationStatus(
+                    $"{FriendlyStage(value.Stage)} · " +
+                    $"{value.Processed:N0}/{value.Total:N0}");
+                SetProgress(value.Processed, value.Total);
+                UpdateLiveSyncRow(value);
+            });
+
+            SyncExecutionSummary summary = await Task.Run(
+                () => executor.ExecuteAsync(
+                    settings,
+                    new LibraryPlan(entries),
+                    _state,
+                    _stateStore,
+                    progress,
+                    cancellation.Token,
+                    lyricsOnly: true),
+                cancellation.Token);
+
+            ++_syncProgressGeneration;
+            await RefreshLibraryAfterSyncAsync(
+                settings,
+                summary,
+                cancellation.Token);
+
+            if (_selectedLibraryItem is LibraryDisplayItem selected)
+            {
+                await ShowTrackDetailsAsync(selected);
+            }
+
+            bool complete =
+                summary.Errors.Count == 0
+                && summary.Warnings.Count == 0
+                && summary.CompletedSourcePaths.Count == entries.Count
+                && deferred == 0;
+
+            if (complete)
+            {
+                ShowInfo(
+                    InfoBarSeverity.Success,
+                    L("Lyrics synchronized", "歌词已同步"),
+                    L(
+                        $"{entries.Count:N0} matched track(s) refreshed.",
+                        $"已更新 {entries.Count:N0} 首歌曲的匹配歌词。"));
+            }
+            else
+            {
+                string? firstError = summary.Errors.FirstOrDefault()
+                    ?.Message;
+                ShowInfo(
+                    InfoBarSeverity.Warning,
+                    L("Some lyrics remain pending", "部分歌词仍待同步"),
+                    firstError ?? L(
+                        "Some tracks need a normal sync or match review.",
+                        "部分歌曲仍需要正常同步或人工确认。"));
+            }
+
+            return complete;
+        }
+        catch (OperationCanceledException)
+        {
+            ++_syncProgressGeneration;
+            await RefreshLibraryAfterSyncAsync(
+                settings, null, CancellationToken.None);
+            return false;
+        }
+        catch (Exception exception)
+        {
+            ++_syncProgressGeneration;
+            AppDiagnostics.LogException(
+                "Could not synchronize matched lyrics.", exception);
+            await RefreshLibraryAfterSyncAsync(
+                settings, null, CancellationToken.None);
+            ShowInfo(
+                InfoBarSeverity.Warning,
+                L("Lyrics pending", "歌词待同步"),
+                UserFacingErrors.Describe(exception));
+            return false;
+        }
+        finally
+        {
+            ++_syncProgressGeneration;
+            _operationCancellation = null;
+            SetBusy(false, OperationStatusText.Text);
+        }
+    }
+
     private bool HasCachedMatch(
         string sourcePath) =>
         _state is not null
@@ -7028,6 +7090,7 @@ public sealed partial class MainWindow : Window
             detail);
 
         RefreshLiveSyncCounters();
+        UpdateBatchMatchActions();
         RefreshTrackSyncTab(
             item);
 
@@ -7041,94 +7104,23 @@ public sealed partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        if (_selectedLibraryItem
-                is not LibraryDisplayItem item
-            || _state is null
-            || _stateStore is null
-            || !_state.Tracks.TryGetValue(
-                item.Entry.SourcePath,
-                out TrackState? state)
-            || state.NeteaseSongId
-                is not long songId)
+        if (_busy
+            || _selectedLibraryItem is not LibraryDisplayItem item
+            || !HasCachedMatch(item.Entry.SourcePath))
         {
             return;
         }
 
-        RefreshMatchedLyricsButton.IsEnabled =
-            false;
+        // Refresh and presentation share one ground truth: the destination
+        // lyrics. A remote-only preview is not reported as an updated lyric
+        // until the same document has actually been persisted.
+        MarkTrackForEnrichmentSync(
+            item,
+            L(
+                "Fetching and synchronizing the latest NetEase lyrics.",
+                "正在获取并同步最新的网易云歌词。"));
 
-        try
-        {
-            using NeteaseClient client =
-                new();
-
-            LrcDocument? lyrics =
-                await client.GetLyricsAsync(
-                    songId);
-
-            _currentLyricsRaw =
-                lyrics?.ToString();
-            LyricsSourceText.Text =
-                lyrics is null
-                    ? L(
-                        "NetEase Music · no lyrics returned",
-                        "网易云音乐 · 未返回歌词")
-                    : L(
-                        "NetEase Music · latest preview",
-                        "网易云音乐 · 最新歌词预览");
-
-            ConfigureAuxiliaryLongText();
-            RenderLyrics();
-
-            TrackState updated =
-                state with
-                {
-                    Lyrics =
-                        LyricsState.Unknown,
-                    LyricsCheckedAt = null,
-                    LyricsFingerprint = null,
-                    RecipeVersion =
-                        string.Empty,
-                    ProcessedAt =
-                        DateTimeOffset.UtcNow,
-                };
-
-            _state.Tracks[
-                item.Entry.SourcePath] =
-                updated;
-
-            await _stateStore.SaveAsync(
-                _state);
-
-            MarkTrackForEnrichmentSync(
-                item,
-                L(
-                    "Lyrics were refreshed for preview and are pending synchronization to the library.",
-                    "歌词已刷新预览，等待同步写入音乐库。"));
-
-            ShowInfo(
-                InfoBarSeverity.Success,
-                L(
-                    "Lyrics refreshed",
-                    "歌词已更新"),
-                L(
-                    "The latest NetEase lyrics are shown here. Sync the pending track to write them to the destination.",
-                    "这里已显示最新网易云歌词；同步待处理歌曲后会写入目标文件。"));
-        }
-        catch (Exception exception)
-        {
-            HandleUiException(
-                L(
-                    "Could not update lyrics from NetEase Music.",
-                    "无法从网易云音乐更新歌词。"),
-                exception);
-        }
-        finally
-        {
-            RefreshMatchedLyricsButton.IsEnabled =
-                HasCachedMatch(
-                    item.Entry.SourcePath);
-        }
+        await SynchronizeMatchedLyricsAsync([item]);
     }
 
     private void RefreshCurrentMatchCard(
@@ -7380,7 +7372,11 @@ public sealed partial class MainWindow : Window
             && element.DataContext
                 is LibraryDisplayItem item)
         {
-            LibraryList.SelectedItem = item;
+            if (!LibraryList.SelectedItems.Contains(item))
+            {
+                LibraryList.SelectedItem = item;
+            }
+
             _contextLibraryItem = item;
         }
         else
@@ -7427,6 +7423,15 @@ public sealed partial class MainWindow : Window
         ContextConfirmMatchItem.IsEnabled =
             canConfirm
             && !_busy;
+
+        int selectedWarnings = GetSelectedWarningMatches().Length;
+        ContextConfirmSelectedMatchesItem.Visibility =
+            selectedWarnings > 1
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        ContextConfirmSelectedMatchesItem.IsEnabled =
+            selectedWarnings > 1 && !_busy;
+
         ContextOpenDestinationItem.IsEnabled =
             hasDestination;
         ContextCopyDestinationItem.IsEnabled =
@@ -7826,6 +7831,9 @@ public sealed partial class MainWindow : Window
         IEnumerable<PlaylistDisplayItem>
             playlists)
     {
+        PlaylistDisplayItem? previous =
+            PlaylistsList.SelectedItem as PlaylistDisplayItem;
+
         _playlists.Clear();
         _playlists.AddRange(playlists);
 
@@ -7841,10 +7849,22 @@ public sealed partial class MainWindow : Window
 
         if (_playlists.Count > 0)
         {
-            PlaylistsList.SelectedIndex =
-                _playlists.Count > 1
-                    ? 1
-                    : 0;
+            PlaylistDisplayItem? restored = previous is null
+                ? null
+                : _playlists.FirstOrDefault(item =>
+                    previous.IsNowPlaying
+                        ? item.IsNowPlaying
+                        : previous.IsVirtual
+                            ? item.IsVirtual && !item.IsNowPlaying
+                            : !item.IsVirtual
+                                && string.Equals(
+                                    item.SourcePath,
+                                    previous.SourcePath,
+                                    StringComparison.OrdinalIgnoreCase));
+
+            PlaylistsList.SelectedItem =
+                restored ?? _playlists[
+                    _playlists.Count > 1 ? 1 : 0];
         }
         else
         {
@@ -8982,6 +9002,10 @@ public sealed partial class MainWindow : Window
     private void ShowPage(
         string tag)
     {
+        bool enteringPlaylists =
+            tag == "playlists"
+            && PlaylistsPage.Visibility != Visibility.Visible;
+
         LibraryPage.Visibility =
             tag == "library"
                 ? Visibility.Visible
@@ -8994,6 +9018,30 @@ public sealed partial class MainWindow : Window
             tag == "settings"
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+
+        if (enteringPlaylists)
+        {
+            RefreshPlaylistReadinessFromDisk();
+        }
+    }
+
+    private void RefreshPlaylistReadinessFromDisk()
+    {
+        if (_settings is not MusicLoomSettings settings
+            || _allLibraryItems.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            PopulatePlaylists(BuildPlaylists(settings));
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Could not refresh playlist readiness.", exception);
+        }
     }
 
     private void SetBusy(
@@ -9037,6 +9085,7 @@ public sealed partial class MainWindow : Window
             !busy
             && _selectedLibraryItem
                 is not null;
+        UpdateBatchMatchActions();
 
         TrackSyncWarning? selectedWarning =
             _selectedLibraryItem is
@@ -9331,6 +9380,10 @@ public sealed partial class MainWindow : Window
             L(
                 "Sync pending",
                 "同步待处理");
+        ConfirmSelectedMatchesText.Text =
+            L(
+                "Confirm selected matches",
+                "批量确认匹配");
         CancelButtonText.Text =
             L("Cancel", "取消");
         PlaylistCancelButtonText.Text =
@@ -9530,6 +9583,10 @@ public sealed partial class MainWindow : Window
             L(
                 "Confirm NetEase match",
                 "确认网易云匹配");
+        ContextConfirmSelectedMatchesItem.Text =
+            L(
+                "Confirm selected matches",
+                "批量确认所选匹配");
 
         PlaylistsTitleText.Text =
             L(

@@ -17,6 +17,8 @@ List<(string Name, Action Test)> tests =
     ("LRC parser preserves repeated timestamps", LrcRepeatedTimestamps),
     ("LRC merge aligns translations within 200 ms", LrcMerge),
     ("LRC merge keeps translations with nearest originals", LrcMergeNearestNeighbor),
+    ("LRC projection preserves original/translation order", LrcPresentationOrder),
+    ("LRC slash delimiter only splits explicit bilingual text", LrcSlashPresentation),
     ("NetEase candidate ranking balances duration and metadata", NeteaseCandidateRanking),
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
@@ -150,6 +152,53 @@ static void LrcMergeNearestNeighbor()
     Equal(
         TimeSpan.FromMilliseconds(1050),
         credit.Timestamp);
+}
+
+static void LrcPresentationOrder()
+{
+    LrcDocument original = LrcDocument.Parse(
+        "[00:01.000]Original line\n[00:02.000]Second line");
+    LrcDocument translated = LrcDocument.Parse(
+        "[00:01.140]翻译第一行\n[00:02.120]翻译第二行");
+    LrcDocument merged = LrcDocument.Merge(original, translated);
+
+    IReadOnlyList<LrcPresentationLine> projected =
+        LrcPresentation.Project(LrcDocument.Parse(merged.ToString()));
+
+    Equal(2, projected.Count);
+    Equal("Original line", projected[0].Original);
+    Equal("翻译第一行", projected[0].Translation ?? "");
+    Equal("Second line", projected[1].Original);
+    Equal("翻译第二行", projected[1].Translation ?? "");
+}
+
+static void LrcSlashPresentation()
+{
+    var bilingual = LrcPresentation.SplitInline("君がいる / You are here");
+    Equal("君がいる", bilingual.Original);
+    Equal("You are here", bilingual.Translation ?? "");
+
+    var ordinary = LrcPresentation.SplitInline("and/or");
+    Equal("and/or", ordinary.Original);
+    True(ordinary.Translation is null);
+
+    var spacedEnglish = LrcPresentation.SplitInline("yes / no");
+    Equal("yes / no", spacedEnglish.Original);
+    True(spacedEnglish.Translation is null);
+
+    var url = LrcPresentation.SplitInline("https://example.com/a");
+    Equal("https://example.com/a", url.Original);
+    True(url.Translation is null);
+
+    LrcDocument credits = LrcDocument.Parse(
+        "[00:03.000]作曲：某人\n[00:03.000]Hello\n[00:03.000]你好");
+    IReadOnlyList<LrcPresentationLine> lines =
+        LrcPresentation.Project(credits);
+    Equal(2, lines.Count);
+    Equal("作曲：某人", lines[0].Original);
+    True(lines[0].Translation is null);
+    Equal("Hello", lines[1].Original);
+    Equal("你好", lines[1].Translation ?? "");
 }
 
 static void NeteaseCandidateRanking()

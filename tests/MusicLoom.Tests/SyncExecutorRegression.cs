@@ -20,6 +20,8 @@ internal static class SyncExecutorRegression
         await OverrideExistingSkipsProbeAsync();
         await UnsupportedLyricsUsesZeroProbeAsync();
         await NoMatchIsNonFatalAsync();
+        await LyricsOnlyRefreshAvoidsOtherWritesAsync();
+        await LyricsOnlyRefreshProtectsUserSidecarAsync();
         MatchWarningHandlesChineseAndArtistSubsets();
         ProgressTrackerRejectsStaleStages();
         await WarningGatesLyricsUntilConfirmationAsync();
@@ -185,6 +187,126 @@ internal static class SyncExecutorRegression
         Equal(
             SyncRecipe.For(fixture.Settings),
             state.RecipeVersion);
+    }
+
+    private static async Task LyricsOnlyRefreshAvoidsOtherWritesAsync()
+    {
+        await using Fixture fixture =
+            await Fixture.CreateAsync(
+                lyricsEnabled: true,
+                overrideExisting: false);
+
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(fixture.DestinationPath)!);
+        await File.WriteAllBytesAsync(
+            fixture.DestinationPath,
+            [9, 8, 7]);
+
+        PlanEntry entry = fixture.Plan.Entries[0] with
+        {
+            Status = PlanEntryStatus.Modified,
+            NeedsAudioCopy = false,
+        };
+        string cover = Path.Combine(fixture.Root, "unused-cover.jpg");
+        string playlist = Path.Combine(fixture.Root, "unused-playlist.txt");
+
+        LibraryPlan selected = new(
+            [entry],
+            covers:
+            [
+                new CoverPlanEntry(
+                    fixture.SourcePath,
+                    cover,
+                    NeedsWrite: true),
+            ],
+            playlists:
+            [
+                new PlaylistPlanEntry(
+                    fixture.SourcePath,
+                    playlist,
+                    "should not appear",
+                    NeedsWrite: true),
+            ]);
+
+        FakeRecognizer recognizer =
+            new(TrackRecognitionResult.Matched(42));
+        FakeLyricsProvider provider =
+            new(LyricsLookupResult.Found(
+                LrcDocument.Parse("[00:01.000]hello")));
+        FakeLyricsWriter writer =
+            new(LyricsProbeStatus.Present);
+
+        SyncExecutionSummary summary = await new SyncExecutor(
+            new LocalLibraryMaterializer(),
+            recognizer,
+            provider,
+            writer).ExecuteAsync(
+                fixture.Settings,
+                selected,
+                fixture.State,
+                fixture.StateStore,
+                lyricsOnly: true);
+
+        Equal(1, summary.CompletedTracks);
+        Equal(1, summary.CompletedSourcePaths.Count);
+        Equal(0, summary.Local.CopiedTracks);
+        Equal(0, summary.Local.CopiedCovers);
+        Equal(0, summary.Local.WrittenPlaylists);
+        Equal(0, writer.ProbeCalls);
+        Equal(1, writer.WriteCalls);
+        True(!File.Exists(cover));
+        True(!File.Exists(playlist));
+        True((await File.ReadAllBytesAsync(
+            fixture.DestinationPath))
+            .SequenceEqual(new byte[] { 9, 8, 7 }));
+    }
+
+    private static async Task LyricsOnlyRefreshProtectsUserSidecarAsync()
+    {
+        await using Fixture fixture =
+            await Fixture.CreateAsync(
+                lyricsEnabled: true,
+                overrideExisting: false);
+
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(fixture.DestinationPath)!);
+        await File.WriteAllBytesAsync(
+            fixture.DestinationPath,
+            [9, 8, 7]);
+
+        string sidecar =
+            SidecarLrcLyricsWriter.GetSidecarPath(
+                fixture.DestinationPath);
+        await File.WriteAllTextAsync(
+            sidecar,
+            "[00:01.000]User-edited lyric");
+
+        PlanEntry entry = fixture.Plan.Entries[0] with
+        {
+            Status = PlanEntryStatus.Modified,
+            NeedsAudioCopy = false,
+        };
+
+        SyncExecutionSummary summary = await new SyncExecutor(
+            new LocalLibraryMaterializer(),
+            new FakeRecognizer(
+                TrackRecognitionResult.Matched(42)),
+            new FakeLyricsProvider(
+                LyricsLookupResult.Found(
+                    LrcDocument.Parse(
+                        "[00:01.000]New lyric"))),
+            new SidecarLrcLyricsWriter()).ExecuteAsync(
+                fixture.Settings,
+                new LibraryPlan([entry]),
+                fixture.State,
+                fixture.StateStore,
+                lyricsOnly: true);
+
+        Equal(1, summary.Errors.Count);
+        Equal(0, summary.CompletedTracks);
+        Equal(
+            "[00:01.000]User-edited lyric",
+            await File.ReadAllTextAsync(sidecar));
     }
 
     private static void MatchWarningHandlesChineseAndArtistSubsets()

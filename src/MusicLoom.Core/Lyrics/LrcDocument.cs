@@ -58,7 +58,13 @@ public sealed partial class LrcDocument
             }
         }
 
-        document.Lines.Sort(static (left, right) => left.Timestamp.CompareTo(right.Timestamp));
+        // Preserve input order when the original and a translation share the
+        // same timestamp. List.Sort is unstable and can swap those roles.
+        LrcLine[] ordered = document.Lines
+            .OrderBy(static line => line.Timestamp)
+            .ToArray();
+        document.Lines.Clear();
+        document.Lines.AddRange(ordered);
         return document;
     }
 
@@ -194,15 +200,17 @@ public sealed partial class LrcDocument
             }
         }
 
-        merged.Lines.Sort(
-            static (left, right) =>
-                left.Timestamp.CompareTo(
-                    right.Timestamp));
+        // Stable ordering is required: original first, translation second.
+        LrcLine[] ordered = merged.Lines
+            .OrderBy(static line => line.Timestamp)
+            .ToArray();
+        merged.Lines.Clear();
+        merged.Lines.AddRange(ordered);
 
         return merged;
     }
 
-    private static bool LooksLikeCreditLine(
+    public static bool LooksLikeCreditLine(
         string text)
     {
         int asciiColon =
