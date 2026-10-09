@@ -34,3 +34,39 @@ public interface ITrackLyricsCache
         LrcDocument? lyrics,
         CancellationToken cancellationToken = default);
 }
+
+ 
+/// <summary>
+/// Origin priority is managed by the scanner: source embedded lyrics, then
+/// local sidecar lyrics, then a verified cached NetEase response.
+/// A record with no lyrics is still authoritative for the UI.
+/// </summary>
+public enum LibraryLyricsOrigin
+{
+    None,
+    Embedded,
+    Sidecar,
+    Netease,
+}
+
+public sealed record LibraryLyricsRecord(
+    string SourcePath,
+    LibraryLyricsOrigin Origin,
+    string? Text,
+    long? SongId,
+    string SourceSignature,
+    DateTimeOffset UpdatedAt)
+{
+    public bool HasLyrics => !string.IsNullOrWhiteSpace(Text);
+}
+
+public interface ILibraryLyricsCache
+{
+    Task<LibraryLyricsRecord?> GetLibraryAsync(
+        string sourcePath,
+        CancellationToken cancellationToken = default);
+
+    Task SaveLibraryAsync(
+        LibraryLyricsRecord record,
+        CancellationToken cancellationToken = default);
+}

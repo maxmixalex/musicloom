@@ -17,8 +17,11 @@ List<(string Name, Action Test)> tests =
     ("LRC parser preserves repeated timestamps", LrcRepeatedTimestamps),
     ("LRC merge aligns translations within 200 ms", LrcMerge),
     ("LRC merge keeps translations with nearest originals", LrcMergeNearestNeighbor),
+    ("LRC merge ignores credits and blank alignment markers", LrcMergeIgnoresCreditsAndBlanks),
+    ("LRC merge removes duplicated untranslated phrases", LrcMergeDeduplicatesOriginal),
     ("LRC projection preserves original/translation order", LrcPresentationOrder),
     ("LRC slash delimiter only splits explicit bilingual text", LrcSlashPresentation),
+    ("Scanning resolves canonical embedded/local/NetEase lyrics", LibraryLyricsIndexerRegression.Run),
     ("NetEase candidate ranking balances duration and metadata", NeteaseCandidateRanking),
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
@@ -153,6 +156,47 @@ static void LrcMergeNearestNeighbor()
     Equal(
         TimeSpan.FromMilliseconds(1050),
         credit.Timestamp);
+}
+
+static void LrcMergeIgnoresCreditsAndBlanks()
+{
+    LrcDocument originals = LrcDocument.Parse(
+        "[00:01.000]词：Someone\n" +
+        "[00:01.120]Original line\n" +
+        "[00:04.000]\n" +
+        "[00:04.110]Next original");
+    LrcDocument translations = LrcDocument.Parse(
+        "[00:01.045]第一句译文\n" +
+        "[00:04.040]第二句译文");
+
+    LrcDocument result = LrcDocument.Merge(
+        originals, translations);
+    IReadOnlyList<LrcPresentationLine> projected =
+        LrcPresentation.Project(LrcDocument.Parse(result.ToString()));
+
+    Equal(3, projected.Count);
+    Equal("词：Someone", projected[0].Original);
+    True(projected[0].Translation is null);
+
+    Equal("Original line", projected[1].Original);
+    Equal("第一句译文", projected[1].Translation ?? "");
+    Equal(TimeSpan.FromMilliseconds(1120), projected[1].Timestamp!.Value);
+
+    Equal("Next original", projected[2].Original);
+    Equal("第二句译文", projected[2].Translation ?? "");
+}
+
+static void LrcMergeDeduplicatesOriginal()
+{
+    LrcDocument original = LrcDocument.Parse(
+        "[00:01.000]It's on our head");
+    LrcDocument repeated = LrcDocument.Parse(
+        "[00:01.010]It’s on our head");
+
+    LrcDocument merged = LrcDocument.Merge(original, repeated);
+    Equal(1, merged.Lines.Count);
+    Equal("It's on our head", merged.Lines[0].Text);
+    Equal(1, LrcPresentation.Project(merged).Count);
 }
 
 static void LrcPresentationOrder()

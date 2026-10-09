@@ -6,7 +6,7 @@ namespace MusicLoom.App;
 
 internal sealed class SqliteStateStore : StateStore
 {
-    private const int DatabaseSchemaVersion = 3;
+    private const int DatabaseSchemaVersion = 4;
     private readonly string? _legacyJsonPath;
 
     public SqliteStateStore(
@@ -572,6 +572,17 @@ internal sealed class SqliteStateStore : StateStore
                 song_id INTEGER NOT NULL,
                 lrc TEXT NULL,
                 fetched_at TEXT NOT NULL
+            );
+
+            -- Canonical, scan-resolved lyrics for the library. The provider
+            -- cache above is an input, never a second display truth.
+            CREATE TABLE IF NOT EXISTS library_lyrics (
+                source_path TEXT PRIMARY KEY COLLATE NOCASE,
+                origin INTEGER NOT NULL,
+                lrc TEXT NULL,
+                song_id INTEGER NULL,
+                source_signature TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );
             """;
 

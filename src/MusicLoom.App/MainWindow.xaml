@@ -84,6 +84,14 @@
                   <TextBlock x:Name="ConfirmSelectedMatchesText" Text="Confirm selected matches" />
                 </StackPanel>
               </Button>
+              <Button x:Name="ClearSelectedMatchesButton"
+                      Padding="10,5" Click="ClearSelectedMatchesButton_Click"
+                      IsEnabled="False" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                  <TextBlock x:Name="ClearSelectedMatchesText" Text="Clear selected matches" />
+                </StackPanel>
+              </Button>
               <Button x:Name="SyncButton" Padding="10,5" Style="{StaticResource AccentButtonStyle}" Click="SyncButton_Click" IsEnabled="False">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <Viewbox Width="14" Height="14"><SymbolIcon Symbol="Sync" /></Viewbox>
@@ -251,6 +259,10 @@
                       <MenuFlyoutItem x:Name="ContextConfirmSelectedMatchesItem" Text="Confirm selected matches"
                                       Visibility="Collapsed" Click="ContextConfirmSelectedMatchesItem_Click">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE73E;" /></MenuFlyoutItem.Icon>
+                      </MenuFlyoutItem>
+                      <MenuFlyoutItem x:Name="ContextClearSelectedMatchesItem" Text="Clear selected matches"
+                                      Visibility="Collapsed" Click="ContextClearSelectedMatchesItem_Click">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
                       </MenuFlyoutItem>
                     </MenuFlyout>
                   </ListView.ContextFlyout>

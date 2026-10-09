@@ -30,6 +30,13 @@ public static class AtlTrackInspector
         return track.DurationMs;
     }
 
+    // Scan-side lyric indexing must not decode/copy embedded cover bytes.
+    public static string? ReadEmbeddedLyrics(string path)
+    {
+        Track track = new(path);
+        return ReadLyrics(track);
+    }
+
     public static TrackInspection Read(string path)
     {
         Track track = new(path);

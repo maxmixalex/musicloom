@@ -23,6 +23,8 @@ internal static class SyncExecutorRegression
         await LyricsOnlyRefreshAvoidsOtherWritesAsync();
         await LyricsOnlyRefreshProtectsUserSidecarAsync();
         await CachedLyricsAvoidsSecondNetworkFetchAsync();
+        await CanonicalEmbeddedLyricsNeverUseRemoteAsync();
+        await CanonicalSidecarLyricsWriteWithoutRemoteAsync();
         await FetchSuccessSurvivesOutputFailureAsync();
         await NoLyricsCacheProtectsUnmanagedOutputAsync();
         MatchWarningHandlesChineseAndArtistSubsets();
@@ -341,6 +343,87 @@ internal static class SyncExecutorRegression
                 fixture.StateStore);
 
         Equal(1, summary.WrittenLyrics);
+        Equal(0, provider.CallCount);
+        Equal(1, writer.WriteCalls);
+    }
+
+    private static async Task CanonicalEmbeddedLyricsNeverUseRemoteAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: true);
+
+        InMemoryLibraryLyricsCache library = new();
+        await library.SaveLibraryAsync(new LibraryLyricsRecord(
+            fixture.SourcePath,
+            LibraryLyricsOrigin.Embedded,
+            "[00:01.000]Embedded",
+            42,
+            "source-file",
+            DateTimeOffset.UtcNow));
+
+        FakeRecognizer recognizer =
+            new(TrackRecognitionResult.Matched(42));
+        FakeLyricsProvider provider =
+            new(LyricsLookupResult.NoLyrics());
+        FakeLyricsWriter writer = new(
+            LyricsProbeStatus.Missing);
+
+        SyncExecutionSummary result = await new SyncExecutor(
+            new LocalLibraryMaterializer(),
+            recognizer,
+            provider,
+            writer,
+            libraryLyricsCache: library).ExecuteAsync(
+                fixture.Settings,
+                fixture.Plan,
+                fixture.State,
+                fixture.StateStore);
+
+        Equal(1, result.CompletedTracks);
+        Equal(1, result.ExistingLyrics);
+        Equal(0, recognizer.CallCount);
+        Equal(0, provider.CallCount);
+        Equal(0, writer.WriteCalls);
+    }
+
+    private static async Task CanonicalSidecarLyricsWriteWithoutRemoteAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: true);
+
+        InMemoryLibraryLyricsCache library = new();
+        await library.SaveLibraryAsync(new LibraryLyricsRecord(
+            fixture.SourcePath,
+            LibraryLyricsOrigin.Sidecar,
+            "[00:01.000]Local source sidecar",
+            42,
+            "source-sidecar",
+            DateTimeOffset.UtcNow));
+
+        FakeRecognizer recognizer =
+            new(TrackRecognitionResult.Matched(42));
+        FakeLyricsProvider provider =
+            new(LyricsLookupResult.NoLyrics());
+        FakeLyricsWriter writer = new(
+            LyricsProbeStatus.Missing,
+            LyricsWriteStatus.Written);
+
+        SyncExecutionSummary result = await new SyncExecutor(
+            new LocalLibraryMaterializer(),
+            recognizer,
+            provider,
+            writer,
+            libraryLyricsCache: library).ExecuteAsync(
+                fixture.Settings,
+                fixture.Plan,
+                fixture.State,
+                fixture.StateStore);
+
+        Equal(1, result.CompletedTracks);
+        Equal(1, result.WrittenLyrics);
+        Equal(0, recognizer.CallCount);
         Equal(0, provider.CallCount);
         Equal(1, writer.WriteCalls);
     }
@@ -1188,6 +1271,30 @@ internal static class SyncExecutorRegression
             bool overrideExisting,
             CancellationToken cancellationToken = default) =>
             throw new IOException("Simulated output write failure.");
+    }
+
+    private sealed class InMemoryLibraryLyricsCache : ILibraryLyricsCache
+    {
+        private readonly Dictionary<string, LibraryLyricsRecord> _rows =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        public Task<LibraryLyricsRecord?> GetLibraryAsync(
+            string sourcePath,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _rows.TryGetValue(sourcePath, out LibraryLyricsRecord? record);
+            return Task.FromResult(record);
+        }
+
+        public Task SaveLibraryAsync(
+            LibraryLyricsRecord record,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _rows[record.SourcePath] = record;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class InMemoryLyricsCache : ITrackLyricsCache

@@ -100,14 +100,22 @@ public sealed partial class LrcDocument
                     originalIndex];
 
             LrcLine? nextOriginal =
-                originalIndex + 1
-                    < original.Lines.Count
-                        ? original.Lines[
-                            originalIndex + 1]
-                        : null;
+                original.Lines
+                    .Skip(originalIndex + 1)
+                    .FirstOrDefault(static line =>
+                        !string.IsNullOrWhiteSpace(line.Text)
+                        && !LooksLikeCreditLine(line.Text));
 
-            merged.Lines.Add(
-                originalLine);
+            merged.Lines.Add(originalLine);
+
+            // Credits, headers and deliberately empty timing markers have
+            // no translated counterpart. Matching them consumed the first
+            // real translation and shifted the rest of the song.
+            if (string.IsNullOrWhiteSpace(originalLine.Text)
+                || LooksLikeCreditLine(originalLine.Text))
+            {
+                continue;
+            }
 
             int bestIndex = -1;
             TimeSpan smallestDelta =
@@ -121,8 +129,8 @@ public sealed partial class LrcDocument
                 LrcLine translation =
                     translated.Lines[i];
 
-                if (LooksLikeCreditLine(
-                        translation.Text))
+                if (string.IsNullOrWhiteSpace(translation.Text)
+                    || LooksLikeCreditLine(translation.Text))
                 {
                     continue;
                 }
@@ -172,15 +180,19 @@ public sealed partial class LrcDocument
                 translated.Lines[
                     bestIndex];
 
-            merged.Lines.Add(
-                best with
-                {
-                    Timestamp =
-                        originalLine.Timestamp,
-                });
+            // Some tlyric feeds repeat the original in altered punctuation
+            // rather than providing a translation. Do not display those as
+            // a second line.
+            if (!SameLyricText(originalLine.Text, best.Text))
+            {
+                merged.Lines.Add(
+                    best with
+                    {
+                        Timestamp = originalLine.Timestamp,
+                    });
+            }
 
-            usedTranslations[
-                bestIndex] = true;
+            usedTranslations[bestIndex] = true;
 
             // Translation matching is monotonic. Once a later translation
             // has been paired, an even later original line cannot go back
@@ -193,10 +205,18 @@ public sealed partial class LrcDocument
             i < translated.Lines.Count;
             i++)
         {
-            if (!usedTranslations[i])
+            if (!usedTranslations[i]
+                && !string.IsNullOrWhiteSpace(
+                    translated.Lines[i].Text)
+                && !original.Lines.Any(source =>
+                    !string.IsNullOrWhiteSpace(source.Text)
+                    && SameLyricText(
+                        source.Text,
+                        translated.Lines[i].Text)
+                    && (source.Timestamp - translated.Lines[i].Timestamp)
+                        .Duration() <= MergeThreshold))
             {
-                merged.Lines.Add(
-                    translated.Lines[i]);
+                merged.Lines.Add(translated.Lines[i]);
             }
         }
 
@@ -208,6 +228,26 @@ public sealed partial class LrcDocument
         merged.Lines.AddRange(ordered);
 
         return merged;
+    }
+
+    private static bool SameLyricText(
+        string left,
+        string right)
+    {
+        static string Normalize(string value)
+        {
+            string normalized =
+                value.Normalize(NormalizationForm.FormKC);
+            return new string(normalized
+                .Where(char.IsLetterOrDigit)
+                .Select(char.ToLowerInvariant)
+                .ToArray());
+        }
+
+        return string.Equals(
+            Normalize(left),
+            Normalize(right),
+            StringComparison.Ordinal);
     }
 
     public static bool LooksLikeCreditLine(
@@ -247,7 +287,10 @@ public sealed partial class LrcDocument
                     "演奏",
                     "作词",
                     "作詞",
+                    "词",
+                    "詞",
                     "作曲",
+                    "曲",
                     "编曲",
                     "編曲",
                     "制作",

@@ -286,6 +286,28 @@ internal static class DatabasePersistenceRegression
                 "[00:01.000]Canonical lyric",
                 storedLyrics.Lrc ?? string.Empty);
 
+            await lyricsCache.SaveLibraryAsync(
+                new MusicLoom.Core.Lyrics.LibraryLyricsRecord(
+                    sourcePath,
+                    MusicLoom.Core.Lyrics.LibraryLyricsOrigin.Sidecar,
+                    "[00:01.000]Verified local lyric",
+                    987654321L,
+                    "source:123|sidecar:456",
+                    DateTimeOffset.UtcNow));
+
+            MusicLoom.Core.Lyrics.LibraryLyricsRecord localCanonical =
+                await new SqliteLyricsCache(databasePath)
+                    .GetLibraryAsync(sourcePath)
+                ?? throw new InvalidOperationException(
+                    "Canonical lyrics were not written to SQLite.");
+
+            Equal(
+                MusicLoom.Core.Lyrics.LibraryLyricsOrigin.Sidecar,
+                localCanonical.Origin);
+            Equal(
+                "[00:01.000]Verified local lyric",
+                localCanonical.Text ?? string.Empty);
+
             await lyricsCache.SaveAsync(
                 sourcePath,
                 987654321L,
@@ -308,6 +330,14 @@ internal static class DatabasePersistenceRegression
 
             StateDocument reloaded =
                 await reloadedStore.LoadAsync();
+            localCanonical = await new SqliteLyricsCache(databasePath)
+                .GetLibraryAsync(sourcePath)
+                ?? throw new InvalidOperationException(
+                    "Track checkpoint erased the canonical lyrics.");
+            Equal(
+                "[00:01.000]Verified local lyric",
+                localCanonical.Text ?? string.Empty);
+
 
             Equal(
                 "Updated in SQLite",

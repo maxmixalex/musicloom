@@ -8,7 +8,7 @@ namespace MusicLoom.App;
 /// Canonical remote lyrics. This table intentionally survives SaveAsync's
 /// full rewrite of sync_tracks and keeps lyrics when the destination is absent.
 /// </summary>
-internal sealed class SqliteLyricsCache : ITrackLyricsCache
+internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
 {
     private readonly string _databasePath;
 
@@ -95,6 +95,218 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<LibraryLyricsRecord?> GetLibraryAsync(
+        string sourcePath,
+        CancellationToken cancellationToken = default)
+    {
+        await using SqliteConnection connection =
+            await OpenAsync(cancellationToken);
+
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT origin, lrc, song_id, source_signature, updated_at
+              FROM library_lyrics
+             WHERE source_path = $source;
+            """;
+        command.Parameters.AddWithValue("$source", sourcePath);
+
+        await using SqliteDataReader reader =
+            await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new LibraryLyricsRecord(
+            sourcePath,
+            (LibraryLyricsOrigin)reader.GetInt32(0),
+            reader.IsDBNull(1) ? null : reader.GetString(1),
+            reader.IsDBNull(2) ? null : reader.GetInt64(2),
+            reader.GetString(3),
+            DateTimeOffset.Parse(
+                reader.GetString(4),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind));
+    }
+
+    public async Task SaveLibraryAsync(
+        LibraryLyricsRecord record,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        await using SqliteConnection connection =
+            await OpenAsync(cancellationToken);
+
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO library_lyrics (
+                source_path, origin, lrc, song_id,
+                source_signature, updated_at
+            ) VALUES (
+                $source, $origin, $lrc, $songId,
+                $signature, $updatedAt
+            )
+            ON CONFLICT(source_path) DO UPDATE SET
+                origin = excluded.origin,
+                lrc = excluded.lrc,
+                song_id = excluded.song_id,
+                source_signature = excluded.source_signature,
+                updated_at = excluded.updated_at;
+            """;
+        command.Parameters.AddWithValue("$source", record.SourcePath);
+        command.Parameters.AddWithValue("$origin", (int)record.Origin);
+        command.Parameters.AddWithValue(
+            "$lrc", record.Text is null ? DBNull.Value : record.Text);
+        command.Parameters.AddWithValue(
+            "$songId", record.SongId is long id ? id : DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$signature", record.SourceSignature);
+        command.Parameters.AddWithValue(
+            "$updatedAt",
+            record.UpdatedAt.ToString("O", CultureInfo.InvariantCulture));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<Dictionary<string, LibraryLyricsRecord>>
+        LoadLibrarySnapshotAsync(
+            CancellationToken cancellationToken = default)
+    {
+        Dictionary<string, LibraryLyricsRecord> entries =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        await using SqliteConnection connection =
+            await OpenAsync(cancellationToken);
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT source_path, origin, lrc, song_id,
+                   source_signature, updated_at
+              FROM library_lyrics;
+            """;
+
+        await using SqliteDataReader reader =
+            await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            string source = reader.GetString(0);
+            entries[source] = new LibraryLyricsRecord(
+                source,
+                (LibraryLyricsOrigin)reader.GetInt32(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetInt64(3),
+                reader.GetString(4),
+                DateTimeOffset.Parse(
+                    reader.GetString(5),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind));
+        }
+
+        return entries;
+    }
+
+    public async Task<Dictionary<string, CachedTrackLyrics>>
+        LoadRemoteSnapshotAsync(
+            CancellationToken cancellationToken = default)
+    {
+        Dictionary<string, CachedTrackLyrics> entries =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        await using SqliteConnection connection =
+            await OpenAsync(cancellationToken);
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT source_path, song_id, lrc, fetched_at
+              FROM sync_lyrics;
+            """;
+
+        await using SqliteDataReader reader =
+            await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            string source = reader.GetString(0);
+            entries[source] = new CachedTrackLyrics(
+                source,
+                reader.GetInt64(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                DateTimeOffset.Parse(
+                    reader.GetString(3),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind));
+        }
+
+        return entries;
+    }
+
+    public async Task SaveLibraryBatchAsync(
+        IReadOnlyCollection<LibraryLyricsRecord> records,
+        CancellationToken cancellationToken = default)
+    {
+        if (records.Count == 0)
+        {
+            return;
+        }
+
+        await using SqliteConnection connection =
+            await OpenAsync(cancellationToken);
+        using SqliteTransaction transaction =
+            connection.BeginTransaction();
+
+        await using SqliteCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            INSERT INTO library_lyrics (
+                source_path, origin, lrc, song_id,
+                source_signature, updated_at
+            ) VALUES (
+                $source, $origin, $lrc, $songId,
+                $signature, $updatedAt
+            )
+            ON CONFLICT(source_path) DO UPDATE SET
+                origin = excluded.origin,
+                lrc = excluded.lrc,
+                song_id = excluded.song_id,
+                source_signature = excluded.source_signature,
+                updated_at = excluded.updated_at;
+            """;
+
+        try
+        {
+            foreach (LibraryLyricsRecord record in records)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                command.Parameters.Clear();
+                command.Parameters.AddWithValue("$source", record.SourcePath);
+                command.Parameters.AddWithValue("$origin", (int)record.Origin);
+                command.Parameters.AddWithValue(
+                    "$lrc",
+                    record.Text is null ? DBNull.Value : record.Text);
+                command.Parameters.AddWithValue(
+                    "$songId",
+                    record.SongId is long id ? id : DBNull.Value);
+                command.Parameters.AddWithValue(
+                    "$signature",
+                    record.SourceSignature);
+                command.Parameters.AddWithValue(
+                    "$updatedAt",
+                    record.UpdatedAt.ToString(
+                        "O",
+                        CultureInfo.InvariantCulture));
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
     private async Task<SqliteConnection> OpenAsync(
         CancellationToken cancellationToken)
     {
@@ -127,6 +339,17 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache
                     song_id INTEGER NOT NULL,
                     lrc TEXT NULL,
                     fetched_at TEXT NOT NULL
+                );
+
+                -- Only library_lyrics is authoritative for the Lyrics tab.
+                -- sync_lyrics stores a NetEase provider candidate.
+                CREATE TABLE IF NOT EXISTS library_lyrics (
+                    source_path TEXT PRIMARY KEY COLLATE NOCASE,
+                    origin INTEGER NOT NULL,
+                    lrc TEXT NULL,
+                    song_id INTEGER NULL,
+                    source_signature TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
                 );
                 """;
             await init.ExecuteNonQueryAsync(cancellationToken);

@@ -62,6 +62,7 @@ public sealed class SyncExecutor
     private readonly ITrackLyricsProvider _lyricsProvider;
     private readonly ITrackLyricsWriter _lyricsWriter;
     private readonly ITrackLyricsCache? _lyricsCache;
+    private readonly ILibraryLyricsCache? _libraryLyricsCache;
     private readonly int _checkpointInterval;
 
     public SyncExecutor(
@@ -70,7 +71,8 @@ public sealed class SyncExecutor
         ITrackLyricsProvider lyricsProvider,
         ITrackLyricsWriter lyricsWriter,
         int checkpointInterval = 25,
-        ITrackLyricsCache? lyricsCache = null)
+        ITrackLyricsCache? lyricsCache = null,
+        ILibraryLyricsCache? libraryLyricsCache = null)
     {
         if (checkpointInterval <= 0)
         {
@@ -84,6 +86,7 @@ public sealed class SyncExecutor
         _lyricsProvider = lyricsProvider;
         _lyricsWriter = lyricsWriter;
         _lyricsCache = lyricsCache;
+        _libraryLyricsCache = libraryLyricsCache;
         _checkpointInterval = checkpointInterval;
     }
 
@@ -276,6 +279,146 @@ public sealed class SyncExecutor
                         expectedRecipe,
                         index + 1);
                     continue;
+                }
+
+                if (_libraryLyricsCache is not null)
+                {
+                    LibraryLyricsRecord? canonical =
+                        await _libraryLyricsCache.GetLibraryAsync(
+                            entry.SourcePath,
+                            cancellationToken);
+
+                    if (canonical is
+                        {
+                            Origin: LibraryLyricsOrigin.Embedded,
+                            HasLyrics: true,
+                        })
+                    {
+                        // Copying the source already preserves its embedded
+                        // lyrics; a NetEase fetch must never replace them.
+                        partial = partial with
+                        {
+                            Lyrics = LyricsState.Existing,
+                            LyricsCheckedAt = DateTimeOffset.UtcNow,
+                        };
+                        existingLyrics++;
+                        await CompleteAsync(
+                            entry, partial, expectedRecipe, index + 1);
+                        continue;
+                    }
+
+                    if (canonical is
+                        {
+                            Origin: LibraryLyricsOrigin.Sidecar,
+                            HasLyrics: true,
+                        } && canonical.Text is string localText)
+                    {
+                        // A manual change to the NetEase match cannot
+                        // rewrite local source lyrics: they have priority.
+                        if (lyricsOnly)
+                        {
+                            partial = partial with
+                            {
+                                Lyrics = LyricsState.Existing,
+                                LyricsCheckedAt = DateTimeOffset.UtcNow,
+                            };
+                            existingLyrics++;
+                            await CompleteAsync(
+                                entry, partial, expectedRecipe, index + 1);
+                            continue;
+                        }
+
+                        // Local LRC takes priority over NetEase even with
+                        // OverrideExisting enabled. Materialize from the DB.
+                        LrcDocument localDocument =
+                            LrcDocument.Parse(localText);
+
+                        if (localDocument.Lines.Count == 0)
+                        {
+                            // Untimed lyrics can still be shown from SQLite;
+                            // do not erase them or replace with NetEase.
+                            partial = partial with
+                            {
+                                Lyrics = LyricsState.Existing,
+                                LyricsCheckedAt = DateTimeOffset.UtcNow,
+                            };
+                            existingLyrics++;
+                            await CompleteAsync(
+                                entry, partial, expectedRecipe, index + 1);
+                            continue;
+                        }
+
+                        if (_lyricsWriter is SidecarLrcLyricsWriter)
+                        {
+                            string outputPath =
+                                SidecarLrcLyricsWriter.GetSidecarPath(
+                                    entry.DestinationPath);
+                            if (File.Exists(outputPath)
+                                && string.Equals(
+                                    LrcDocument.Parse(
+                                        File.ReadAllText(outputPath)).ToString(),
+                                    localDocument.ToString(),
+                                    StringComparison.Ordinal))
+                            {
+                                partial = partial with
+                                {
+                                    Lyrics = LyricsState.Existing,
+                                    LyricsCheckedAt = DateTimeOffset.UtcNow,
+                                };
+                                existingLyrics++;
+                                await CompleteAsync(
+                                    entry, partial, expectedRecipe, index + 1);
+                                continue;
+                            }
+                        }
+
+                        stage = "write-local-lyrics";
+                        progress?.Report(new SyncExecutionProgress(
+                            index, work.Length, entry.SourcePath, stage));
+
+                        LyricsWriteResult localWrite =
+                            await _lyricsWriter.WriteAsync(
+                                entry.DestinationPath,
+                                localDocument,
+                                settings.Organizer.Lyrics.OverrideExisting
+                                    || lyricsOnly,
+                                cancellationToken);
+
+                        partial = partial with
+                        {
+                            Lyrics = localWrite.Status switch
+                            {
+                                LyricsWriteStatus.Written =>
+                                    LyricsState.Written,
+                                LyricsWriteStatus.SkippedExisting =>
+                                    LyricsState.Existing,
+                                _ => LyricsState.Unsupported,
+                            },
+                            LyricsCheckedAt = DateTimeOffset.UtcNow,
+                            LyricsFingerprint =
+                                localWrite.Status == LyricsWriteStatus.Written
+                                    ? ComputeLyricsFingerprint(localDocument)
+                                    : partial.LyricsFingerprint,
+                        };
+
+                        if (localWrite.Status == LyricsWriteStatus.Written)
+                        {
+                            writtenLyrics++;
+                        }
+                        else if (localWrite.Status ==
+                            LyricsWriteStatus.SkippedExisting)
+                        {
+                            existingLyrics++;
+                        }
+                        else
+                        {
+                            unsupportedLyrics++;
+                        }
+
+                        await CompleteAsync(
+                            entry, partial, expectedRecipe, index + 1);
+                        continue;
+                    }
                 }
 
                 if (!settings.Organizer.Lyrics.OverrideExisting
