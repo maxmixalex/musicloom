@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Media.Animation;
 using MusicLoom.Audio.Windows;
 using MusicLoom.Core.Configuration;
+using MusicLoom.Core.Enrichment;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.Planning;
 using MusicLoom.Core.Scanning;
@@ -1213,15 +1214,20 @@ public sealed partial class MainWindow : Window
 
     private async Task InitializeSettingsAsync()
     {
+        bool startScan = false;
         try
         {
             await LibraryDatabase.InitializeAsync(
                 DatabasePath);
 
             MusicLoomSettings settings =
-                await LoadPersistedSettingsAsync();
+                NormalizeGuiSettings(
+                    await LoadPersistedSettingsAsync());
 
             _settings = settings;
+            startScan = settings.Path.AutoScanOnStartup
+                && !string.IsNullOrWhiteSpace(settings.Path.SourceDirectory)
+                && !string.IsNullOrWhiteSpace(settings.Path.DestinationDirectory);
             _uiLanguage =
                 NormalizeLanguage(
                     settings.Ui.Language);
@@ -1275,7 +1281,28 @@ public sealed partial class MainWindow : Window
         {
             _loadingSettings = false;
         }
+
+        if (startScan)
+        {
+            // Restore the cached view, then validate both libraries once.
+            await ScanLibraryAsync(
+                clearInfoBar: false,
+                recordActivity: true);
+        }
     }
+
+    private static MusicLoomSettings NormalizeGuiSettings(
+        MusicLoomSettings settings) =>
+        settings with
+        {
+            Organizer = settings.Organizer with
+            {
+                Lyrics = settings.Organizer.Lyrics with
+                {
+                    Enabled = true,
+                },
+            },
+        };
 
     private async Task<MusicLoomSettings>
         LoadPersistedSettingsAsync(
@@ -1296,7 +1323,7 @@ public sealed partial class MainWindow : Window
             TryDeleteLegacyFile(
                 LegacyConfigPath);
 
-            return current;
+            return NormalizeGuiSettings(current);
         }
 
         MusicLoomSettings? settings =
@@ -1307,6 +1334,7 @@ public sealed partial class MainWindow : Window
 
         if (settings is not null)
         {
+            settings = NormalizeGuiSettings(settings);
             await TomlSettingsStore.SaveAsync(
                 ConfigPath,
                 settings,
@@ -1328,9 +1356,10 @@ public sealed partial class MainWindow : Window
                 LegacyConfigPath))
         {
             settings =
-                await SettingsLoader.LoadAsync(
-                    LegacyConfigPath,
-                    cancellationToken);
+                NormalizeGuiSettings(
+                    await SettingsLoader.LoadAsync(
+                        LegacyConfigPath,
+                        cancellationToken));
 
             await TomlSettingsStore.SaveAsync(
                 ConfigPath,
@@ -1830,7 +1859,8 @@ public sealed partial class MainWindow : Window
                             state,
                             stateStore,
                             syncProgress,
-                            cancellation.Token),
+                            cancellation.Token,
+                            recognizeUnmatched: false),
                     cancellation.Token);
 
             // Progress<T> dispatches asynchronously onto the UI thread.
@@ -3196,6 +3226,8 @@ public sealed partial class MainWindow : Window
         bool empty =
             _allLibraryItems.Count == 0;
 
+        AutoMatchButton.IsEnabled = !_busy && configured;
+
         LibraryList.Visibility =
             empty
                 ? Visibility.Collapsed
@@ -4067,30 +4099,8 @@ public sealed partial class MainWindow : Window
             }
 
             _currentLyricsRaw = canonical?.Text;
-            LyricsSourceText.Text =
-                canonical?.Origin switch
-                {
-                    LibraryLyricsOrigin.Embedded =>
-                        L(
-                            "Database · embedded lyrics",
-                            "数据库 · 内嵌歌词"),
-                    LibraryLyricsOrigin.Sidecar =>
-                        L(
-                            "Database · local LRC",
-                            "数据库 · 本地 LRC"),
-                    LibraryLyricsOrigin.Netease =>
-                        item.Kind == "synced"
-                            ? L(
-                                "Database · NetEase Music",
-                                "数据库 · 网易云音乐")
-                            : L(
-                                "Database · NetEase Music · destination pending",
-                                "数据库 · 网易云音乐 · 目标待同步"),
-                    _ =>
-                        L(
-                            "Database · no lyrics indexed",
-                            "数据库 · 暂无已索引歌词"),
-                };
+            // The lyric content is from SQLite; hide the source badge.
+            LyricsSourceText.Text = string.Empty;
         ConfigureAuxiliaryLongText();
         RenderLyrics();
 
@@ -6935,17 +6945,6 @@ public sealed partial class MainWindow : Window
             return false;
         }
 
-        if (!settings.Organizer.Lyrics.Enabled)
-        {
-            ShowInfo(
-                InfoBarSeverity.Informational,
-                L("Match saved", "匹配已保存"),
-                L(
-                    "Automatic lyric synchronization is disabled in Settings.",
-                    "设置中已关闭自动歌词同步，匹配已保留为待同步。"));
-            return false;
-        }
-
         (LibraryDisplayItem Item, long SongId)[] matched =
             candidates.Distinct()
                 .Select(item =>
@@ -8576,10 +8575,11 @@ public sealed partial class MainWindow : Window
         MusicLoomSettings left,
         MusicLoomSettings right)
     {
-        return left.Path
-                != right.Path
-            || left.Organizer
-                != right.Organizer;
+        return left.Path.SourceDirectory != right.Path.SourceDirectory
+            || left.Path.DestinationDirectory != right.Path.DestinationDirectory
+            || left.Path.SourcePlaylistDirectory != right.Path.SourcePlaylistDirectory
+            || left.Path.DestinationPlaylistBase != right.Path.DestinationPlaylistBase
+            || left.Organizer != right.Organizer;
     }
 
     private MusicLoomSettings
@@ -8640,6 +8640,7 @@ public sealed partial class MainWindow : Window
                         ? "/storage/emulated/0/Music/"
                         : PlaylistBaseBox
                             .Text.Trim(),
+                AutoScanOnStartup = AutoScanOnStartupToggle.IsOn,
             },
             Organizer =
                 new OrganizerSettings
@@ -8647,9 +8648,7 @@ public sealed partial class MainWindow : Window
                     Lyrics =
                         new LyricsSettings
                         {
-                            Enabled =
-                                LyricsEnabledToggle
-                                    .IsOn,
+                            Enabled = true,
                             OverrideExisting =
                                 LyricsOverrideToggle
                                     .IsOn,
@@ -8711,10 +8710,8 @@ public sealed partial class MainWindow : Window
             PlaylistBaseBox.Text =
                 settings.Path
                     .DestinationPlaylistBase;
-
-            LyricsEnabledToggle.IsOn =
-                settings.Organizer.Lyrics
-                    .Enabled;
+            AutoScanOnStartupToggle.IsOn =
+                settings.Path.AutoScanOnStartup;
             LyricsOverrideToggle.IsOn =
                 settings.Organizer.Lyrics
                     .OverrideExisting;
@@ -9283,6 +9280,13 @@ public sealed partial class MainWindow : Window
 
         ScanButton.IsEnabled =
             !busy;
+        AutoMatchButton.IsEnabled =
+            !busy
+            && _settings is MusicLoomSettings configured
+            && !string.IsNullOrWhiteSpace(
+                configured.Path.SourceDirectory)
+            && !string.IsNullOrWhiteSpace(
+                configured.Path.DestinationDirectory);
         SyncButton.IsEnabled =
             !busy
             && (_manualPendingSources.Count
@@ -9611,6 +9615,10 @@ public sealed partial class MainWindow : Window
             L(
                 "Refresh library",
                 "刷新音乐库");
+        AutoMatchButtonText.Text =
+            L(
+                "Auto-match NetEase",
+                "自动匹配网易云");
         SyncButtonText.Text =
             L(
                 "Sync pending",
@@ -9895,15 +9903,12 @@ public sealed partial class MainWindow : Window
                 "完全清空数据库");
         DatabasePathText.Text =
             DatabasePath;
-
-        FetchLyricsSettingTitle.Text =
+        AutoScanSettingTitle.Text =
+            L("Scan on startup", "启动时自动扫描");
+        AutoScanSettingDescription.Text =
             L(
-                "Fetch lyrics from NetEase",
-                "从网易云获取歌词");
-        FetchLyricsSettingDescription.Text =
-            L(
-                "Recognize tracks and cache synchronized lyrics.",
-                "识别歌曲并缓存同步歌词。");
+                "Refresh source and destination libraries once at startup.",
+                "启动时自动扫描一次源音乐库与目标音乐库。");
         OverwriteLyricsSettingTitle.Text =
             L(
                 "Overwrite existing lyrics",
@@ -10141,6 +10146,7 @@ public sealed partial class MainWindow : Window
         ConfigureAuxiliaryLongText();
         ApplyLibraryFilter();
         ApplyPlaylistTrackFilter();
+        UpdateLibraryEmptyState();
     }
 
     private void RefreshLocalizedComboBoxSelections()
