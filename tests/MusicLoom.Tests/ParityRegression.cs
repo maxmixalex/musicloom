@@ -325,7 +325,8 @@ internal static class ParityRegression
         };
 
         True(StateStore.IsEnrichmentFresh(state, settings, now));
-        True(!StateStore.IsEnrichmentFresh(
+        // Provider cache age does not make an unchanged output pending.
+        True(StateStore.IsEnrichmentFresh(
             state with { LyricsCheckedAt = now.AddHours(-25) },
             settings,
             now));

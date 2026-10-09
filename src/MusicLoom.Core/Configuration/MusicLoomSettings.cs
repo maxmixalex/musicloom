@@ -33,6 +33,9 @@ public sealed record PathSettings
 
     [JsonPropertyName("destinationPlaylistBase")]
     public string DestinationPlaylistBase { get; init; } = "/storage/emulated/0/Music/";
+
+    [JsonPropertyName("autoScanOnStartup")]
+    public bool AutoScanOnStartup { get; init; }
 }
 
 public sealed record OrganizerSettings
@@ -44,7 +47,9 @@ public sealed record OrganizerSettings
 public sealed record LyricsSettings
 {
     [JsonPropertyName("enabled")]
-    public bool Enabled { get; init; }
+    // Keep the legacy field for CLI and JSON compatibility. Online
+    // matching is a separate GUI command, not an enable/disable setting.
+    public bool Enabled { get; init; } = true;
 
     [JsonPropertyName("overrideExisting")]
     public bool OverrideExisting { get; init; }

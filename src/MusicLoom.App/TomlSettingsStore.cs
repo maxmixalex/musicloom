@@ -77,6 +77,11 @@ internal static class TomlSettingsStore
                         destinationDirectory,
                     SourcePlaylistDirectory =
                         sourcePlaylistDirectory,
+                    AutoScanOnStartup =
+                        ReadBool(
+                            values,
+                            "path.auto_scan_on_startup",
+                            defaults.Path.AutoScanOnStartup),
                     DestinationPlaylistBase =
                         string.IsNullOrWhiteSpace(
                             destinationPlaylistBase)
@@ -90,12 +95,8 @@ internal static class TomlSettingsStore
                     Lyrics =
                         new LyricsSettings
                         {
-                            Enabled =
-                                ReadBool(
-                                    values,
-                                    "organizer.lyrics.enabled",
-                                    defaults.Organizer
-                                        .Lyrics.Enabled),
+                            // Ignore the retired online-fetch setting.
+                            Enabled = true,
                             OverrideExisting =
                                 ReadBool(
                                     values,
@@ -222,13 +223,11 @@ internal static class TomlSettingsStore
             "destination_playlist_base",
             PlaylistMapper.NormalizeDestinationBase(
                 settings.Path.DestinationPlaylistBase));
+        builder.Append("auto_scan_on_startup = ")
+            .AppendLine(Bool(settings.Path.AutoScanOnStartup));
 
         builder.AppendLine();
         builder.AppendLine("[organizer.lyrics]");
-        builder.Append("enabled = ")
-            .AppendLine(
-                Bool(
-                    settings.Organizer.Lyrics.Enabled));
         builder.Append("override_existing = ")
             .AppendLine(
                 Bool(
