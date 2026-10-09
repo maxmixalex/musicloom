@@ -15,6 +15,8 @@ internal static class DestinationDriftRegression
 
     private static async Task RunAsync()
     {
+        await ColdScanAdoptsVerifiedExistingDestinationAsync();
+
         string root = Path.Combine(
             Path.GetTempPath(),
             "musicloom-drift-" + Guid.NewGuid().ToString("N"));
@@ -215,6 +217,85 @@ internal static class DestinationDriftRegression
                     futureNegative,
                     lyricsSettings,
                     now));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static async Task ColdScanAdoptsVerifiedExistingDestinationAsync()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "musicloom-cold-adopt-" + Guid.NewGuid().ToString("N"));
+        string sourceRoot = Path.Combine(root, "source");
+        string destinationRoot = Path.Combine(root, "destination");
+        Directory.CreateDirectory(sourceRoot);
+        Directory.CreateDirectory(destinationRoot);
+
+        try
+        {
+            string sourcePath = Path.Combine(
+                sourceRoot, "track.flac");
+            byte[] music = Enumerable.Repeat((byte)0x42, 256 * 1024)
+                .ToArray();
+            await File.WriteAllBytesAsync(sourcePath, music);
+
+            MusicLoomSettings settings = new()
+            {
+                Path = new PathSettings
+                {
+                    SourceDirectory = sourceRoot,
+                    DestinationDirectory = destinationRoot,
+                },
+            };
+            TrackMetadata metadata = new(
+                "Artist", "Album Artist", "Album",
+                HasEmbeddedArt: false);
+            string destinationPath = LibraryLayout.GetDestinationPath(
+                new MusicFile(
+                    sourcePath, sourceRoot,
+                    metadata.Artist, metadata.AlbumArtist,
+                    metadata.Album, metadata.HasEmbeddedArt),
+                destinationRoot);
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(destinationPath)!);
+
+            // Existing path alone is not enough: a different payload
+            // must still require synchronization.
+            byte[] modified = (byte[])music.Clone();
+            modified[128 * 1024] = 0x41;
+            await File.WriteAllBytesAsync(
+                destinationPath, modified);
+
+            StateDocument state = new();
+            LibraryPlan different = await new LibraryScanner(
+                new CountingReader()).BuildPlanAsync(settings, state);
+            Equal(1, different.PendingTrackCount);
+            Equal(1, different.AudioCopyCount);
+            Equal(0, state.Tracks.Count);
+
+            // Truly identical output is recovered without a recopy.
+            File.Copy(sourcePath, destinationPath, overwrite: true);
+            LibraryPlan recovered = await new LibraryScanner(
+                new CountingReader()).BuildPlanAsync(settings, state);
+            Equal(0, recovered.PendingTrackCount);
+            Equal(0, recovered.AudioCopyCount);
+            Equal(1, recovered.UnchangedCount);
+            Equal(true, state.Tracks.ContainsKey(sourcePath));
+
+            CountingReader warmReader = new();
+            LibraryPlan warm = await new LibraryScanner(
+                warmReader).BuildPlanAsync(settings, state);
+            Equal(0, warm.PendingTrackCount);
+            Equal(0, warmReader.ReadCount);
+
+            File.Delete(destinationPath);
+            LibraryPlan missing = await new LibraryScanner(
+                new CountingReader()).BuildPlanAsync(settings, state);
+            Equal(1, missing.PendingTrackCount);
+            Equal(1, missing.AudioCopyCount);
         }
         finally
         {

@@ -262,6 +262,50 @@ public sealed class LibraryScanner
                     metadata,
                     trackState?.NeteaseSongId);
 
+                // Adopt a pre-existing destination when its bytes are
+                // identical to the source. This recovers a lost sync index
+                // without recopying an otherwise complete local library.
+                // Audio with externally edited tags/lyrics is not adopted.
+                if (trackState is null
+                    && destinationFiles.TryGetValue(
+                        destinationPath, out FileInfo? existingDestination)
+                    && await FilesHaveIdenticalContentAsync(
+                        sourcePath,
+                        existingDestination,
+                        cancellationToken))
+                {
+                    state.Tracks[sourcePath] = new TrackState
+                    {
+                        SourcePath = sourcePath,
+                        SourceSize = source.Length,
+                        SourceLastWriteUtcTicks =
+                            source.LastWriteTimeUtc.Ticks,
+                        QuickHash = QuickFileHash.Compute(sourcePath),
+                        RecipeVersion = expectedRecipe,
+                        DestinationPath = destinationPath,
+                        DestinationSize = existingDestination.Length,
+                        DestinationLastWriteUtcTicks =
+                            existingDestination.LastWriteTimeUtc.Ticks,
+                        MetadataCaptured = true,
+                        MetadataSchemaVersion =
+                            TrackMetadata.CurrentSchemaVersion,
+                        TitleCaptured = true,
+                        Title = metadata.Title,
+                        Artist = metadata.Artist,
+                        AlbumArtist = metadata.AlbumArtist,
+                        Album = metadata.Album,
+                        HasEmbeddedArt = metadata.HasEmbeddedArt,
+                        ProcessedAt = effectiveNow,
+                    };
+
+                    entries.Add(new PlanEntry(
+                        sourcePath,
+                        destinationPath,
+                        PlanEntryStatus.Unchanged,
+                        metadata));
+                    continue;
+                }
+
                 bool destinationMatchesState =
                     trackState?.DestinationPath is not null
                     && PathsEqual(trackState.DestinationPath, destinationPath);
@@ -403,6 +447,65 @@ public sealed class LibraryScanner
             entries,
             ancillary.Covers,
             ancillary.Playlists);
+    }
+
+    private static async Task<bool> FilesHaveIdenticalContentAsync(
+        string sourcePath,
+        FileInfo destination,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            FileInfo source = new(sourcePath);
+            if (!destination.Exists
+                || source.Length != destination.Length)
+            {
+                return false;
+            }
+
+            // Deterministic byte comparison rather than trusting timestamps
+            // or a short quick hash. Stop at the first mismatching block.
+            const int blockSize = 128 * 1024;
+            byte[] sourceBuffer = new byte[blockSize];
+            byte[] destinationBuffer = new byte[blockSize];
+            await using FileStream left = new(
+                sourcePath, FileMode.Open, FileAccess.Read,
+                FileShare.Read, blockSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            await using FileStream right = new(
+                destination.FullName, FileMode.Open, FileAccess.Read,
+                FileShare.Read, blockSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+            while (true)
+            {
+                int count = await left.ReadAsync(
+                    sourceBuffer, cancellationToken);
+                if (count == 0)
+                {
+                    return true;
+                }
+
+                await right.ReadExactlyAsync(
+                    destinationBuffer.AsMemory(0, count),
+                    cancellationToken);
+                if (!sourceBuffer.AsSpan(0, count).SequenceEqual(
+                        destinationBuffer.AsSpan(0, count)))
+                {
+                    return false;
+                }
+            }
+        }
+        catch (IOException)
+        {
+            // A locked or disappearing target remains pending. Never infer
+            // identity from a failed read and never delete or overwrite it.
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static string GetDestinationPath(
