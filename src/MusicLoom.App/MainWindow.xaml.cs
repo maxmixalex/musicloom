@@ -1629,6 +1629,324 @@ public sealed partial class MainWindow : Window
             recordActivity: true);
     }
 
+    private async void AutoMatchButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        if (_plan is null
+            && !await ScanLibraryAsync(
+                clearInfoBar: true,
+                recordActivity: true))
+        {
+            return;
+        }
+
+        await RunAutomaticNeteaseMatchAsync();
+    }
+
+    private async Task RunAutomaticNeteaseMatchAsync()
+    {
+        if (_busy
+            || _settings is not MusicLoomSettings settings
+            || _state is not StateDocument state
+            || _stateStore is not StateStore store
+            || _plan is not LibraryPlan plan)
+        {
+            return;
+        }
+
+        // Explicitly excluded and existing matched tracks are left alone.
+        // Re-running auto-match only retries unidentified candidates.
+        PlanEntry[] candidates = plan.Entries
+            .Where(entry =>
+                entry.Metadata is not null
+                && entry.Status != PlanEntryStatus.Error
+                && File.Exists(entry.SourcePath)
+                && (!state.Tracks.TryGetValue(
+                        entry.SourcePath, out TrackState? previous)
+                    || (previous.NeteaseSongId is null
+                        && !previous.NeteaseMatchSuppressed)))
+            .ToArray();
+
+        if (candidates.Length == 0)
+        {
+            ShowInfo(
+                InfoBarSeverity.Informational,
+                L("Nothing to match", "无需匹配"),
+                L(
+                    "Every track already has a match or was explicitly excluded.",
+                    "所有歌曲均已有匹配，或已手动设置为不匹配。"));
+            return;
+        }
+
+        using CancellationTokenSource cancellation = new();
+        _operationCancellation = cancellation;
+        SetBusy(
+            true,
+            L("Matching tracks with NetEase…", "正在匹配网易云音乐……"));
+
+        int matched = 0;
+        int missing = 0;
+        int warnings = 0;
+        int failures = 0;
+        int cachedLyrics = 0;
+        bool cancelled = false;
+
+        try
+        {
+            LibraryPathSafety.ValidateStatePath(
+                settings, DatabasePath);
+
+            using NeteaseClient client = new();
+            CompositeFingerprintPcmDecoder decoder = new();
+            NeteaseTrackProvider recognizer = new(client, decoder);
+            SqliteLyricsCache lyricsCache = new(DatabasePath);
+
+            for (int index = 0; index < candidates.Length; index++)
+            {
+                cancellation.Token.ThrowIfCancellationRequested();
+                PlanEntry entry = candidates[index];
+
+                SetOperationStatus(
+                    L(
+                        $"Matching {index + 1:N0}/{candidates.Length:N0} · {Path.GetFileName(entry.SourcePath)}",
+                        $"正在匹配 {index + 1:N0}/{candidates.Length:N0} · {Path.GetFileName(entry.SourcePath)}"));
+                SetProgress(index, candidates.Length);
+
+                try
+                {
+                    TrackRecognitionResult result =
+                        await Task.Run(
+                            () => recognizer.RecognizeAsync(
+                                entry.SourcePath,
+                                cancellation.Token),
+                            cancellation.Token);
+
+                    if (result.Status != TrackRecognitionStatus.Matched
+                        || result.TrackId is not long songId)
+                    {
+                        if (state.Tracks.TryGetValue(
+                                entry.SourcePath,
+                                out TrackState? existing))
+                        {
+                            state.Tracks[entry.SourcePath] =
+                                existing with
+                                {
+                                    Recognition = RecognitionState.NoMatch,
+                                    RecognitionCheckedAt = DateTimeOffset.UtcNow,
+                                };
+                        }
+
+                        missing++;
+                        continue;
+                    }
+
+                    FileInfo source = new(entry.SourcePath);
+                    TrackMetadata metadata = entry.Metadata!;
+                    state.Tracks.TryGetValue(
+                        entry.SourcePath, out TrackState? previous);
+
+                    TrackState baseState = previous ?? new TrackState
+                    {
+                        SourcePath = entry.SourcePath,
+                        SourceSize = source.Length,
+                        SourceLastWriteUtcTicks =
+                            source.LastWriteTimeUtc.Ticks,
+                        QuickHash = await Task.Run(
+                            () => QuickFileHash.Compute(
+                                entry.SourcePath),
+                            cancellation.Token),
+                        DestinationPath = entry.DestinationPath,
+                        MetadataCaptured = true,
+                        MetadataSchemaVersion =
+                            TrackMetadata.CurrentSchemaVersion,
+                        TitleCaptured = true,
+                        Title = metadata.Title,
+                        Artist = metadata.Artist,
+                        AlbumArtist = metadata.AlbumArtist,
+                        Album = metadata.Album,
+                        HasEmbeddedArt = metadata.HasEmbeddedArt,
+                    };
+
+                    LibraryLyricsRecord? local =
+                        await lyricsCache.GetLibraryAsync(
+                            entry.SourcePath,
+                            cancellation.Token);
+                    bool hasLocalLyrics =
+                        local is not null
+                        && (local.Origin == LibraryLyricsOrigin.Embedded
+                            || local.Origin == LibraryLyricsOrigin.Sidecar)
+                        && !string.IsNullOrWhiteSpace(local.Text);
+
+                    TrackState updated = baseState with
+                    {
+                        Recognition = RecognitionState.Matched,
+                        RecognitionCheckedAt = DateTimeOffset.UtcNow,
+                        NeteaseSongId = songId,
+                        NeteaseTrackName = result.TrackName,
+                        NeteaseTrackArtist = result.Artist,
+                        NeteaseTrackAlbum = result.Album,
+                        NeteaseCoverUrl = result.CoverUrl,
+                        NeteaseMatchSuppressed = false,
+                        NeteaseMatchConfirmed = false,
+                        Lyrics = hasLocalLyrics
+                            ? LyricsState.Existing
+                            : LyricsState.Unknown,
+                        LyricsCheckedAt = hasLocalLyrics
+                            ? DateTimeOffset.UtcNow
+                            : null,
+                        ProcessedAt = DateTimeOffset.UtcNow,
+                    };
+
+                    // Suspicious matches remain a manual review gate.
+                    if (SyncExecutor.DetectMatchWarning(
+                            entry, updated) is not null)
+                    {
+                        warnings++;
+                    }
+                    else if (!hasLocalLyrics)
+                    {
+                        try
+                        {
+                            LrcDocument? remote =
+                                await client.GetLyricsAsync(
+                                    songId,
+                                    cancellation.Token);
+                            await lyricsCache.SaveAsync(
+                                entry.SourcePath,
+                                songId,
+                                remote,
+                                cancellation.Token);
+
+                            if (remote is { Lines.Count: > 0 })
+                            {
+                                // The lyrics are in the authoritative DB;
+                                // copying them to the target is a later sync.
+                                cachedLyrics++;
+                                updated = updated with
+                                {
+                                    Lyrics = LyricsState.Unknown,
+                                    LyricsCheckedAt = null,
+                                    RecipeVersion = string.Empty,
+                                };
+                            }
+                            else
+                            {
+                                updated = updated with
+                                {
+                                    Lyrics = LyricsState.NoLyrics,
+                                    LyricsCheckedAt = DateTimeOffset.UtcNow,
+                                };
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch (Exception exception)
+                        {
+                            failures++;
+                            AppDiagnostics.LogException(
+                                "Could not cache recognized track lyrics.",
+                                exception);
+                        }
+                    }
+
+                    state.Tracks[entry.SourcePath] = updated;
+                    matched++;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    failures++;
+                    AppDiagnostics.LogException(
+                        "Automatic NetEase matching failed for "
+                        + entry.SourcePath,
+                        exception);
+                }
+                finally
+                {
+                    // Partial matching results survive cancellation.
+                    if ((index + 1) % 25 == 0)
+                    {
+                        await store.SaveAsync(
+                            state, CancellationToken.None);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            cancelled = true;
+        }
+        catch (Exception exception)
+        {
+            failures++;
+            AppDiagnostics.LogException(
+                "Automatic NetEase matching failed.",
+                exception);
+        }
+        finally
+        {
+            try
+            {
+                await store.SaveAsync(
+                    state, CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                failures++;
+                AppDiagnostics.LogException(
+                    "Could not save automatic NetEase matches.",
+                    exception);
+                ShowInfo(
+                    InfoBarSeverity.Error,
+                    L("Match persistence failed", "匹配结果保存失败"),
+                    UserFacingErrors.Describe(exception));
+            }
+
+            _operationCancellation = null;
+            SetBusy(
+                false,
+                cancelled
+                    ? L("Match cancelled.", "匹配已取消。")
+                    : L("Matching finished.", "匹配已完成。"));
+        }
+
+        // Independent recognition is followed by a read-only rescan,
+        // not a destination file sync.
+        if (matched > 0)
+        {
+            await ScanLibraryAsync(
+                clearInfoBar: false,
+                recordActivity: false);
+        }
+
+        string summary = L(
+            $"{matched:N0} matched · {missing:N0} unmatched · {cachedLyrics:N0} lyrics cached · {warnings:N0} need review · {failures:N0} errors",
+            $"成功匹配 {matched:N0} · 未匹配 {missing:N0} · 缓存歌词 {cachedLyrics:N0} · 待确认 {warnings:N0} · 错误 {failures:N0}");
+
+        ShowInfo(
+            failures > 0
+                ? InfoBarSeverity.Warning
+                : InfoBarSeverity.Success,
+            cancelled
+                ? L("Matching cancelled", "已取消匹配")
+                : L("NetEase matching completed", "网易云自动匹配完成"),
+            summary);
+        AddActivity(
+            L("Automatic NetEase matching", "自动网易云匹配"),
+            summary);
+    }
+
     private async void SyncButton_Click(
         object sender,
         RoutedEventArgs e)
