@@ -1,4 +1,5 @@
 using MusicLoom.Core.Configuration;
+using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.Planning;
 using MusicLoom.Core.State;
 
@@ -265,6 +266,12 @@ public sealed class LibraryScanner
                 // without recopying an otherwise complete local library.
                 // Audio with externally edited tags/lyrics is not adopted.
                 if (trackState is null
+                    // A sidecar recipe can require an additional LRC file,
+                    // so byte-identical audio alone cannot prove completion.
+                    && (!settings.Organizer.Lyrics.Enabled
+                        || LyricsStorageModes.Normalize(
+                            settings.Organizer.Lyrics.StorageMode)
+                            != LyricsStorageModes.Sidecar)
                     && destinationFiles.TryGetValue(
                         destinationPath, out FileInfo? existingDestination)
                     && await FilesHaveIdenticalContentAsync(

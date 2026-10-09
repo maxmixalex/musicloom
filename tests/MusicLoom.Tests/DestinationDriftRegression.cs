@@ -291,6 +291,26 @@ internal static class DestinationDriftRegression
             Equal(0, warm.PendingTrackCount);
             Equal(0, warmReader.ReadCount);
 
+            // Identical audio cannot prove that a sidecar-lyrics output
+            // is complete. Never adopt such a target without state.
+            MusicLoomSettings sidecarSettings = settings with
+            {
+                Organizer = new OrganizerSettings
+                {
+                    Lyrics = new LyricsSettings
+                    {
+                        Enabled = true,
+                        StorageMode = LyricsStorageModes.Sidecar,
+                    },
+                },
+            };
+            StateDocument sidecarState = new();
+            LibraryPlan sidecar = await new LibraryScanner(
+                new CountingReader())
+                .BuildPlanAsync(sidecarSettings, sidecarState);
+            Equal(1, sidecar.PendingTrackCount);
+            Equal(0, sidecarState.Tracks.Count);
+
             File.Delete(destinationPath);
             LibraryPlan missing = await new LibraryScanner(
                 new CountingReader()).BuildPlanAsync(settings, state);

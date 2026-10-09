@@ -1638,8 +1638,9 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (_plan is null
-            && !await ScanLibraryAsync(
+        // The cached startup snapshot may be stale. Recognition must
+        // operate on a freshly scanned, current source library.
+        if (!await ScanLibraryAsync(
                 clearInfoBar: true,
                 recordActivity: true))
         {
@@ -1935,9 +1936,11 @@ public sealed partial class MainWindow : Window
             $"成功匹配 {matched:N0} · 未匹配 {missing:N0} · 缓存歌词 {cachedLyrics:N0} · 待确认 {warnings:N0} · 错误 {failures:N0}");
 
         ShowInfo(
-            failures > 0
-                ? InfoBarSeverity.Warning
-                : InfoBarSeverity.Success,
+            cancelled
+                ? InfoBarSeverity.Informational
+                : failures > 0
+                    ? InfoBarSeverity.Warning
+                    : InfoBarSeverity.Success,
             cancelled
                 ? L("Matching cancelled", "已取消匹配")
                 : L("NetEase matching completed", "网易云自动匹配完成"),
