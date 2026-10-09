@@ -118,6 +118,7 @@ internal sealed class LibraryLyricsIndexer
             Stamp(destinationSidecarPath),
             songId?.ToString() ?? "none",
             remote?.FetchedAt.UtcTicks.ToString() ?? "no-remote",
+            remote?.MergeVersion.ToString() ?? "no-merge-version",
             track?.LyricsFingerprint ?? "no-fingerprint");
 
         currentRows.TryGetValue(
@@ -228,6 +229,7 @@ internal sealed class LibraryLyricsIndexer
             Stamp(destinationSidecarPath),
             songId?.ToString() ?? "none",
             remote?.FetchedAt.UtcTicks.ToString() ?? "no-remote",
+            remote?.MergeVersion.ToString() ?? "no-merge-version",
             track?.LyricsFingerprint ?? "no-fingerprint");
 
         if (current is not null

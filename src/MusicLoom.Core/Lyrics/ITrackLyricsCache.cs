@@ -9,7 +9,8 @@ public sealed record CachedTrackLyrics(
     string SourcePath,
     long SongId,
     string? Lrc,
-    DateTimeOffset FetchedAt)
+    DateTimeOffset FetchedAt,
+    int MergeVersion = 1)
 {
     public bool HasLyrics => !string.IsNullOrWhiteSpace(Lrc);
 

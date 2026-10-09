@@ -4042,44 +4042,10 @@ public sealed partial class MainWindow : Window
         LyricsList.ItemsSource =
             Array.Empty<LyricDisplayLine>();
 
-        try
-        {
-            MusicLoomSettings settings =
-                _settings
-                ?? throw new InvalidOperationException(
-                    "Settings are not loaded.");
+        _currentLyricsRaw = null;
 
-            TrackDetailPayload payload =
-                await Task.Run(
-                    () =>
-                        LoadTrackDetail(
-                            settings,
-                            item.Entry));
-
-            if (requestId !=
-                _detailRequestId)
-            {
-                return;
-            }
-
-            if (payload.Artwork
-                is { Length: > 0 })
-            {
-                BitmapImage bitmap =
-                    await CreateBitmapImageAsync(
-                        payload.Artwork,
-                        decodePixelWidth: 0);
-                item.Artwork = bitmap;
-                CoverImage.Source = bitmap;
-                CoverPlaceholderText.Visibility =
-                    Visibility.Collapsed;
-                RefreshCurrentMatchCard(
-                    item);
-            }
-
-            _currentArtworkBytes =
-                payload.Artwork;
-
+        // Load the canonical document independently of audio inspection.
+        // Missing/locked audio must not hide lyrics already in SQLite.
             // The Lyrics tab never reads embedded tags or a sidecar.
             // Only library_lyrics is the canonical, scan-resolved source.
             LibraryLyricsRecord? canonical = null;
@@ -4125,8 +4091,47 @@ public sealed partial class MainWindow : Window
                             "Database · no lyrics indexed",
                             "数据库 · 暂无已索引歌词"),
                 };
+        ConfigureAuxiliaryLongText();
+        RenderLyrics();
+
+        try
+        {
+            MusicLoomSettings settings =
+                _settings
+                ?? throw new InvalidOperationException(
+                    "Settings are not loaded.");
+
+            TrackDetailPayload payload =
+                await Task.Run(
+                    () =>
+                        LoadTrackDetail(
+                            settings,
+                            item.Entry));
+
+            if (requestId !=
+                _detailRequestId)
+            {
+                return;
+            }
+
+            if (payload.Artwork
+                is { Length: > 0 })
+            {
+                BitmapImage bitmap =
+                    await CreateBitmapImageAsync(
+                        payload.Artwork,
+                        decodePixelWidth: 0);
+                item.Artwork = bitmap;
+                CoverImage.Source = bitmap;
+                CoverPlaceholderText.Visibility =
+                    Visibility.Collapsed;
+                RefreshCurrentMatchCard(
+                    item);
+            }
+
+            _currentArtworkBytes =
+                payload.Artwork;
             ConfigureAuxiliaryLongText();
-            RenderLyrics();
 
             TrackSourcePathText.Text =
                 payload.SourcePath;
@@ -6869,6 +6874,30 @@ public sealed partial class MainWindow : Window
         }
 
         await _stateStore.SaveAsync(_state);
+
+        SqliteLyricsCache lyricStore = new(DatabasePath);
+        foreach (LibraryDisplayItem item in changed)
+        {
+            LibraryLyricsRecord? canonical =
+                await lyricStore.GetLibraryAsync(item.Entry.SourcePath);
+
+            if (canonical is { Origin: LibraryLyricsOrigin.Netease })
+            {
+                // Source files may temporarily be absent; never leave an
+                // old remote lyric displayed after the match is suppressed.
+                // Existing embedded/local canonical lyrics are retained.
+                await lyricStore.SaveLibraryAsync(
+                    canonical with
+                    {
+                        Origin = LibraryLyricsOrigin.None,
+                        Text = null,
+                        SongId = null,
+                        SourceSignature = "match-suppressed",
+                        UpdatedAt = DateTimeOffset.UtcNow,
+                    });
+            }
+        }
+
         await RefreshLibraryLyricsIndexAsync(
             new LibraryPlan(changed.Select(static item => item.Entry).ToArray()),
             _state);

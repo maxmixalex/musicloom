@@ -23,6 +23,7 @@ internal static class SyncExecutorRegression
         await LyricsOnlyRefreshAvoidsOtherWritesAsync();
         await LyricsOnlyRefreshProtectsUserSidecarAsync();
         await CachedLyricsAvoidsSecondNetworkFetchAsync();
+        await LegacyMergedLyricsCacheForcesRefreshAsync();
         await CanonicalEmbeddedLyricsNeverUseRemoteAsync();
         await CanonicalSidecarLyricsWriteWithoutRemoteAsync();
         await FetchSuccessSurvivesOutputFailureAsync();
@@ -345,6 +346,49 @@ internal static class SyncExecutorRegression
         Equal(1, summary.WrittenLyrics);
         Equal(0, provider.CallCount);
         Equal(1, writer.WriteCalls);
+    }
+
+    private static async Task LegacyMergedLyricsCacheForcesRefreshAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: true);
+
+        InMemoryLyricsCache cache = new();
+        cache.SetLegacy(
+            fixture.SourcePath,
+            42,
+            "[00:01.000]Legacy translation merge");
+
+        FakeLyricsProvider provider = new(
+            LyricsLookupResult.Found(LrcDocument.Parse(
+                "[00:01.000]Corrected translation merge")));
+        FakeLyricsWriter writer =
+            new(LyricsProbeStatus.Missing);
+
+        SyncExecutionSummary summary = await new SyncExecutor(
+            new LocalLibraryMaterializer(),
+            new FakeRecognizer(TrackRecognitionResult.Matched(42)),
+            provider,
+            writer,
+            lyricsCache: cache).ExecuteAsync(
+                fixture.Settings,
+                fixture.Plan,
+                fixture.State,
+                fixture.StateStore);
+
+        Equal(1, summary.WrittenLyrics);
+        Equal(1, provider.CallCount);
+        CachedTrackLyrics latest = await cache.GetAsync(
+            fixture.SourcePath, 42)
+            ?? throw new InvalidOperationException(
+                "Expected corrected merge in provider cache.");
+        Equal(
+            LrcDocument.MergeAlgorithmVersion,
+            latest.MergeVersion);
+        Equal(
+            "[00:01.000]Corrected translation merge",
+            latest.Lrc ?? "");
     }
 
     private static async Task CanonicalEmbeddedLyricsNeverUseRemoteAsync()
@@ -1324,8 +1368,22 @@ internal static class SyncExecutorRegression
                 sourcePath,
                 songId,
                 lyrics?.ToString(),
-                DateTimeOffset.UtcNow);
+                DateTimeOffset.UtcNow,
+                LrcDocument.MergeAlgorithmVersion);
             return Task.CompletedTask;
+        }
+
+        public void SetLegacy(
+            string sourcePath,
+            long songId,
+            string lrc)
+        {
+            _cache[sourcePath] = new CachedTrackLyrics(
+                sourcePath,
+                songId,
+                lrc,
+                DateTimeOffset.UtcNow,
+                MergeVersion: 1);
         }
     }
 

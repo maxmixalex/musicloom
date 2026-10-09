@@ -125,6 +125,33 @@ internal static class DatabasePersistenceRegression
             string sourcePath =
                 Path.Combine(root, "source", "track.flac");
 
+            // Simulate the existing v3 database, whose remote merged cache
+            // had no merge-algorithm version column.
+            await using (SqliteConnection legacyDb =
+                new($"Data Source={databasePath}"))
+            {
+                await legacyDb.OpenAsync();
+                await using SqliteCommand createLegacy =
+                    legacyDb.CreateCommand();
+                createLegacy.CommandText =
+                    """
+                    CREATE TABLE IF NOT EXISTS sync_lyrics (
+                        source_path TEXT PRIMARY KEY COLLATE NOCASE,
+                        song_id INTEGER NOT NULL,
+                        lrc TEXT NULL,
+                        fetched_at TEXT NOT NULL
+                    );
+                    INSERT INTO sync_lyrics (
+                        source_path, song_id, lrc, fetched_at
+                    ) VALUES (
+                        $source, 555, '[00:01.000]Old cached lyrics',
+                        '2026-10-01T00:00:00.0000000+00:00'
+                    );
+                    """;
+                createLegacy.Parameters.AddWithValue("$source", sourcePath);
+                await createLegacy.ExecuteNonQueryAsync();
+            }
+
             legacyState.Tracks[sourcePath] =
                 new TrackState
                 {
@@ -239,6 +266,12 @@ internal static class DatabasePersistenceRegression
             // NetEase match cannot reuse the previous song's lyrics.
             SqliteLyricsCache lyricsCache =
                 new(databasePath);
+            MusicLoom.Core.Lyrics.CachedTrackLyrics migratedLegacy =
+                await lyricsCache.GetAsync(sourcePath, 555)
+                ?? throw new InvalidOperationException(
+                    "Legacy merged lyrics were lost on migration.");
+            Equal(1, migratedLegacy.MergeVersion);
+
             await lyricsCache.SaveAsync(
                 sourcePath,
                 123456789L,
@@ -251,6 +284,9 @@ internal static class DatabasePersistenceRegression
                     123456789L)
                 ?? throw new InvalidOperationException(
                     "Lyrics cache lost the saved document.");
+            Equal(
+                MusicLoom.Core.Lyrics.LrcDocument.MergeAlgorithmVersion,
+                storedLyrics.MergeVersion);
 
             Equal(
                 "[00:01.000]Canonical lyric",

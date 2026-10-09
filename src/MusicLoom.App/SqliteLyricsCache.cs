@@ -29,7 +29,7 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
             connection.CreateCommand();
         command.CommandText =
             """
-            SELECT song_id, lrc, fetched_at
+            SELECT song_id, lrc, fetched_at, merge_version
               FROM sync_lyrics
              WHERE source_path = $source
                AND song_id = $songId;
@@ -52,7 +52,8 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
             DateTimeOffset.Parse(
                 reader.GetString(2),
                 CultureInfo.InvariantCulture,
-                DateTimeStyles.RoundtripKind));
+                DateTimeStyles.RoundtripKind),
+            reader.GetInt32(3));
     }
 
     public async Task SaveAsync(
@@ -69,14 +70,15 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
         command.CommandText =
             """
             INSERT INTO sync_lyrics (
-                source_path, song_id, lrc, fetched_at
+                source_path, song_id, lrc, fetched_at, merge_version
             ) VALUES (
-                $source, $songId, $lrc, $fetched
+                $source, $songId, $lrc, $fetched, $mergeVersion
             )
             ON CONFLICT(source_path) DO UPDATE SET
                 song_id = excluded.song_id,
                 lrc = excluded.lrc,
-                fetched_at = excluded.fetched_at;
+                fetched_at = excluded.fetched_at,
+                merge_version = excluded.merge_version;
             """;
 
         command.Parameters.AddWithValue("$source", sourcePath);
@@ -91,6 +93,9 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
             DateTimeOffset.UtcNow.ToString(
                 "O",
                 CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue(
+            "$mergeVersion",
+            LrcDocument.MergeAlgorithmVersion);
 
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -218,7 +223,7 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
         await using SqliteCommand command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT source_path, song_id, lrc, fetched_at
+            SELECT source_path, song_id, lrc, fetched_at, merge_version
               FROM sync_lyrics;
             """;
 
@@ -234,7 +239,8 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
                 DateTimeOffset.Parse(
                     reader.GetString(3),
                     CultureInfo.InvariantCulture,
-                    DateTimeStyles.RoundtripKind));
+                    DateTimeStyles.RoundtripKind),
+                reader.GetInt32(4));
         }
 
         return entries;
@@ -338,7 +344,8 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
                     source_path TEXT PRIMARY KEY COLLATE NOCASE,
                     song_id INTEGER NOT NULL,
                     lrc TEXT NULL,
-                    fetched_at TEXT NOT NULL
+                    fetched_at TEXT NOT NULL,
+                    merge_version INTEGER NOT NULL DEFAULT 1
                 );
 
                 -- Only library_lyrics is authoritative for the Lyrics tab.
@@ -353,6 +360,38 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
                 );
                 """;
             await init.ExecuteNonQueryAsync(cancellationToken);
+
+            // Installed databases predate the merge-version marker. Keep
+            // their cached lyrics and mark them as v1 for lazy re-fetch.
+            bool hasMergeVersion = false;
+            await using (SqliteCommand inspect = connection.CreateCommand())
+            {
+                inspect.CommandText = "PRAGMA table_info(sync_lyrics);";
+                await using SqliteDataReader reader =
+                    await inspect.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    if (string.Equals(
+                        reader.GetString(1),
+                        "merge_version",
+                        StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasMergeVersion = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasMergeVersion)
+            {
+                await using SqliteCommand migrate =
+                    connection.CreateCommand();
+                migrate.CommandText =
+                    "ALTER TABLE sync_lyrics " +
+                    "ADD COLUMN merge_version INTEGER NOT NULL DEFAULT 1;";
+                await migrate.ExecuteNonQueryAsync(cancellationToken);
+            }
+
             return connection;
         }
         catch

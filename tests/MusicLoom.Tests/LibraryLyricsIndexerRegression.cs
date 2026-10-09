@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using System.Security.Cryptography;
 using System.Text;
 using MusicLoom.App;
@@ -165,6 +166,9 @@ internal static class LibraryLyricsIndexerRegression
         }
         finally
         {
+            // A disposed SqliteConnection can remain pooled on Windows;
+            // release the underlying file handles before removing the DB.
+            SqliteConnection.ClearAllPools();
             Directory.Delete(root, recursive: true);
         }
     }

@@ -6,7 +6,7 @@ namespace MusicLoom.App;
 
 internal sealed class SqliteStateStore : StateStore
 {
-    private const int DatabaseSchemaVersion = 4;
+    private const int DatabaseSchemaVersion = 5;
     private readonly string? _legacyJsonPath;
 
     public SqliteStateStore(
@@ -571,7 +571,8 @@ internal sealed class SqliteStateStore : StateStore
                 source_path TEXT PRIMARY KEY COLLATE NOCASE,
                 song_id INTEGER NOT NULL,
                 lrc TEXT NULL,
-                fetched_at TEXT NOT NULL
+                fetched_at TEXT NOT NULL,
+                merge_version INTEGER NOT NULL DEFAULT 1
             );
 
             -- Canonical, scan-resolved lyrics for the library. The provider

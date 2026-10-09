@@ -6,6 +6,10 @@ namespace MusicLoom.Core.Lyrics;
 
 public sealed partial class LrcDocument
 {
+    // Increment when the NetEase original/translation merge algorithm
+    // changes; existing merged cache entries must be re-fetched.
+    public const int MergeAlgorithmVersion = 2;
+
     private static readonly TimeSpan MergeThreshold = TimeSpan.FromMilliseconds(450);
 
     public Dictionary<string, string> Metadata { get; } = new(StringComparer.OrdinalIgnoreCase);
