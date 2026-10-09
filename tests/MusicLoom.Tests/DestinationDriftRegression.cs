@@ -185,8 +185,8 @@ internal static class DestinationDriftRegression
             Equal(0, legacyPlan.PendingTrackCount);
             Equal(0, legacyReader.ReadCount);
 
-            // Clock rollback / a future state timestamp must not extend a
-            // negative provider result beyond the intended 24-hour TTL.
+            // An expired or future-dated recognition result must not
+            // spontaneously enqueue network work during a local scan.
             MusicLoomSettings lyricsSettings = settings with
             {
                 Organizer = new OrganizerSettings
@@ -210,7 +210,7 @@ internal static class DestinationDriftRegression
             };
 
             Equal(
-                false,
+                true,
                 StateStore.IsEnrichmentFresh(
                     futureNegative,
                     lyricsSettings,

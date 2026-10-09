@@ -182,39 +182,16 @@ public class StateStore
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(settings);
 
-        if (!settings.Organizer.Lyrics.Enabled
-            || state.NeteaseMatchSuppressed)
-        {
-            return true;
-        }
-
-        TimeSpan refreshTtl =
-            GetRefreshTtl(settings.Organizer.Lyrics.RefreshIntervalHours);
-
-        return state.Lyrics switch
-        {
-            LyricsState.Written =>
-                !settings.Organizer.Lyrics.OverrideExisting
-                || IsFresh(
-                    state.LyricsCheckedAt,
-                    now,
-                    refreshTtl),
-            LyricsState.Existing => true,
-            LyricsState.Unsupported => true,
-            LyricsState.NoLyrics =>
-                IsFresh(
-                    state.LyricsCheckedAt,
-                    now,
-                    refreshTtl),
-            LyricsState.Unknown
-                when state.Recognition
-                    == RecognitionState.NoMatch =>
-                IsFresh(
-                    state.RecognitionCheckedAt,
-                    now,
-                    refreshTtl),
-            _ => false,
-        };
+        // NetEase recognition and periodic provider refresh are explicit
+        // actions, not implicit synchronization work. An unmatched track
+        // cannot be pending merely because it has never been recognized.
+        // Cache expiry also must not turn a fully synchronized library into
+        // thousands of pending audio operations.
+        _ = now;
+        return !settings.Organizer.Lyrics.Enabled
+            || state.NeteaseMatchSuppressed
+            || state.NeteaseSongId is null
+            || state.Lyrics != LyricsState.Unknown;
     }
 
     private async Task<StateDocument> LoadDocumentAsync(
@@ -251,32 +228,6 @@ public class StateStore
         or InvalidDataException
         or IOException
         or UnauthorizedAccessException;
-
-    private static TimeSpan GetRefreshTtl(double hours)
-    {
-        if (!double.IsFinite(hours) || hours <= 0)
-        {
-            return TimeSpan.Zero;
-        }
-
-        // Prevent invalid/overflowing config values from destabilizing scans.
-        return TimeSpan.FromHours(Math.Min(hours, 24 * 365 * 10));
-    }
-
-    private static bool IsFresh(
-        DateTimeOffset? checkedAt,
-        DateTimeOffset now,
-        TimeSpan ttl)
-    {
-        if (checkedAt is not DateTimeOffset timestamp)
-        {
-            return false;
-        }
-
-        TimeSpan age = now - timestamp;
-        return age >= TimeSpan.Zero
-            && age <= ttl;
-    }
 
     private static void TryDelete(string path)
     {

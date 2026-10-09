@@ -20,6 +20,7 @@ internal static class SyncExecutorRegression
         await OverrideExistingSkipsProbeAsync();
         await UnsupportedLyricsUsesZeroProbeAsync();
         await NoMatchIsNonFatalAsync();
+        await SyncWithoutMatchingDoesNotCallRecognizerAsync();
         await LyricsOnlyRefreshAvoidsOtherWritesAsync();
         await LyricsOnlyRefreshProtectsUserSidecarAsync();
         await CachedLyricsAvoidsSecondNetworkFetchAsync();
@@ -193,6 +194,35 @@ internal static class SyncExecutorRegression
         Equal(
             SyncRecipe.For(fixture.Settings),
             state.RecipeVersion);
+    }
+
+    private static async Task SyncWithoutMatchingDoesNotCallRecognizerAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: true);
+
+        FakeRecognizer recognizer =
+            new(TrackRecognitionResult.Matched(42));
+        FakeLyricsProvider provider = new(
+            LyricsLookupResult.NoLyrics());
+        FakeLyricsWriter writer = new(LyricsProbeStatus.Missing);
+
+        SyncExecutionSummary summary = await fixture.ExecuteAsync(
+            recognizer, provider, writer, recognizeUnmatched: false);
+
+        Equal(1, summary.CompletedTracks);
+        Equal(0, recognizer.CallCount);
+        Equal(0, provider.CallCount);
+        Equal(0, writer.WriteCalls);
+
+        StateDocument state = await fixture.StateStore.LoadAsync();
+        LibraryPlan subsequent = await new LibraryScanner(
+                new CountingMetadataReader())
+            .BuildPlanAsync(fixture.Settings, state);
+
+        Equal(0, subsequent.PendingCount);
+        Equal(1, subsequent.UnchangedCount);
     }
 
     private static async Task LyricsOnlyRefreshAvoidsOtherWritesAsync()
@@ -1532,7 +1562,8 @@ internal static class SyncExecutorRegression
         public async Task<SyncExecutionSummary> ExecuteAsync(
             ITrackRecognizer recognizer,
             ITrackLyricsProvider lyricsProvider,
-            ITrackLyricsWriter writer)
+            ITrackLyricsWriter writer,
+            bool recognizeUnmatched = true)
         {
             SyncExecutor executor = new(
                 new LocalLibraryMaterializer(),
@@ -1544,7 +1575,8 @@ internal static class SyncExecutorRegression
                 Settings,
                 Plan,
                 State,
-                StateStore);
+                StateStore,
+                recognizeUnmatched: recognizeUnmatched);
         }
 
         public async Task<TrackState> LoadTrackStateAsync()

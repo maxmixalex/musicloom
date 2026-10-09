@@ -97,7 +97,8 @@ public sealed class SyncExecutor
         StateStore stateStore,
         IProgress<SyncExecutionProgress>? progress = null,
         CancellationToken cancellationToken = default,
-        bool lyricsOnly = false)
+        bool lyricsOnly = false,
+        bool recognizeUnmatched = true)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(plan);
@@ -492,6 +493,16 @@ public sealed class SyncExecutor
                         partial,
                         expectedRecipe,
                         index + 1);
+                    continue;
+                }
+
+                if (songId is null && !recognizeUnmatched)
+                {
+                    // The GUI has a dedicated NetEase auto-match action.
+                    // Syncing an unmatched local file must not launch network
+                    // recognition or make it permanently pending.
+                    await CompleteAsync(
+                        entry, partial, expectedRecipe, index + 1);
                     continue;
                 }
 

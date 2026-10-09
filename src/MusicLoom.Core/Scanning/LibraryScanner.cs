@@ -57,6 +57,27 @@ public sealed class LibraryScanner
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        // Index the target library once as well as the source library.
+        // Target identity is still the planned path: an unrelated file
+        // elsewhere in the destination cannot be mistaken for a synced track.
+        Dictionary<string, FileInfo> destinationFiles =
+            Directory.Exists(destinationRoot)
+                ? Directory.EnumerateFiles(
+                        destinationRoot, "*", enumerationOptions)
+                    .Where(static path =>
+                        SupportedExtensions.Contains(Path.GetExtension(path)))
+                    .Select(Path.GetFullPath)
+                    .ToDictionary(
+                        static path => path,
+                        static path => new FileInfo(path),
+                        OperatingSystem.IsWindows()
+                            ? StringComparer.OrdinalIgnoreCase
+                            : StringComparer.Ordinal)
+                : new Dictionary<string, FileInfo>(
+                    OperatingSystem.IsWindows()
+                        ? StringComparer.OrdinalIgnoreCase
+                        : StringComparer.Ordinal);
+
         List<PlanEntry> entries = new(sourcePaths.Length);
         for (int index = 0; index < sourcePaths.Length; index++)
         {
@@ -165,7 +186,10 @@ public sealed class LibraryScanner
                 bool destinationMatchesState =
                     !string.IsNullOrWhiteSpace(trackState.DestinationPath)
                     && PathsEqual(trackState.DestinationPath, destinationPath);
-                bool destinationExists = File.Exists(destinationPath);
+                bool destinationExists =
+                    destinationFiles.TryGetValue(
+                        destinationPath, out FileInfo? destinationFile)
+                    && destinationFile.Exists;
                 bool destinationVersionKnown =
                     StateStore.HasDestinationVersion(trackState);
                 bool destinationVersionMatches =
@@ -173,7 +197,7 @@ public sealed class LibraryScanner
                     || (destinationExists
                         && StateStore.IsDestinationVersionUnchanged(
                             trackState,
-                            new FileInfo(destinationPath)));
+                            destinationFile!));
                 bool recipeMatches =
                     string.Equals(
                         trackState.RecipeVersion,
@@ -241,7 +265,10 @@ public sealed class LibraryScanner
                 bool destinationMatchesState =
                     trackState?.DestinationPath is not null
                     && PathsEqual(trackState.DestinationPath, destinationPath);
-                bool destinationExists = File.Exists(destinationPath);
+                bool destinationExists =
+                    destinationFiles.TryGetValue(
+                        destinationPath, out FileInfo? destinationFile)
+                    && destinationFile.Exists;
                 bool destinationVersionMatches =
                     trackState is null
                     || !sourceVersionUnchanged
@@ -249,7 +276,7 @@ public sealed class LibraryScanner
                     || (destinationExists
                         && StateStore.IsDestinationVersionUnchanged(
                             trackState,
-                            new FileInfo(destinationPath)));
+                            destinationFile!));
                 bool recipeMatches =
                     trackState is not null
                     && string.Equals(
@@ -324,7 +351,9 @@ public sealed class LibraryScanner
                         trackState.DestinationPath,
                         destinationPath);
                 bool destinationExists =
-                    File.Exists(destinationPath);
+                    destinationFiles.TryGetValue(
+                        destinationPath, out FileInfo? destinationFile)
+                    && destinationFile.Exists;
                 bool destinationVersionMatches =
                     trackState is null
                     || !sourceVersionUnchanged
@@ -332,7 +361,7 @@ public sealed class LibraryScanner
                     || (destinationExists
                         && StateStore.IsDestinationVersionUnchanged(
                             trackState,
-                            new FileInfo(destinationPath)));
+                            destinationFile!));
 
                 bool needsAudioCopy =
                     trackState is null

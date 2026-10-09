@@ -293,11 +293,9 @@ internal static class RecipeStateRegression
                     settings,
                     staleNoMatch,
                     now: now);
-            Equal(1, staleNoMatchPlan.ModifiedCount);
+            // Online recognition is an explicit action, not a sync reason.
+            Equal(1, staleNoMatchPlan.UnchangedCount);
             Equal(false, staleNoMatchPlan.Entries[0].NeedsAudioCopy);
-            Equal(
-                "Enrichment retry is due.",
-                staleNoMatchPlan.Entries[0].Detail ?? string.Empty);
             Equal(0, reader.ReadCount);
 
             StateDocument freshNoLyrics = new();
@@ -333,12 +331,22 @@ internal static class RecipeStateRegression
                     settings,
                     staleNoLyrics,
                     now: now);
-            Equal(1, staleNoLyricsPlan.ModifiedCount);
+            // Cache expiry alone does not invalidate already written output.
+            Equal(1, staleNoLyricsPlan.UnchangedCount);
             Equal(false, staleNoLyricsPlan.Entries[0].NeedsAudioCopy);
-            Equal(
-                "Enrichment retry is due.",
-                staleNoLyricsPlan.Entries[0].Detail ?? string.Empty);
             Equal(0, reader.ReadCount);
+
+            StateDocument matchedNeedsLyrics = new();
+            matchedNeedsLyrics.Tracks[sourcePath] = BaseState() with
+            {
+                NeteaseSongId = 123,
+                Recognition = RecognitionState.Matched,
+                Lyrics = LyricsState.Unknown,
+            };
+            LibraryPlan matchedPending = await new LibraryScanner(reader)
+                .BuildPlanAsync(settings, matchedNeedsLyrics, now: now);
+            Equal(1, matchedPending.ModifiedCount);
+            Equal(false, matchedPending.Entries[0].NeedsAudioCopy);
 
             StateDocument written = new();
             written.Tracks[sourcePath] = BaseState() with
