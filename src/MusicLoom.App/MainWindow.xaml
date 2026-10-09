@@ -1323,7 +1323,9 @@
                       <TextBlock x:Name="AutoScanSettingTitle" Text="Scan on startup" FontWeight="SemiBold" />
                       <TextBlock x:Name="AutoScanSettingDescription" Text="Refresh source and destination libraries once at startup." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
-                    <ToggleSwitch x:Name="AutoScanOnStartupToggle" Grid.Column="1" HorizontalAlignment="Right" Toggled="SettingsControl_Changed" />
+                    <Grid Grid.Column="1" Width="280" HorizontalAlignment="Right">
+                      <ToggleSwitch x:Name="AutoScanOnStartupToggle" HorizontalAlignment="Right" Toggled="SettingsControl_Changed" />
+                    </Grid>
                   </Grid>
                 </Border>
 

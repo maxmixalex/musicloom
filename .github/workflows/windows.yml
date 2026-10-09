@@ -62,7 +62,7 @@ jobs:
           }
 
           $toggleControls = @(
-            "LyricsEnabledToggle",
+            "AutoScanOnStartupToggle",
             "LyricsOverrideToggle",
             "AcrylicToggle"
           )
