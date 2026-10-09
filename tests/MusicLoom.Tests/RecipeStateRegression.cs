@@ -98,13 +98,32 @@ internal static class RecipeStateRegression
             LibraryPlan plan = await new LibraryScanner(reader)
                 .BuildPlanAsync(newSettings, state);
 
-            Equal(1, plan.ModifiedCount);
-            Equal(0, plan.UnchangedCount);
+            // Retiring an old disabled NetEase-fetch toggle does not
+            // invalidate offline audio that was already synchronized.
+            Equal(0, plan.ModifiedCount);
+            Equal(1, plan.UnchangedCount);
             Equal(0, reader.ReadCount);
-            Equal(1, plan.Entries.Count);
-            Equal("Processing recipe changed.", plan.Entries[0].Detail ?? string.Empty);
             Equal(false, plan.Entries[0].NeedsAudioCopy);
-            Equal("Album Artist", plan.Entries[0].Metadata?.AlbumArtist ?? string.Empty);
+
+            // An actual output-format change still schedules work, without
+            // rereading metadata or recopying unchanged audio.
+            MusicLoomSettings sidecarSettings = newSettings with
+            {
+                Organizer = newSettings.Organizer with
+                {
+                    Lyrics = newSettings.Organizer.Lyrics with
+                    {
+                        StorageMode = LyricsStorageModes.Sidecar,
+                    },
+                },
+            };
+            LibraryPlan changed = await new LibraryScanner(reader)
+                .BuildPlanAsync(sidecarSettings, state);
+            Equal(1, changed.ModifiedCount);
+            Equal(0, reader.ReadCount);
+            Equal("Processing recipe changed.", changed.Entries[0].Detail ?? string.Empty);
+            Equal(false, changed.Entries[0].NeedsAudioCopy);
+            Equal("Album Artist", changed.Entries[0].Metadata?.AlbumArtist ?? string.Empty);
         }
         finally
         {

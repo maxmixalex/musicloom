@@ -81,6 +81,49 @@ public static class SyncRecipe
     // semantics while keeping source metadata cache validity independent.
     public const string CurrentVersion = "4";
 
+    public static bool IsCompatibleForLocalSync(
+        TrackState track,
+        MusicLoomSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(track);
+        ArgumentNullException.ThrowIfNull(settings);
+
+        if (string.Equals(
+                track.RecipeVersion,
+                For(settings),
+                StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // Earlier releases coupled the NetEase-fetch setting to the
+        // entire synchronization recipe. Removing that retired switch
+        // must not schedule thousands of audio rewrites for tracks that
+        // have never had a NetEase match or managed remote lyrics.
+        if (!settings.Organizer.Lyrics.Enabled
+            || track.NeteaseSongId is not null
+            || track.LyricsFingerprint is not null)
+        {
+            return false;
+        }
+
+        MusicLoomSettings oldOfflineSettings = settings with
+        {
+            Organizer = settings.Organizer with
+            {
+                Lyrics = settings.Organizer.Lyrics with
+                {
+                    Enabled = false,
+                },
+            },
+        };
+
+        return string.Equals(
+            track.RecipeVersion,
+            For(oldOfflineSettings),
+            StringComparison.Ordinal);
+    }
+
     public static string For(MusicLoomSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);

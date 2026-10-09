@@ -20,12 +20,11 @@ public static class CachedPlanReconciler
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(settings);
 
-        string recipe = SyncRecipe.For(settings);
         DateTimeOffset timestamp = now ?? DateTimeOffset.UtcNow;
 
         PlanEntry[] entries = snapshot.Entries
             .Select(entry => ReconcileEntry(
-                entry, state, settings, recipe, timestamp))
+                entry, state, settings, timestamp))
             .ToArray();
 
         return new LibraryPlan(
@@ -36,7 +35,6 @@ public static class CachedPlanReconciler
         PlanEntry entry,
         StateDocument state,
         MusicLoomSettings settings,
-        string recipe,
         DateTimeOffset now)
     {
         if (entry.Status == PlanEntryStatus.Error
@@ -78,10 +76,8 @@ public static class CachedPlanReconciler
             || !destinationVersionMatches;
 
         bool complete = !copyRequired
-            && string.Equals(
-                stored.RecipeVersion,
-                recipe,
-                StringComparison.Ordinal)
+            && SyncRecipe.IsCompatibleForLocalSync(
+                stored, settings)
             && StateStore.IsEnrichmentFresh(
                 stored, settings, now);
 

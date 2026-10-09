@@ -199,10 +199,8 @@ public sealed class LibraryScanner
                             trackState,
                             destinationFile!));
                 bool recipeMatches =
-                    string.Equals(
-                        trackState.RecipeVersion,
-                        expectedRecipe,
-                        StringComparison.Ordinal);
+                    SyncRecipe.IsCompatibleForLocalSync(
+                        trackState, settings);
                 bool enrichmentFresh =
                     StateStore.IsEnrichmentFresh(
                         trackState,
@@ -323,10 +321,8 @@ public sealed class LibraryScanner
                             destinationFile!));
                 bool recipeMatches =
                     trackState is not null
-                    && string.Equals(
-                        trackState.RecipeVersion,
-                        expectedRecipe,
-                        StringComparison.Ordinal);
+                    && SyncRecipe.IsCompatibleForLocalSync(
+                        trackState, settings);
                 bool enrichmentFresh =
                     trackState is not null
                     && StateStore.IsEnrichmentFresh(
