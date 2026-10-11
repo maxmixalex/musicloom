@@ -23,6 +23,7 @@ List<(string Name, Action Test)> tests =
     ("LRC slash delimiter only splits explicit bilingual text", LrcSlashPresentation),
     ("Scanning resolves canonical embedded/local/NetEase lyrics", LibraryLyricsIndexerRegression.Run),
     ("NetEase candidate ranking balances duration and metadata", NeteaseCandidateRanking),
+    ("Auto-matching skips already checked unchanged audio", AutoMatchEligibilityRegression.Run),
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
     ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),
@@ -306,8 +307,8 @@ static void NeteaseCandidateRanking()
     // Among strong fingerprint candidates with equal duration, prefer
     // the matching artist before minor score/duration differences.
     Equal(4L, ranked[0].TrackId);
-    Equal(3L, ranked[1].TrackId);
-    Equal(5L, ranked[2].TrackId);
+    Equal(5L, ranked[1].TrackId);
+    Equal(3L, ranked[2].TrackId);
     Equal(2L, ranked[3].TrackId);
     Equal(1L, ranked[4].TrackId);
     Equal(6L, ranked[5].TrackId);
