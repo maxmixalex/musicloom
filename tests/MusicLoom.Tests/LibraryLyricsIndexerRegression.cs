@@ -245,6 +245,23 @@ internal static class LibraryLyricsIndexerRegression
             indexed = await GetCanonicalAsync(cache, sourcePath);
             Equal(LibraryLyricsOrigin.Sidecar, indexed.Origin);
             Equal("[00:01.000]Old local lyrics", indexed.Text);
+
+            // Upgrade an existing confirmed match from an older database.
+            // No delete/reimport or manual repeat selection is needed.
+            await cache.SaveAsync(
+                sourcePath, 42,
+                LrcDocument.Parse("[00:04.000]Previously confirmed cover"));
+            state.Tracks[sourcePath] =
+                state.Tracks[sourcePath] with
+                {
+                    NeteaseSongId = 42,
+                    NeteaseMatchSuppressed = false,
+                    NeteaseMatchConfirmed = true,
+                };
+            await indexer.RefreshAsync(plan, state);
+            indexed = await GetCanonicalAsync(cache, sourcePath);
+            Equal(LibraryLyricsOrigin.ManualNetease, indexed.Origin);
+            Equal("[00:04.000]Previously confirmed cover", indexed.Text);
         }
         finally
         {
