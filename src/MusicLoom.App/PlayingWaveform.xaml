@@ -6,26 +6,34 @@
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
     Visibility="Collapsed">
-  <!-- True audio RMS envelope, rendered behind (not beside) the row.
-       Accent brush values respond to the user's WinUI theme. -->
-  <Grid x:Name="WaveRoot">
-    <Path x:Name="UnplayedArea"
-          Fill="{ThemeResource AccentFillColorTertiaryBrush}"
-          Opacity="0.10"
-          IsHitTestVisible="False" />
-    <Path x:Name="UnplayedLine"
-          Stroke="{ThemeResource AccentFillColorDefaultBrush}"
-          StrokeThickness="1.15"
-          Opacity="0.20"
-          IsHitTestVisible="False" />
-    <Grid x:Name="PlayedLayer" IsHitTestVisible="False">
-      <Path x:Name="PlayedArea"
-            Fill="{ThemeResource AccentFillColorSecondaryBrush}"
-            Opacity="0.20" />
-      <Path x:Name="PlayedLine"
-            Stroke="{ThemeResource AccentFillColorDefaultBrush}"
-            StrokeThickness="1.4"
-            Opacity="0.38" />
-    </Grid>
+  <!-- A Canvas ignores child shape bounds during measure. This prevents
+       the waveform geometry from changing the row's desired size and
+       recursively triggering SizeChanged/render cycles. -->
+  <Grid x:Name="WaveRoot" IsHitTestVisible="False">
+    <Canvas x:Name="WaveCanvas"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            IsHitTestVisible="False">
+      <Polygon x:Name="UnplayedArea"
+               Fill="{ThemeResource AccentFillColorTertiaryBrush}"
+               Opacity="0.10"
+               IsHitTestVisible="False" />
+      <Polyline x:Name="UnplayedLine"
+                Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                StrokeThickness="1.15"
+                Opacity="0.20"
+                IsHitTestVisible="False" />
+      <Canvas x:Name="PlayedLayer" IsHitTestVisible="False">
+        <Polygon x:Name="PlayedArea"
+                 Fill="{ThemeResource AccentFillColorSecondaryBrush}"
+                 Opacity="0.20"
+                 IsHitTestVisible="False" />
+        <Polyline x:Name="PlayedLine"
+                  Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                  StrokeThickness="1.4"
+                  Opacity="0.38"
+                  IsHitTestVisible="False" />
+      </Canvas>
+    </Canvas>
   </Grid>
 </UserControl>
