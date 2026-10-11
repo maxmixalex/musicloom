@@ -1,6 +1,4 @@
 using Microsoft.Data.Sqlite;
-using System.Security.Cryptography;
-using System.Text;
 using MusicLoom.App;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.Scanning;
@@ -164,30 +162,28 @@ internal static class LibraryLyricsIndexerRegression
             Equal(LibraryLyricsOrigin.None, indexed.Origin);
             True(indexed.Text is null);
 
-            // A manually edited destination LRC is imported as a local
-            // source, while a verified generated replica is not.
+            // The target LRC is a generated artifact, never a canonical
+            // source even when it differs from a cached provider document.
             string destinationLrc =
                 SidecarLrcLyricsWriter.GetSidecarPath(destinationPath);
-            string generated = "[00:01.000]Old generated lyric";
-            await File.WriteAllTextAsync(destinationLrc, generated);
+            await File.WriteAllTextAsync(
+                destinationLrc, "[00:01.000]Older target LRC");
             state.Tracks[sourcePath] = state.Tracks[sourcePath] with
             {
                 NeteaseSongId = 42,
-                LyricsFingerprint = SHA256Hex(
-                    LrcDocument.Parse(generated).ToString()),
+                LyricsFingerprint = null,
             };
             await indexer.RefreshAsync(plan, state);
             indexed = await GetCanonicalAsync(cache, sourcePath);
             Equal(LibraryLyricsOrigin.Netease, indexed.Origin);
+            Equal("[00:01.000]NetEase candidate", indexed.Text);
 
             await File.WriteAllTextAsync(
-                destinationLrc, "[00:01.000]User changed lyric");
+                destinationLrc, "[00:01.000]Changed target output");
             await indexer.RefreshAsync(plan, state);
             indexed = await GetCanonicalAsync(cache, sourcePath);
-            Equal(LibraryLyricsOrigin.Sidecar, indexed.Origin);
-            Equal(
-                "[00:01.000]User changed lyric",
-                indexed.Text);
+            Equal(LibraryLyricsOrigin.Netease, indexed.Origin);
+            Equal("[00:01.000]NetEase candidate", indexed.Text);
 
             // A checked no-lyrics response must be canonical and persist
             // through a new cache object/reopen.
@@ -280,11 +276,6 @@ internal static class LibraryLyricsIndexerRegression
             ?? throw new InvalidOperationException(
                 "Expected canonical library lyrics row.");
     }
-
-    private static string SHA256Hex(string text) =>
-        Convert.ToHexString(
-            SHA256.HashData(Encoding.UTF8.GetBytes(text)))
-        .ToLowerInvariant();
 
     private static void True(bool condition)
     {
