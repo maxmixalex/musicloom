@@ -204,6 +204,42 @@ internal sealed class LibraryLyricsIndexer
                         destinationSidecar,
                         track?.LyricsFingerprint);
 
+                if (!generatedOutput
+                    && remote?.HasLyrics == true
+                    && string.Equals(
+                        LrcDocument.Parse(destinationSidecar).ToString(),
+                        remote.Lrc,
+                        StringComparison.Ordinal))
+                {
+                    // A replica identical to MusicLoom's cached output
+                    // cannot be distinguished from another writer, but it
+                    // has no user-only edits to protect or re-import.
+                    generatedOutput = true;
+                }
+
+                if (!generatedOutput
+                    && string.IsNullOrWhiteSpace(track?.LyricsFingerprint)
+                    && entry.DestinationPath is string destinationAudio)
+                {
+                    // Old state may have lost a generated LRC fingerprint.
+                    // Consult durable output history before misclassifying
+                    // that file as a user-managed source-sidecar override.
+                    LrcDocument parsed = LrcDocument.Parse(destinationSidecar);
+                    if (parsed.Lines.Count > 0)
+                    {
+                        string digest = Convert.ToHexString(
+                            SHA256.HashData(
+                                Encoding.UTF8.GetBytes(parsed.ToString())))
+                            .ToLowerInvariant();
+                        generatedOutput =
+                            await _cache.IsKnownOutputAsync(
+                                entry.SourcePath,
+                                destinationAudio,
+                                digest,
+                                cancellationToken);
+                    }
+                }
+
                 if (!generatedOutput)
                 {
                     origin = LibraryLyricsOrigin.Sidecar;

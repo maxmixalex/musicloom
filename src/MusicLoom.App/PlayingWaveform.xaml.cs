@@ -1,5 +1,4 @@
 using Microsoft.UI.Xaml;
-using MusicLoom.Audio.Windows;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
@@ -7,18 +6,16 @@ using Windows.Foundation;
 namespace MusicLoom.App;
 
 /// <summary>
-/// Renders a real PCM RMS envelope behind the currently playing row.
-/// Coordinates are bounded before reaching native WinUI shapes; a failed
-/// visualization cannot take down the audio player or the application.
+/// A restrained, music-reactive frequency profile across the entire row.
+/// Input is a measured log-frequency spectrum from current song audio.
+/// Native shape failures disable this optional visual, never the player.
 /// </summary>
 public sealed partial class PlayingWaveform : UserControl
 {
-    private readonly RectangleGeometry _playedClip = new();
     private readonly RectangleGeometry _outerClip = new();
     private bool _renderFailed;
+    private bool _rendering;
 
-    // Used by the Windows UI launch regression to confirm that native
-    // shapes were actually rendered, not merely that the app started.
     public event EventHandler? Rendered;
 
     public static readonly DependencyProperty IsActiveProperty =
@@ -35,13 +32,6 @@ public sealed partial class PlayingWaveform : UserControl
             typeof(PlayingWaveform),
             new PropertyMetadata(null, OnInputChanged));
 
-    public static readonly DependencyProperty PlaybackProgressProperty =
-        DependencyProperty.Register(
-            nameof(PlaybackProgress),
-            typeof(double),
-            typeof(PlayingWaveform),
-            new PropertyMetadata(0d, OnProgressChanged));
-
     public bool IsActive
     {
         get => (bool)GetValue(IsActiveProperty);
@@ -54,16 +44,9 @@ public sealed partial class PlayingWaveform : UserControl
         set => SetValue(SamplesProperty, value);
     }
 
-    public double PlaybackProgress
-    {
-        get => (double)GetValue(PlaybackProgressProperty);
-        set => SetValue(PlaybackProgressProperty, value);
-    }
-
     public PlayingWaveform()
     {
         InitializeComponent();
-        PlayedLayer.Clip = _playedClip;
         WaveRoot.Clip = _outerClip;
         Loaded += (_, _) => RenderWaveform();
         SizeChanged += (_, _) => RenderWaveform();
@@ -74,131 +57,119 @@ public sealed partial class PlayingWaveform : UserControl
         DependencyPropertyChangedEventArgs args) =>
         ((PlayingWaveform)sender).RenderWaveform();
 
-    private static void OnProgressChanged(
-        DependencyObject sender,
-        DependencyPropertyChangedEventArgs args) =>
-        ((PlayingWaveform)sender).UpdatePlaybackClip();
-
     private void RenderWaveform()
     {
-        if (_renderFailed)
+        if (_renderFailed || _rendering)
         {
             return;
         }
 
+        _rendering = true;
         try
         {
-            float[]? values = Samples;
-            bool show = IsActive && values is { Length: > 1 };
+            float[]? levels = Samples;
+            bool show = IsActive && levels is { Length: > 2 };
             Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            if (!show || values is null)
+            if (!show || levels is null)
             {
                 return;
             }
 
-            double width = ActualWidth;
-            double height = ActualHeight;
-            WaveformCoordinate[] shape = TrackWaveformGeometry.Project(
-                values, width, height);
-            if (shape.Length < 2)
-            {
-                return;
-            }
-
-            // Distinct PointCollections are intentional. WinUI must not
-            // receive the same mutable native object for two shape owners.
-            PointCollection unplayedLine = new();
-            PointCollection playedLine = new();
-            PointCollection unplayedArea = new();
-            PointCollection playedArea = new();
-            double baseline = Math.Clamp(height - 3, 0, height);
-            Point first = new(0, baseline);
-            unplayedArea.Add(first);
-            playedArea.Add(first);
-
-            foreach (WaveformCoordinate point in shape)
-            {
-                Point visualPoint = new(point.X, point.Y);
-                unplayedLine.Add(visualPoint);
-                playedLine.Add(visualPoint);
-                unplayedArea.Add(visualPoint);
-                playedArea.Add(visualPoint);
-            }
-
-            Point last = new(width, baseline);
-            unplayedArea.Add(last);
-            playedArea.Add(last);
-
-            // Child bounds cannot change Canvas's DesiredSize, so updating
-            // the waveform cannot produce another expanding layout cycle.
-            PlayedLayer.Width = width;
-            PlayedLayer.Height = height;
-            UnplayedLine.Points = unplayedLine;
-            PlayedLine.Points = playedLine;
-            UnplayedArea.Points = unplayedArea;
-            PlayedArea.Points = playedArea;
-            UpdatePlaybackClip();
-            if (!_renderFailed)
-            {
-                Rendered?.Invoke(this, EventArgs.Empty);
-            }
-        }
-        catch (Exception error)
-        {
-            DisableWaveform(error);
-        }
-    }
-
-    private void UpdatePlaybackClip()
-    {
-        if (_renderFailed)
-        {
-            return;
-        }
-
-        try
-        {
             double width = ActualWidth;
             double height = ActualHeight;
             if (!double.IsFinite(width)
                 || !double.IsFinite(height)
-                || width <= 0
-                || height <= 0
-                || width > 16_384
-                || height > 16_384)
+                || width < 2 || height < 2
+                || width > 16_384 || height > 16_384)
             {
                 return;
             }
 
-            double progress = double.IsFinite(PlaybackProgress)
-                ? Math.Clamp(PlaybackProgress, 0, 1)
-                : 0;
             _outerClip.Rect = new Rect(0, 0, width, height);
-            _playedClip.Rect = new Rect(
-                0, 0, width * progress, height);
+
+            // Catmull-Rom interpolation between measured adjacent frequency
+            // bands yields a flowing profile. No synthetic time oscillator.
+            const int Subdivisions = 5;
+            PointCollection contour = new();
+            PointCollection surface = new();
+            double baseline = height * 0.69;
+            surface.Add(new Point(0, height));
+
+            for (int i = 0; i < levels.Length - 1; i++)
+            {
+                for (int step = 0; step < Subdivisions; step++)
+                {
+                    double t = (double)step / Subdivisions;
+                    double value = SmoothBand(levels, i, t);
+                    double x = width *
+                        (i + t) / (levels.Length - 1);
+                    double y = baseline - value * (height * 0.46);
+                    y = Math.Clamp(y, 0, height);
+                    Point point = new(x, y);
+                    contour.Add(point);
+                    surface.Add(point);
+                }
+            }
+
+            double finalValue = SafeLevel(levels[^1]);
+            Point end = new(
+                width,
+                Math.Clamp(baseline - finalValue * height * 0.46, 0, height));
+            contour.Add(end);
+            surface.Add(end);
+            surface.Add(new Point(width, height));
+
+            // Separate collections and non-measuring Canvas primitives
+            // cannot alter a ListViewItem's desired size on every frame.
+            WaveLine.Points = contour;
+            WaveArea.Points = surface;
+            Rendered?.Invoke(this, EventArgs.Empty);
         }
-        catch (Exception error)
+        catch (Exception exception)
         {
-            DisableWaveform(error);
+            DisableWaveform(exception);
+        }
+        finally
+        {
+            _rendering = false;
         }
     }
 
+    private static double SmoothBand(float[] values, int i, double t)
+    {
+        double p0 = SafeLevel(values[Math.Max(0, i - 1)]);
+        double p1 = SafeLevel(values[i]);
+        double p2 = SafeLevel(values[i + 1]);
+        double p3 = SafeLevel(values[Math.Min(values.Length - 1, i + 2)]);
+
+        // Standard Catmull-Rom spline, clamped against overshoot at peaks.
+        double t2 = t * t;
+        double t3 = t2 * t;
+        double spline = 0.5 * (
+            2 * p1 +
+            (-p0 + p2) * t +
+            (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+            (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+        return Math.Clamp(spline, 0, 1);
+    }
+
+    private static double SafeLevel(float value) =>
+        float.IsFinite(value)
+            ? Math.Clamp((double)value, 0, 1)
+            : 0;
+
     private void DisableWaveform(Exception error)
     {
-        // Optional artwork must never terminate playback. Disable this
-        // instance once rather than retrying from every SizeChanged event.
         _renderFailed = true;
         try
         {
             Visibility = Visibility.Collapsed;
             AppDiagnostics.LogException(
-                "Waveform visualization disabled after a render error.",
-                error);
+                "Reactive waveform disabled after a render error.", error);
         }
         catch
         {
-            // Diagnostics failures must not turn a visual fallback into a
-            // second unhandled exception.
+            // A visualization is never allowed to terminate playback.
         }
     }
 }

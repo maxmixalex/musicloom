@@ -102,6 +102,42 @@ try
         }
     }
 
+    // Verify the new reactive visual is driven by measured signal energy
+    // and frequency content, NOT by elapsed-time progress shading.
+    ReactiveAudioFrames? reactive = await new ReactiveAudioAnalyzer()
+        .AnalyzeAsync(path);
+    if (reactive is null || reactive.Frames.Length < 90)
+    {
+        throw new InvalidOperationException(
+            "Reactive spectrum failed to decode the test WAV timeline.");
+    }
+
+    float[] silence = reactive.At(TimeSpan.FromSeconds(0.4));
+    float[] lowTone = reactive.At(TimeSpan.FromSeconds(1.8));
+    float[] highTone = reactive.At(TimeSpan.FromSeconds(4.2));
+    if (silence.Max() > 0.02f
+        || lowTone.Max() < 0.25f
+        || highTone.Max() < 0.25f)
+    {
+        throw new InvalidOperationException(
+            "Reactive audio visualization ignores measured loudness.");
+    }
+
+    int PeakBand(float[] profile) =>
+        Array.IndexOf(profile, profile.Max());
+    if (PeakBand(lowTone) >= PeakBand(highTone))
+    {
+        throw new InvalidOperationException(
+            "Reactive visualization does not follow changing audio frequencies.");
+    }
+
+    if (reactive.At(TimeSpan.FromSeconds(1.81))
+        .Any(static value => !float.IsFinite(value) || value < 0 || value > 1))
+    {
+        throw new InvalidOperationException(
+            "Reactive spectrum interpolation produced invalid values.");
+    }
+
     FingerprintResult fingerprint = NeteaseFingerprint.Generate(samples);
     if (fingerprint.Peaks.Count == 0)
     {
@@ -154,7 +190,10 @@ static void WriteTestWave(string path)
         short value = frame < sampleRate * silentSeconds
             ? (short)0
             : (short)Math.Round(
-                Math.Sin(2.0 * Math.PI * frequency * seconds) *
+                Math.Sin(2.0 * Math.PI *
+                    (frame < sampleRate * (silentSeconds + 2)
+                        ? frequency
+                        : frequency * 2) * seconds) *
                 amplitude *
                 short.MaxValue);
 

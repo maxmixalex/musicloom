@@ -12,7 +12,8 @@ namespace MusicLoom.Core.Synchronization;
 public sealed record TrackSyncError(
     string SourcePath,
     string Stage,
-    string Message);
+    string Message,
+    SidecarLyricsConflictKind? SidecarConflict = null);
 
 public sealed record TrackSyncWarning(
     string SourcePath,
@@ -63,6 +64,7 @@ public sealed class SyncExecutor
     private readonly ITrackLyricsWriter _lyricsWriter;
     private readonly ITrackLyricsCache? _lyricsCache;
     private readonly ILibraryLyricsCache? _libraryLyricsCache;
+    private readonly IManagedLyricsOutputRegistry? _managedLyricsRegistry;
     private readonly int _checkpointInterval;
 
     public SyncExecutor(
@@ -72,7 +74,8 @@ public sealed class SyncExecutor
         ITrackLyricsWriter lyricsWriter,
         int checkpointInterval = 25,
         ITrackLyricsCache? lyricsCache = null,
-        ILibraryLyricsCache? libraryLyricsCache = null)
+        ILibraryLyricsCache? libraryLyricsCache = null,
+        IManagedLyricsOutputRegistry? managedLyricsRegistry = null)
     {
         if (checkpointInterval <= 0)
         {
@@ -87,6 +90,7 @@ public sealed class SyncExecutor
         _lyricsWriter = lyricsWriter;
         _lyricsCache = lyricsCache;
         _libraryLyricsCache = libraryLyricsCache;
+        _managedLyricsRegistry = managedLyricsRegistry;
         _checkpointInterval = checkpointInterval;
     }
 
@@ -404,6 +408,14 @@ public sealed class SyncExecutor
 
                         if (localWrite.Status == LyricsWriteStatus.Written)
                         {
+                            if (_lyricsWriter is SidecarLrcLyricsWriter
+                                && _managedLyricsRegistry is not null)
+                            {
+                                await _managedLyricsRegistry.RecordWrittenAsync(
+                                    entry.SourcePath, entry.DestinationPath,
+                                    ComputeLyricsFingerprint(localDocument),
+                                    cancellationToken);
+                            }
                             writtenLyrics++;
                         }
                         else if (localWrite.Status ==
@@ -671,9 +683,9 @@ public sealed class SyncExecutor
                         || (_lyricsCache is not null
                             && partial.NeteaseMatchConfirmed))
                     {
-                        RemoveManagedSidecarIfUnchanged(
-                            entry.DestinationPath,
-                            partial.LyricsFingerprint);
+                        await RemoveManagedSidecarIfUnchangedAsync(
+                            entry.SourcePath, entry.DestinationPath,
+                            partial.LyricsFingerprint, cancellationToken);
                     }
 
                     partial = partial with
@@ -690,9 +702,10 @@ public sealed class SyncExecutor
                 stage = "write-lyrics";
                 if (lyricsOnly)
                 {
-                    EnsureManualLyricsWriteSafe(
-                        entry.DestinationPath,
-                        partial.LyricsFingerprint);
+                    await EnsureManualLyricsWriteSafeAsync(
+                        entry.SourcePath, entry.DestinationPath,
+                        lookup.Lyrics,
+                        partial.LyricsFingerprint, cancellationToken);
                 }
 
                 progress?.Report(new SyncExecutionProgress(
@@ -730,6 +743,16 @@ public sealed class SyncExecutor
                     unsupportedLyrics++;
                 }
 
+                if (lyricsState == LyricsState.Written
+                    && _lyricsWriter is SidecarLrcLyricsWriter
+                    && _managedLyricsRegistry is not null)
+                {
+                    await _managedLyricsRegistry.RecordWrittenAsync(
+                        entry.SourcePath, entry.DestinationPath,
+                        ComputeLyricsFingerprint(lookup.Lyrics),
+                        cancellationToken);
+                }
+
                 partial = partial with
                 {
                     Lyrics = lyricsState,
@@ -758,7 +781,8 @@ public sealed class SyncExecutor
                 errors.Add(new TrackSyncError(
                     entry.SourcePath,
                     stage,
-                    exception.Message));
+                    exception.Message,
+                    (exception as SidecarLyricsConflictException)?.Kind));
 
                 progress?.Report(new SyncExecutionProgress(
                     index + 1,
@@ -1087,7 +1111,7 @@ public sealed class SyncExecutor
             LyricsCheckedAt = canReuseEnrichment
                 ? previous?.LyricsCheckedAt
                 : null,
-            LyricsFingerprint = canReuseEnrichment
+            LyricsFingerprint = sameDestination
                 ? previous?.LyricsFingerprint
                 : null,
             MetadataCaptured = true,
@@ -1255,75 +1279,95 @@ public sealed class SyncExecutor
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal);
 
-    private void EnsureManualLyricsWriteSafe(
-        string destinationPath,
-        string? previousFingerprint)
+    private async Task EnsureManualLyricsWriteSafeAsync(
+        string sourcePath, string destinationPath, LrcDocument targetLyrics,
+        string? previousFingerprint, CancellationToken cancellationToken)
     {
         if (_lyricsWriter is not SidecarLrcLyricsWriter)
         {
             return;
         }
 
-        string sidecar =
-            SidecarLrcLyricsWriter.GetSidecarPath(destinationPath);
+        string sidecar = SidecarLrcLyricsWriter.GetSidecarPath(destinationPath);
         if (!File.Exists(sidecar))
         {
             return;
         }
 
-        if (!MatchesManagedLyrics(sidecar, previousFingerprint))
+        // An LRC already containing exactly the desired document requires
+        // no destructive replacement, regardless of legacy attribution.
+        string current = await File.ReadAllTextAsync(sidecar, cancellationToken);
+        if (string.Equals(
+                LrcDocument.Parse(current).ToString(),
+                targetLyrics.ToString(),
+                StringComparison.Ordinal))
         {
-            throw new InvalidOperationException(
-                "Existing sidecar lyrics cannot be replaced automatically " +
-                "because they were not written by MusicLoom or were edited. " +
-                "Review the destination LRC before proceeding.");
+            return;
+        }
+
+        if (!await IsSafeManagedSidecarAsync(
+                sourcePath, destinationPath, sidecar,
+                previousFingerprint, cancellationToken))
+        {
+            throw new SidecarLyricsConflictException(
+                !string.IsNullOrWhiteSpace(previousFingerprint)
+                    ? SidecarLyricsConflictKind.ModifiedExisting
+                    : SidecarLyricsConflictKind.ReplacementBlocked);
         }
     }
 
-    private void RemoveManagedSidecarIfUnchanged(
-        string destinationPath,
-        string? previousFingerprint)
+    private async Task RemoveManagedSidecarIfUnchangedAsync(
+        string sourcePath, string destinationPath,
+        string? previousFingerprint, CancellationToken cancellationToken)
     {
         if (_lyricsWriter is not SidecarLrcLyricsWriter)
         {
             return;
         }
 
-        string sidecar =
-            SidecarLrcLyricsWriter.GetSidecarPath(destinationPath);
-
+        string sidecar = SidecarLrcLyricsWriter.GetSidecarPath(destinationPath);
         if (!File.Exists(sidecar))
         {
             return;
         }
 
-        if (!MatchesManagedLyrics(sidecar, previousFingerprint))
+        if (!await IsSafeManagedSidecarAsync(
+            sourcePath, destinationPath, sidecar,
+            previousFingerprint, cancellationToken))
         {
-            throw new InvalidOperationException(
-                "The destination contains lyrics that are not the last " +
-                "MusicLoom-managed version. Keep the database cache and " +
-                "resolve the user-edited sidecar before removing it.");
+            throw new SidecarLyricsConflictException(
+                !string.IsNullOrWhiteSpace(previousFingerprint)
+                    ? SidecarLyricsConflictKind.ModifiedRemoval
+                    : SidecarLyricsConflictKind.RemovalBlocked);
         }
 
         File.Delete(sidecar);
     }
 
-    private static bool MatchesManagedLyrics(
-        string sidecarPath,
-        string? expectedFingerprint)
+    private async Task<bool> IsSafeManagedSidecarAsync(
+        string sourcePath, string destinationPath, string sidecarPath,
+        string? previousFingerprint, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(expectedFingerprint))
+        LrcDocument existing = LrcDocument.Parse(
+            await File.ReadAllTextAsync(sidecarPath, cancellationToken));
+        string actualFingerprint = ComputeLyricsFingerprint(existing);
+
+        if (!string.IsNullOrWhiteSpace(previousFingerprint)
+            && string.Equals(
+                actualFingerprint, previousFingerprint,
+                StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            return true;
         }
 
-        LrcDocument existing = LrcDocument.Parse(
-            File.ReadAllText(sidecarPath));
-
-        return string.Equals(
-            ComputeLyricsFingerprint(existing),
-            expectedFingerprint,
-            StringComparison.OrdinalIgnoreCase);
+        // The TrackState hash may be stale as well as absent. An exact
+        // independently recorded managed output is valid evidence even
+        // when the transient track hash disagrees. If neither matches,
+        // the file is protected against overwrite/removal.
+        return _managedLyricsRegistry is not null
+            && await _managedLyricsRegistry.IsKnownOutputAsync(
+                sourcePath, destinationPath, actualFingerprint,
+                cancellationToken);
     }
 
     private static bool IsLyricsCacheFresh(

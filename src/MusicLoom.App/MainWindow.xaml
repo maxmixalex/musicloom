@@ -314,8 +314,7 @@
                                                HorizontalAlignment="Stretch"
                                                VerticalAlignment="Stretch"
                                                IsActive="{Binding IsPlaying}"
-                                               Samples="{Binding WaveformSamples}"
-                                               PlaybackProgress="{Binding PlaybackProgress}" />
+                                               Samples="{Binding WaveformSamples}" />
                         <Border Width="44" Height="44" CornerRadius="6"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                           <Grid>
@@ -1208,8 +1207,7 @@
                                                HorizontalAlignment="Stretch"
                                                VerticalAlignment="Stretch"
                                                IsActive="{Binding IsPlaying}"
-                                               Samples="{Binding WaveformSamples}"
-                                               PlaybackProgress="{Binding PlaybackProgress}" />
+                                               Samples="{Binding WaveformSamples}" />
                         <Border Width="44" Height="44" CornerRadius="6"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                           <Grid>

@@ -19,6 +19,8 @@
              Link="AppPersistence/SqliteLyricsCache.cs" />
     <Compile Include="../../src/MusicLoom.App/LibraryLyricsIndexer.cs"
              Link="AppPersistence/LibraryLyricsIndexer.cs" />
+    <Compile Include="../../src/MusicLoom.App/UserFacingErrors.cs"
+             Link="AppPersistence/UserFacingErrors.cs" />
     <Compile Include="../../src/MusicLoom.App/TomlSettingsStore.cs"
              Link="AppPersistence/TomlSettingsStore.cs" />
   </ItemGroup>

@@ -85,6 +85,9 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _waveformCancellation;
     private readonly Dictionary<string, CachedWaveform> _waveformCache =
         new(StringComparer.OrdinalIgnoreCase);
+    private ReactiveAudioFrames? _playingAudioFrames;
+    private float[]? _smoothedAudioFrame;
+    private TimeSpan _lastReactiveTime;
     private bool _busy;
     private bool _loadingSettings = true;
     private bool _refreshingLocalizedChoices;
@@ -219,12 +222,12 @@ public sealed partial class MainWindow : Window
             {
                 // Reproduce the originally failing SizeChanged pathway.
                 host.Width = 520;
-                waveform.PlaybackProgress = 0.5;
+                waveform.Samples = BuildWaveformSmokeFrame(0.35f);
             }
             else if (successfulRenders == 2)
             {
                 host.Width = 640;
-                waveform.PlaybackProgress = 0.85;
+                waveform.Samples = BuildWaveformSmokeFrame(0.85f);
             }
             else if (successfulRenders == 3)
             {
@@ -249,15 +252,20 @@ public sealed partial class MainWindow : Window
             }
         };
 
-        float[] fixture = new float[384];
-        for (int i = 0; i < fixture.Length; i++)
+        waveform.Samples = BuildWaveformSmokeFrame(0.6f);
+        waveform.IsActive = true;
+    }
+
+    private static float[] BuildWaveformSmokeFrame(float amplitude)
+    {
+        float[] levels = new float[ReactiveAudioFrames.BandCount];
+        for (int i = 0; i < levels.Length; i++)
         {
-            fixture[i] = (float)(
-                Math.Abs(Math.Sin(i / 12.0)) * 0.85);
+            levels[i] = amplitude *
+                (float)Math.Abs(Math.Sin(i / 3.4));
         }
 
-        waveform.Samples = fixture;
-        waveform.IsActive = true;
+        return levels;
     }
 
     private void InitializePlayer()
@@ -313,7 +321,7 @@ public sealed partial class MainWindow : Window
         {
             Interval =
                 TimeSpan.FromMilliseconds(
-                    120),
+                    50),
         };
         timer.Tick +=
             PlayerTimer_Tick;
@@ -476,49 +484,52 @@ public sealed partial class MainWindow : Window
         CancellationTokenSource operation = new();
         _waveformCancellation = operation;
         string path = item.Entry.SourcePath;
+        _playingAudioFrames = null;
+        _smoothedAudioFrame = null;
+        _lastReactiveTime = TimeSpan.Zero;
         item.SetWaveform(null);
-        item.SetPlaybackProgress(0);
 
         try
         {
             FileInfo source = new(path);
+            ReactiveAudioFrames? frames;
             if (_waveformCache.TryGetValue(path, out CachedWaveform? cached)
                 && cached.Size == source.Length
                 && cached.LastWriteUtcTicks == source.LastWriteTimeUtc.Ticks)
             {
-                if (ReferenceEquals(_playingLibraryItem, item))
+                frames = cached.Frames;
+            }
+            else
+            {
+                // Actual frequency-domain energy and PCM loudness per 50 ms
+                // frame. This is unrelated to the horizontal playback
+                // progress track that made the previous visual static.
+                frames = await new ReactiveAudioAnalyzer()
+                    .AnalyzeAsync(path, operation.Token);
+                if (frames is null || operation.IsCancellationRequested)
                 {
-                    item.SetWaveform(cached.Samples);
+                    return;
                 }
-                return;
+
+                if (_waveformCache.Count >= 8)
+                {
+                    _waveformCache.Remove(_waveformCache.Keys.First());
+                }
+
+                _waveformCache[path] = new CachedWaveform(
+                    source.Length,
+                    source.LastWriteTimeUtc.Ticks,
+                    frames);
             }
 
-            float[]? levels = await new TrackWaveformAnalyzer()
-                .AnalyzeAsync(path, operation.Token);
-            if (operation.IsCancellationRequested
-                || levels is not { Length: > 1 })
-            {
-                return;
-            }
-
-            if (_waveformCache.Count >= 8)
-            {
-                _waveformCache.Remove(_waveformCache.Keys.First());
-            }
-            _waveformCache[path] = new CachedWaveform(
-                source.Length,
-                source.LastWriteTimeUtc.Ticks,
-                levels);
-
-            // A library scan may have recreated the display item during
-            // decoding. Update the playing row by source identity, not the
-            // stale object reference captured when playback started.
-            if (string.Equals(
+            if (!operation.IsCancellationRequested
+                && string.Equals(
                     _playingLibraryItem?.Entry.SourcePath,
                     path,
                     StringComparison.OrdinalIgnoreCase))
             {
-                _playingLibraryItem?.SetWaveform(levels);
+                _playingAudioFrames = frames;
+                UpdateReactiveWaveform();
             }
         }
         catch (OperationCanceledException)
@@ -527,12 +538,58 @@ public sealed partial class MainWindow : Window
         catch (Exception exception)
         {
             AppDiagnostics.LogException(
-                "Could not analyze the playing audio waveform.", exception);
+                "Could not analyze live music frequency/loudness.", exception);
         }
     }
 
+    private void UpdateReactiveWaveform()
+    {
+        if (_playingLibraryItem is not LibraryDisplayItem item
+            || _playingAudioFrames is not ReactiveAudioFrames frames
+            || _mediaPlayer.PlaybackSession.PlaybackState
+                != MediaPlaybackState.Playing)
+        {
+            return;
+        }
+
+        // Audio timestamps select measured spectral frames. The shape
+        // itself expresses the frequencies and loudness at that moment,
+        // not how far progress has moved across the row.
+        TimeSpan time = _mediaPlayer.PlaybackSession.Position;
+        float[] measured = frames.At(time);
+
+        // Respect actual player output gain, including the fade during
+        // track changes. Low-level audio produces a quieter wave.
+        double volume = Math.Clamp(_mediaPlayer.Volume, 0, 1);
+        float gain = (float)Math.Sqrt(volume);
+        bool discontinuity = _smoothedAudioFrame is null
+            || Math.Abs((time - _lastReactiveTime).TotalSeconds) > 0.6;
+        if (discontinuity)
+        {
+            _smoothedAudioFrame = new float[measured.Length];
+            for (int i = 0; i < measured.Length; i++)
+            {
+                _smoothedAudioFrame[i] = measured[i] * gain;
+            }
+        }
+        else
+        {
+            // Lightweight temporal damping prevents 20 Hz PCM windows
+            // from making sharp, strobing jumps in the Fluent background.
+            for (int i = 0; i < measured.Length; i++)
+            {
+                float target = measured[i] * gain;
+                _smoothedAudioFrame![i] +=
+                    (target - _smoothedAudioFrame[i]) * 0.38f;
+            }
+        }
+
+        _lastReactiveTime = time;
+        item.SetWaveform((float[])_smoothedAudioFrame!.Clone());
+    }
+
     private sealed record CachedWaveform(
-        long Size, long LastWriteUtcTicks, float[] Samples);
+        long Size, long LastWriteUtcTicks, ReactiveAudioFrames Frames);
 
     private async Task PlayNetEasePreviewAsync(
         NeteaseMatchCandidate candidate,
@@ -560,6 +617,8 @@ public sealed partial class MainWindow : Window
                     false);
             _playingLibraryItem = null;
             _waveformCancellation?.Cancel();
+            _playingAudioFrames = null;
+            _smoothedAudioFrame = null;
             _playingPreviewCandidate =
                 candidate;
             _playbackQueue = [];
@@ -835,6 +894,7 @@ public sealed partial class MainWindow : Window
         object e)
     {
         UpdatePlayerProgress();
+        UpdateReactiveWaveform();
         UpdatePlaybackLyrics();
     }
 
@@ -879,11 +939,6 @@ public sealed partial class MainWindow : Window
         {
             _updatingPlayerProgress = false;
         }
-
-        _playingLibraryItem?.SetPlaybackProgress(
-            durationSeconds > 0
-                ? positionSeconds / durationSeconds
-                : 0);
 
         PlayerTimeText.Text =
             $"{FormatPlayerTime(position)} / {FormatPlayerTime(duration)}";
@@ -1436,14 +1491,14 @@ public sealed partial class MainWindow : Window
                     "Settings error",
                     "设置错误"),
                 UserFacingErrors.Describe(
-                    exception));
+                    exception, IsChinese));
 
             AddActivity(
                 L(
                     "Settings error",
                     "设置错误"),
                 UserFacingErrors.Describe(
-                    exception));
+                    exception, IsChinese));
         }
         finally
         {
@@ -2076,7 +2131,7 @@ public sealed partial class MainWindow : Window
                 ShowInfo(
                     InfoBarSeverity.Error,
                     L("Match persistence failed", "匹配结果保存失败"),
-                    UserFacingErrors.Describe(exception));
+                    UserFacingErrors.Describe(exception, IsChinese));
             }
 
             _operationCancellation = null;
@@ -2349,7 +2404,8 @@ public sealed partial class MainWindow : Window
                     provider,
                     lyricsWriter,
                     lyricsCache: lyricStore,
-                    libraryLyricsCache: lyricStore);
+                    libraryLyricsCache: lyricStore,
+                    managedLyricsRegistry: lyricStore);
 
             SyncProgressTracker progressTracker = new();
 
@@ -2467,7 +2523,7 @@ public sealed partial class MainWindow : Window
                 SetTrackSyncState(
                     error.SourcePath,
                     L("Error", "错误"),
-                    $"[{error.Stage}] {error.Message}",
+                    $"[{error.Stage}] {UserFacingErrors.DescribeSyncError(error, IsChinese)}",
                     isError: true);
             }
 
@@ -2511,8 +2567,8 @@ public sealed partial class MainWindow : Window
                         "Sync completed with errors",
                         "同步完成，但有错误"),
                     L(
-                        $"{summary.Errors.Count:N0} errors. First: {Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {first.Message}",
-                        $"{summary.Errors.Count:N0} 个错误。第一个：{Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {first.Message}"));
+                        $"{summary.Errors.Count:N0} errors. First: {Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {UserFacingErrors.DescribeSyncError(first, IsChinese)}",
+                        $"{summary.Errors.Count:N0} 个错误。第一个：{Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {UserFacingErrors.DescribeSyncError(first, IsChinese)}"));
             }
             else if (summary.Warnings.Count > 0)
             {
@@ -2614,7 +2670,7 @@ public sealed partial class MainWindow : Window
                     "Sync failed",
                     "同步失败"),
                 UserFacingErrors.Describe(
-                    exception));
+                    exception, IsChinese));
         }
         finally
         {
@@ -2913,7 +2969,9 @@ public sealed partial class MainWindow : Window
             TrackSyncStateText.Text =
                 L("Error", "错误");
             TrackSyncLogText.Text =
-                item.Entry.Detail
+                (item.Entry.Detail is string rawDetail
+                    ? UserFacingErrors.TranslateCoreMessage(rawDetail, IsChinese)
+                    : null)
                 ?? L(
                     "The current scan reports an error.",
                     "当前扫描报告了错误。");
@@ -2948,7 +3006,9 @@ public sealed partial class MainWindow : Window
             TrackSyncStateText.Text =
                 L("Syncing", "同步中");
             TrackSyncLogText.Text =
-                item.Entry.Detail
+                (item.Entry.Detail is string rawDetail
+                    ? UserFacingErrors.TranslateCoreMessage(rawDetail, IsChinese)
+                    : null)
                 ?? L(
                     "Synchronization is in progress.",
                     "正在同步。");
@@ -2960,7 +3020,9 @@ public sealed partial class MainWindow : Window
                     "Pending sync",
                     "待同步");
             TrackSyncLogText.Text =
-                item.Entry.Detail
+                (item.Entry.Detail is string rawDetail
+                    ? UserFacingErrors.TranslateCoreMessage(rawDetail, IsChinese)
+                    : null)
                 ?? L(
                     "This track has pending work.",
                     "此歌曲存在待处理的同步工作。");
@@ -3265,7 +3327,7 @@ public sealed partial class MainWindow : Window
                 SetTrackSyncState(
                     error.SourcePath,
                     L("Error", "错误"),
-                    $"[{error.Stage}] {error.Message}",
+                    $"[{error.Stage}] {UserFacingErrors.DescribeSyncError(error, IsChinese)}",
                     isError: true);
             }
 
@@ -3316,7 +3378,7 @@ public sealed partial class MainWindow : Window
                     "Sync finished, but the library view could not refresh",
                     "同步已完成，但无法刷新音乐库视图"),
                 UserFacingErrors.Describe(
-                    exception));
+                    exception, IsChinese));
         }
     }
 
@@ -3615,7 +3677,6 @@ public sealed partial class MainWindow : Window
             _playingLibraryItem
                 ?.Entry.SourcePath;
         float[]? playingWaveform = _playingLibraryItem?.WaveformSamples;
-        double playingProgress = _playingLibraryItem?.PlaybackProgress ?? 0;
         string[] queueSources =
             _playbackQueue
                 .Select(static item =>
@@ -3678,7 +3739,6 @@ public sealed partial class MainWindow : Window
             {
                 displayItem.SetPlaying(true);
                 displayItem.SetWaveform(playingWaveform);
-                displayItem.SetPlaybackProgress(playingProgress);
                 _playingLibraryItem =
                     displayItem;
             }
@@ -6919,7 +6979,7 @@ public sealed partial class MainWindow : Window
             {
                 status.Text =
                     UserFacingErrors.Describe(
-                        exception);
+                        exception, IsChinese);
             }
             finally
             {
@@ -7044,7 +7104,7 @@ public sealed partial class MainWindow : Window
                             new LyricDisplayLine(
                                 UserFacingErrors
                                     .Describe(
-                                        exception),
+                                        exception, IsChinese),
                                 null,
                                 LyricsDisplayModes
                                     .OriginalOnly),
@@ -7641,7 +7701,7 @@ public sealed partial class MainWindow : Window
                 catch (Exception exception)
                 {
                     fetchErrors.Add(
-                        $"{item.Title}: {exception.Message}");
+                        $"{item.Title}: {UserFacingErrors.Describe(exception, IsChinese)}");
                     AppDiagnostics.LogException(
                         "Could not cache matched lyrics.",
                         exception);
@@ -7722,7 +7782,8 @@ public sealed partial class MainWindow : Window
                     provider,
                     writer,
                     lyricsCache: lyricsCache,
-                    libraryLyricsCache: lyricsCache);
+                    libraryLyricsCache: lyricsCache,
+                    managedLyricsRegistry: lyricsCache);
 
                 SyncProgressTracker tracker = new();
                 Progress<SyncExecutionProgress> progress =
@@ -7772,7 +7833,9 @@ public sealed partial class MainWindow : Window
                 || materializationErrors > 0)
             {
                 string message = fetchErrors.FirstOrDefault()
-                    ?? summary?.Errors.FirstOrDefault()?.Message
+                    ?? (summary?.Errors.FirstOrDefault() is TrackSyncError firstError
+                        ? UserFacingErrors.DescribeSyncError(firstError, IsChinese)
+                        : null)
                     ?? L(
                         "Could not materialize cached lyrics.",
                         "无法写入数据库中缓存的歌词。");
@@ -7833,7 +7896,7 @@ public sealed partial class MainWindow : Window
             ShowInfo(
                 InfoBarSeverity.Warning,
                 L("Lyrics update failed", "歌词更新失败"),
-                UserFacingErrors.Describe(exception));
+                UserFacingErrors.Describe(exception, IsChinese));
             return false;
         }
         finally
@@ -9144,7 +9207,7 @@ public sealed partial class MainWindow : Window
                     "Could not save settings",
                     "无法保存设置"),
                 UserFacingErrors.Describe(
-                    exception));
+                    exception, IsChinese));
         }
     }
 
@@ -9659,7 +9722,7 @@ public sealed partial class MainWindow : Window
         {
             DiagnosticsConsole.Text =
                 UserFacingErrors.Describe(
-                    exception);
+                    exception, IsChinese);
         }
     }
 
@@ -10065,7 +10128,7 @@ public sealed partial class MainWindow : Window
     {
         string message =
             UserFacingErrors.Describe(
-                exception);
+                exception, IsChinese);
 
         AddActivity(
             L("Error", "错误"),
