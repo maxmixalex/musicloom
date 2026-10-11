@@ -1294,7 +1294,9 @@ public sealed class SyncExecutor
                 previousFingerprint, cancellationToken))
         {
             throw new SidecarLyricsConflictException(
-                SidecarLyricsConflictKind.ReplacementBlocked);
+                !string.IsNullOrWhiteSpace(previousFingerprint)
+                    ? SidecarLyricsConflictKind.ModifiedExisting
+                    : SidecarLyricsConflictKind.ReplacementBlocked);
         }
     }
 
@@ -1318,7 +1320,9 @@ public sealed class SyncExecutor
             previousFingerprint, cancellationToken))
         {
             throw new SidecarLyricsConflictException(
-                SidecarLyricsConflictKind.RemovalBlocked);
+                !string.IsNullOrWhiteSpace(previousFingerprint)
+                    ? SidecarLyricsConflictKind.ModifiedRemoval
+                    : SidecarLyricsConflictKind.RemovalBlocked);
         }
 
         File.Delete(sidecar);

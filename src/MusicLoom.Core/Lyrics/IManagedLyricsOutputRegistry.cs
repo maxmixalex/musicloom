@@ -19,6 +19,8 @@ public enum SidecarLyricsConflictKind
 {
     ReplacementBlocked,
     RemovalBlocked,
+    ModifiedExisting,
+    ModifiedRemoval,
 }
 
 /// <summary>Typed conflict used for localized user-facing errors.</summary>
@@ -31,8 +33,12 @@ public sealed class SidecarLyricsConflictException : IOException
         {
             SidecarLyricsConflictKind.ReplacementBlocked =>
                 "Existing sidecar lyrics cannot be replaced automatically because MusicLoom cannot verify ownership or the file was edited.",
+            SidecarLyricsConflictKind.ModifiedExisting =>
+                "The destination LRC has been changed since MusicLoom last wrote it. It cannot be replaced without reviewing those edits.",
+            SidecarLyricsConflictKind.ModifiedRemoval =>
+                "The destination LRC differs from MusicLoom's last generated version and cannot be deleted automatically.",
             _ =>
-                "The destination LRC differs from the last MusicLoom-managed version, so it cannot be removed automatically.",
+                "The destination LRC cannot be verified as MusicLoom output, so it cannot be removed automatically.",
         })
     {
         Kind = kind;
