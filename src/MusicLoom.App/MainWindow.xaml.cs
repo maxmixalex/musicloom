@@ -2158,20 +2158,12 @@ public sealed partial class MainWindow : Window
                 await RefreshLibraryLyricsIndexAsync(
                     new LibraryPlan(changed), state);
 
-                foreach (PlanEntry entry in changed)
-                {
-                    LibraryDisplayItem? item = _allLibraryItems
-                        .FirstOrDefault(row =>
-                            string.Equals(
-                                row.Entry.SourcePath,
-                                entry.SourcePath,
-                                StringComparison.OrdinalIgnoreCase));
-                    if (item is not null
-                        && GetStoredMatchWarning(entry) is not null)
-                    {
-                        item.SetStatus("warning", StatusLabel("warning"));
-                    }
-                }
+                HashSet<string> changedPaths = changed
+                    .Select(static entry => entry.SourcePath)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                ReconcileMatchActionRows(_allLibraryItems
+                    .Where(row => changedPaths.Contains(row.Entry.SourcePath))
+                    .ToArray());
 
                 if (_selectedLibraryItem is LibraryDisplayItem selected
                     && changed.Any(entry =>
@@ -4051,25 +4043,103 @@ public sealed partial class MainWindow : Window
     }
 
     private string GetLibraryDisplayKind(
-        PlanEntry entry)
+        PlanEntry entry) =>
+        LibraryMatchStatusResolver.GetKind(entry, _state);
+
+    private void ReconcileMatchActionRows(
+        IReadOnlyList<LibraryDisplayItem> candidates)
     {
-        if (entry.Status
-            == PlanEntryStatus.Error)
+        if (_state is null
+            || _settings is not MusicLoomSettings settings
+            || candidates.Count == 0)
         {
-            return "error";
+            return;
         }
 
-        if (GetStoredMatchWarning(
-                entry)
-            is not null)
+        // Match confirmation/clearing changes the persisted source state.
+        // Reconcile only affected tracks, never rebuild the ListView or
+        // reapply the filter (which could hide the just-edited selection).
+        IReadOnlyDictionary<string, LibraryMatchRowState> changed =
+            LibraryMatchStatusResolver.Reconcile(
+                candidates.Select(static item => item.Entry),
+                _state,
+                settings);
+        if (_plan is LibraryPlan currentPlan)
         {
-            return "warning";
+            _plan = new LibraryPlan(
+                currentPlan.Entries
+                    .Select(entry =>
+                        changed.TryGetValue(
+                            entry.SourcePath, out LibraryMatchRowState? row)
+                            ? row.Entry
+                            : entry)
+                    .ToArray(),
+                currentPlan.Covers,
+                currentPlan.Playlists);
         }
 
-        return entry.Status
-            == PlanEntryStatus.Unchanged
-                ? "synced"
-                : "pending";
+        foreach (LibraryDisplayItem item in candidates.DistinctBy(
+                     static item => item.Entry.SourcePath,
+                     StringComparer.OrdinalIgnoreCase))
+        {
+            if (!changed.TryGetValue(
+                    item.Entry.SourcePath, out LibraryMatchRowState? row))
+            {
+                continue;
+            }
+
+            item.UpdateEntry(row.Entry);
+            item.SetStatus(row.Kind, StatusLabel(row.Kind));
+
+            if (row.Entry.Status == PlanEntryStatus.Unchanged)
+            {
+                _manualPendingSources.Remove(row.Entry.SourcePath);
+            }
+            else if (row.Entry.Status
+                is PlanEntryStatus.New or PlanEntryStatus.Modified)
+            {
+                _manualPendingSources.Add(row.Entry.SourcePath);
+            }
+
+            string detail = row.Kind switch
+            {
+                "warning" when GetStoredMatchWarning(row.Entry)
+                    is TrackSyncWarning warning =>
+                    FormatTrackMatchWarning(warning),
+                "synced" => L(
+                    "Synchronization completed successfully.",
+                    "同步已成功完成。"),
+                _ when _trackSyncStates.TryGetValue(
+                    row.Entry.SourcePath, out TrackSyncViewState? previous) =>
+                    previous.Detail,
+                _ => L(
+                    "This track has pending synchronization work.",
+                    "此歌曲存在待处理的同步工作。"),
+            };
+            SetTrackSyncState(
+                row.Entry.SourcePath,
+                StatusLabel(row.Kind),
+                detail,
+                isError: row.Kind == "error");
+        }
+
+        ReconcileSyncLogsWithCurrentRows();
+        RefreshLiveSyncCounters();
+        UpdateBatchMatchActions();
+        SyncButton.IsEnabled =
+            !_busy && (_manualPendingSources.Count > 0
+                || _plan is { PendingCount: > 0 });
+
+        // Update the detail header immediately but preserve the actual
+        // selected row and the current filter until the user changes them.
+        if (_selectedLibraryItem is LibraryDisplayItem selected
+            && changed.ContainsKey(selected.Entry.SourcePath))
+        {
+            TrackStatusText.Text = selected.StatusText;
+            TrackStatusIcon.Glyph = selected.StatusGlyph;
+            TrackStatusIcon.Foreground = selected.StatusBrush;
+            RefreshTrackSyncTab(selected);
+        }
     }
 
     private TrackSyncWarning? GetStoredMatchWarning(
@@ -7265,6 +7335,7 @@ public sealed partial class MainWindow : Window
             L(
                 "NetEase match changed. Lyrics need to be synchronized.",
                 "网易云匹配已更改，需要重新同步歌词。"));
+        ReconcileMatchActionRows([item]);
 
         await SynchronizeMatchedLyricsAsync([item]);
     }
@@ -7413,6 +7484,7 @@ public sealed partial class MainWindow : Window
                     "已确认网易云匹配，歌词需要更新。"));
         }
 
+        ReconcileMatchActionRows(confirmed);
         if (_selectedLibraryItem is not null)
         {
             RefreshCurrentMatchCard(_selectedLibraryItem);
@@ -7530,6 +7602,7 @@ public sealed partial class MainWindow : Window
                     "已明确置空网易云匹配，自动识别已禁用。"));
         }
 
+        ReconcileMatchActionRows(changed);
         if (_selectedLibraryItem is LibraryDisplayItem selected)
         {
             RefreshCurrentMatchCard(selected);
@@ -7927,6 +8000,7 @@ public sealed partial class MainWindow : Window
             _state = await _stateStore.LoadAsync(cancellationToken);
         }
 
+        ReconcileMatchActionRows(candidates);
         if (_selectedLibraryItem is LibraryDisplayItem selected
             && candidates.Any(item =>
                 string.Equals(
@@ -7937,8 +8011,6 @@ public sealed partial class MainWindow : Window
             await ShowTrackDetailsAsync(selected);
         }
 
-        UpdateBatchMatchActions();
-        RefreshLiveSyncCounters();
         RefreshDatabaseSize();
     }
 
