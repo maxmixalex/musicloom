@@ -44,7 +44,22 @@
           Margin="24,12,24,0"
           IsOpen="False"
           IsClosable="True"
-          Severity="Informational" />
+          Severity="Informational">
+        <InfoBar.ActionButton>
+          <Button
+              x:Name="AdoptExistingLrcInfoButton"
+              Visibility="Collapsed"
+              Click="AdoptExistingLrcInfoButton_Click"
+              Style="{StaticResource AccentButtonStyle}">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <FontIcon Glyph="&#xE8B7;" FontSize="14" />
+              <TextBlock
+                  x:Name="AdoptExistingLrcInfoButtonText"
+                  Text="Back up and adopt LRC" />
+            </StackPanel>
+          </Button>
+        </InfoBar.ActionButton>
+      </InfoBar>
 
       <Grid Grid.Row="1">
         <!-- Library -->
