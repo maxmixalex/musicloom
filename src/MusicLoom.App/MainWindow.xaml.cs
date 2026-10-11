@@ -1638,9 +1638,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // The cached startup snapshot may be stale. Recognition must
-        // operate on a freshly scanned, current source library.
-        if (!await ScanLibraryAsync(
+        // Avoid rebuilding an existing filtered library view simply
+        // because the user asked to run incremental recognition.
+        if (_plan is null
+            && !await ScanLibraryAsync(
                 clearInfoBar: true,
                 recordActivity: true))
         {
@@ -1661,18 +1662,18 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // Explicitly excluded and existing matched tracks are left alone.
-        // Re-running auto-match only retries unidentified candidates.
-        PlanEntry[] candidates = plan.Entries
-            .Where(entry =>
-                entry.Metadata is not null
-                && entry.Status != PlanEntryStatus.Error
-                && File.Exists(entry.SourcePath)
-                && (!state.Tracks.TryGetValue(
-                        entry.SourcePath, out TrackState? previous)
-                    || (previous.NeteaseSongId is null
-                        && !previous.NeteaseMatchSuppressed)))
-            .ToArray();
+        // Incremental selection includes new, changed, or untried audio,
+        // not unchanged no-match results or already confirmed matches.
+        PlanEntry[] candidates = await Task.Run(() =>
+            plan.Entries
+                .Where(entry =>
+                {
+                    state.Tracks.TryGetValue(
+                        entry.SourcePath, out TrackState? previous);
+                    return AutoMatchEligibility.ShouldAttempt(
+                        entry, previous);
+                })
+                .ToArray());
 
         if (candidates.Length == 0)
         {
@@ -1728,40 +1729,22 @@ public sealed partial class MainWindow : Window
                                 cancellation.Token),
                             cancellation.Token);
 
-                    if (result.Status != TrackRecognitionStatus.Matched
-                        || result.TrackId is not long songId)
-                    {
-                        if (state.Tracks.TryGetValue(
-                                entry.SourcePath,
-                                out TrackState? existing))
-                        {
-                            state.Tracks[entry.SourcePath] =
-                                existing with
-                                {
-                                    Recognition = RecognitionState.NoMatch,
-                                    RecognitionCheckedAt = DateTimeOffset.UtcNow,
-                                };
-                        }
-
-                        missing++;
-                        continue;
-                    }
-
                     FileInfo source = new(entry.SourcePath);
                     TrackMetadata metadata = entry.Metadata!;
+                    ulong hash = await Task.Run(
+                        () => QuickFileHash.Compute(entry.SourcePath),
+                        cancellation.Token);
                     state.Tracks.TryGetValue(
                         entry.SourcePath, out TrackState? previous);
-
-                    TrackState baseState = previous ?? new TrackState
+                    TrackState baseState = (previous ?? new TrackState
                     {
                         SourcePath = entry.SourcePath,
+                    }) with
+                    {
                         SourceSize = source.Length,
                         SourceLastWriteUtcTicks =
                             source.LastWriteTimeUtc.Ticks,
-                        QuickHash = await Task.Run(
-                            () => QuickFileHash.Compute(
-                                entry.SourcePath),
-                            cancellation.Token),
+                        QuickHash = hash,
                         DestinationPath = entry.DestinationPath,
                         MetadataCaptured = true,
                         MetadataSchemaVersion =
@@ -1770,9 +1753,23 @@ public sealed partial class MainWindow : Window
                         Title = metadata.Title,
                         Artist = metadata.Artist,
                         AlbumArtist = metadata.AlbumArtist,
-                        Album = metadata.Album,
                         HasEmbeddedArt = metadata.HasEmbeddedArt,
                     };
+
+                    if (result.Status != TrackRecognitionStatus.Matched
+                        || result.TrackId is not long songId)
+                    {
+                        // Persist source signature and the negative result
+                        // so an unchanged song is skipped on the next run.
+                        state.Tracks[entry.SourcePath] =
+                            baseState with
+                            {
+                                Recognition = RecognitionState.NoMatch,
+                                RecognitionCheckedAt = DateTimeOffset.UtcNow,
+                            };
+                        missing++;
+                        continue;
+                    }
 
                     LibraryLyricsRecord? local =
                         await lyricsCache.GetLibraryAsync(
@@ -1922,13 +1919,56 @@ public sealed partial class MainWindow : Window
                     : L("Matching finished.", "匹配已完成。"));
         }
 
-        // Independent recognition is followed by a read-only rescan,
-        // not a destination file sync.
+        // Canonicalize only changed rows; do not replace ItemsSource or
+        // reapply the active filter, which could hide the selected track.
         if (matched > 0)
         {
-            await ScanLibraryAsync(
-                clearInfoBar: false,
-                recordActivity: false);
+            try
+            {
+                PlanEntry[] changed = candidates
+                    .Where(entry =>
+                        state.Tracks.TryGetValue(
+                            entry.SourcePath, out TrackState? track)
+                        && track.NeteaseSongId.HasValue)
+                    .ToArray();
+
+                await RefreshLibraryLyricsIndexAsync(
+                    new LibraryPlan(changed), state);
+
+                foreach (PlanEntry entry in changed)
+                {
+                    LibraryDisplayItem? item = _allLibraryItems
+                        .FirstOrDefault(row =>
+                            string.Equals(
+                                row.Entry.SourcePath,
+                                entry.SourcePath,
+                                StringComparison.OrdinalIgnoreCase));
+                    if (item is not null
+                        && GetStoredMatchWarning(entry) is not null)
+                    {
+                        item.SetStatus("warning", StatusLabel("warning"));
+                    }
+                }
+
+                if (_selectedLibraryItem is LibraryDisplayItem selected
+                    && changed.Any(entry =>
+                        string.Equals(
+                            entry.SourcePath,
+                            selected.Entry.SourcePath,
+                            StringComparison.OrdinalIgnoreCase)))
+                {
+                    await ShowTrackDetailsAsync(selected);
+                }
+
+                UpdateBatchMatchActions();
+                RefreshLiveSyncCounters();
+            }
+            catch (Exception exception)
+            {
+                failures++;
+                AppDiagnostics.LogException(
+                    "Could not reconcile new NetEase lyrics.", exception);
+            }
         }
 
         string summary = L(
