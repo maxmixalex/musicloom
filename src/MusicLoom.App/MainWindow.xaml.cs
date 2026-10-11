@@ -7851,6 +7851,16 @@ public sealed partial class MainWindow : Window
                         $"{cached:N0} track(s) are saved in the database; {deferred:N0} await destination synchronization.",
                         $"已将 {cached:N0} 首歌曲的歌词保存到数据库；其中 {deferred:N0} 首等待目标文件同步。"));
             }
+            else if (!settings.Organizer.Lyrics.OverrideExisting
+                     && (summary?.ExistingLyrics ?? 0) > 0)
+            {
+                ShowInfo(
+                    InfoBarSeverity.Informational,
+                    L("Lyrics cached; target preserved", "歌词已缓存，目标原有歌词已保留"),
+                    L(
+                        $"{cached:N0} lyric record(s) updated in the database. Existing destination lyrics were kept because 'Overwrite existing lyrics' is off.",
+                        $"已将 {cached:N0} 首歌词更新到数据库。由于已关闭“覆盖已有歌词”，目标目录中的原有歌词保持不变。"));
+            }
             else if (noLyrics > 0)
             {
                 ShowInfo(
