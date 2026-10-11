@@ -15,33 +15,49 @@ public static class NeteaseCandidateRanker
         ArgumentNullException.ThrowIfNull(
             candidates);
 
+        // The fingerprint service returns a neighborhood of plausible
+        // results, often with near-identical scores and durations. Within
+        // the same confidence tier and duration bucket, the correct singer
+        // is a stronger discriminator than a few milliseconds or a tiny
+        // difference in fingerprint score.
         return candidates
             .OrderByDescending(candidate =>
-                candidate.Score
-                    ?? double.MinValue)
+                FingerprintConfidenceTier(candidate.Score))
             .ThenBy(candidate =>
-                DurationBucket(
-                    localDurationMs,
-                    candidate.DurationMs))
+                DurationBucket(localDurationMs, candidate.DurationMs))
+            .ThenByDescending(candidate =>
+                SimilarityScore(artist, candidate.Artist))
+            .ThenByDescending(candidate =>
+                SimilarityScore(title, candidate.Name))
+            .ThenByDescending(candidate =>
+                SimilarityScore(album, candidate.Album))
             .ThenBy(candidate =>
-                DurationDistance(
-                    localDurationMs,
-                    candidate.DurationMs))
+                DurationDistance(localDurationMs, candidate.DurationMs))
             .ThenByDescending(candidate =>
-                SimilarityScore(
-                    title,
-                    candidate.Name))
-            .ThenByDescending(candidate =>
-                SimilarityScore(
-                    artist,
-                    candidate.Artist))
-            .ThenByDescending(candidate =>
-                SimilarityScore(
-                    album,
-                    candidate.Album))
+                candidate.Score ?? double.MinValue)
             .ThenBy(candidate =>
                 candidate.TrackId)
             .ToArray();
+    }
+
+    private static int FingerprintConfidenceTier(double? score)
+    {
+        if (score is not double value || !double.IsFinite(value))
+        {
+            return -1;
+        }
+
+        // Do not equate a poor fingerprint with a strong one. Preserve
+        // meaningful confidence gaps, without over-ranking small noise
+        // among already strong candidates.
+        return value switch
+        {
+            >= 0.95 => 4,
+            >= 0.85 => 3,
+            >= 0.70 => 2,
+            >= 0.50 => 1,
+            _ => 0,
+        };
     }
 
     private static int DurationBucket(

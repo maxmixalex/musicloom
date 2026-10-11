@@ -36,6 +36,28 @@ internal static class LibraryLyricsIndexerRegression
                 sourcePath, 42,
                 LrcDocument.Parse("[00:01.000]NetEase candidate"));
 
+            // A provider write must atomically update the actual Lyrics
+            // tab source before another full scanner pass occurs.
+            LibraryLyricsRecord first =
+                await GetCanonicalAsync(cache, sourcePath);
+            Equal(LibraryLyricsOrigin.Netease, first.Origin);
+            Equal("[00:01.000]NetEase candidate", first.Text);
+
+            await cache.SaveAsync(
+                sourcePath, 88,
+                LrcDocument.Parse("[00:02.000]Updated match lyric"));
+            LibraryLyricsRecord updatedMatch =
+                await new SqliteLyricsCache(database)
+                    .GetLibraryAsync(sourcePath)
+                ?? throw new InvalidOperationException("Missing updated lyrics.");
+            Equal(88L, updatedMatch.SongId ?? -1);
+            Equal("[00:02.000]Updated match lyric", updatedMatch.Text);
+
+            // Continue with the original match for the remaining cases.
+            await cache.SaveAsync(
+                sourcePath, 42,
+                LrcDocument.Parse("[00:01.000]NetEase candidate"));
+
             StateDocument state = new();
             state.Tracks[sourcePath] = new TrackState
             {
@@ -72,10 +94,25 @@ internal static class LibraryLyricsIndexerRegression
             Equal(LibraryLyricsOrigin.Embedded, indexed.Origin);
             Equal(embedded, indexed.Text);
 
-            // The next warm scan sees unchanged signatures and does not
-            // re-open the same source audio.
+            // Online refresh must never overwrite higher-priority source
+            // tags, even when the same song receives fresh LRC content.
+            await cache.SaveAsync(
+                sourcePath, 42,
+                LrcDocument.Parse("[00:03.000]Remote replacement"));
+            indexed = await GetCanonicalAsync(cache, sourcePath);
+            Equal(LibraryLyricsOrigin.Embedded, indexed.Origin);
+            Equal(embedded, indexed.Text);
+            await cache.SaveAsync(
+                sourcePath, 42,
+                LrcDocument.Parse("[00:01.000]NetEase candidate"));
+
+            // A provider update changed the indexed remote signature,
+            // so the next pass rechecks local priority once. A second
+            // identical warm pass must not reopen source audio again.
             await indexer.RefreshAsync(plan, state);
-            Equal(1, embeddedReads);
+            Equal(2, embeddedReads);
+            await indexer.RefreshAsync(plan, state);
+            Equal(2, embeddedReads);
 
             embedded = null;
             await File.AppendAllTextAsync(sourcePath, "newtag");

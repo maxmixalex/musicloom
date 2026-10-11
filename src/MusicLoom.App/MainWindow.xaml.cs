@@ -1010,6 +1010,11 @@ public sealed partial class MainWindow : Window
         object sender,
         DoubleTappedRoutedEventArgs e)
     {
+        if (LibraryList.SelectedItems.Count > 1)
+        {
+            return;
+        }
+
         LibraryDisplayItem? item =
             (e.OriginalSource
                 as FrameworkElement)
@@ -1638,9 +1643,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // The cached startup snapshot may be stale. Recognition must
-        // operate on a freshly scanned, current source library.
-        if (!await ScanLibraryAsync(
+        // Avoid rebuilding an existing filtered library view simply
+        // because the user asked to run incremental recognition.
+        if (_plan is null
+            && !await ScanLibraryAsync(
                 clearInfoBar: true,
                 recordActivity: true))
         {
@@ -1661,18 +1667,18 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // Explicitly excluded and existing matched tracks are left alone.
-        // Re-running auto-match only retries unidentified candidates.
-        PlanEntry[] candidates = plan.Entries
-            .Where(entry =>
-                entry.Metadata is not null
-                && entry.Status != PlanEntryStatus.Error
-                && File.Exists(entry.SourcePath)
-                && (!state.Tracks.TryGetValue(
-                        entry.SourcePath, out TrackState? previous)
-                    || (previous.NeteaseSongId is null
-                        && !previous.NeteaseMatchSuppressed)))
-            .ToArray();
+        // Incremental selection includes new, changed, or untried audio,
+        // not unchanged no-match results or already confirmed matches.
+        PlanEntry[] candidates = await Task.Run(() =>
+            plan.Entries
+                .Where(entry =>
+                {
+                    state.Tracks.TryGetValue(
+                        entry.SourcePath, out TrackState? previous);
+                    return AutoMatchEligibility.ShouldAttempt(
+                        entry, previous);
+                })
+                .ToArray());
 
         if (candidates.Length == 0)
         {
@@ -1728,40 +1734,22 @@ public sealed partial class MainWindow : Window
                                 cancellation.Token),
                             cancellation.Token);
 
-                    if (result.Status != TrackRecognitionStatus.Matched
-                        || result.TrackId is not long songId)
-                    {
-                        if (state.Tracks.TryGetValue(
-                                entry.SourcePath,
-                                out TrackState? existing))
-                        {
-                            state.Tracks[entry.SourcePath] =
-                                existing with
-                                {
-                                    Recognition = RecognitionState.NoMatch,
-                                    RecognitionCheckedAt = DateTimeOffset.UtcNow,
-                                };
-                        }
-
-                        missing++;
-                        continue;
-                    }
-
                     FileInfo source = new(entry.SourcePath);
                     TrackMetadata metadata = entry.Metadata!;
+                    ulong hash = await Task.Run(
+                        () => QuickFileHash.Compute(entry.SourcePath),
+                        cancellation.Token);
                     state.Tracks.TryGetValue(
                         entry.SourcePath, out TrackState? previous);
-
-                    TrackState baseState = previous ?? new TrackState
+                    TrackState baseState = (previous ?? new TrackState
                     {
                         SourcePath = entry.SourcePath,
+                    }) with
+                    {
                         SourceSize = source.Length,
                         SourceLastWriteUtcTicks =
                             source.LastWriteTimeUtc.Ticks,
-                        QuickHash = await Task.Run(
-                            () => QuickFileHash.Compute(
-                                entry.SourcePath),
-                            cancellation.Token),
+                        QuickHash = hash,
                         DestinationPath = entry.DestinationPath,
                         MetadataCaptured = true,
                         MetadataSchemaVersion =
@@ -1770,9 +1758,23 @@ public sealed partial class MainWindow : Window
                         Title = metadata.Title,
                         Artist = metadata.Artist,
                         AlbumArtist = metadata.AlbumArtist,
-                        Album = metadata.Album,
                         HasEmbeddedArt = metadata.HasEmbeddedArt,
                     };
+
+                    if (result.Status != TrackRecognitionStatus.Matched
+                        || result.TrackId is not long songId)
+                    {
+                        // Persist source signature and the negative result
+                        // so an unchanged song is skipped on the next run.
+                        state.Tracks[entry.SourcePath] =
+                            baseState with
+                            {
+                                Recognition = RecognitionState.NoMatch,
+                                RecognitionCheckedAt = DateTimeOffset.UtcNow,
+                            };
+                        missing++;
+                        continue;
+                    }
 
                     LibraryLyricsRecord? local =
                         await lyricsCache.GetLibraryAsync(
@@ -1922,13 +1924,56 @@ public sealed partial class MainWindow : Window
                     : L("Matching finished.", "匹配已完成。"));
         }
 
-        // Independent recognition is followed by a read-only rescan,
-        // not a destination file sync.
+        // Canonicalize only changed rows; do not replace ItemsSource or
+        // reapply the active filter, which could hide the selected track.
         if (matched > 0)
         {
-            await ScanLibraryAsync(
-                clearInfoBar: false,
-                recordActivity: false);
+            try
+            {
+                PlanEntry[] changed = candidates
+                    .Where(entry =>
+                        state.Tracks.TryGetValue(
+                            entry.SourcePath, out TrackState? track)
+                        && track.NeteaseSongId.HasValue)
+                    .ToArray();
+
+                await RefreshLibraryLyricsIndexAsync(
+                    new LibraryPlan(changed), state);
+
+                foreach (PlanEntry entry in changed)
+                {
+                    LibraryDisplayItem? item = _allLibraryItems
+                        .FirstOrDefault(row =>
+                            string.Equals(
+                                row.Entry.SourcePath,
+                                entry.SourcePath,
+                                StringComparison.OrdinalIgnoreCase));
+                    if (item is not null
+                        && GetStoredMatchWarning(entry) is not null)
+                    {
+                        item.SetStatus("warning", StatusLabel("warning"));
+                    }
+                }
+
+                if (_selectedLibraryItem is LibraryDisplayItem selected
+                    && changed.Any(entry =>
+                        string.Equals(
+                            entry.SourcePath,
+                            selected.Entry.SourcePath,
+                            StringComparison.OrdinalIgnoreCase)))
+                {
+                    await ShowTrackDetailsAsync(selected);
+                }
+
+                UpdateBatchMatchActions();
+                RefreshLiveSyncCounters();
+            }
+            catch (Exception exception)
+            {
+                failures++;
+                AppDiagnostics.LogException(
+                    "Could not reconcile new NetEase lyrics.", exception);
+            }
         }
 
         string summary = L(
@@ -3853,6 +3898,16 @@ public sealed partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         UpdateBatchMatchActions();
+
+        if (LibraryList.SelectedItems.Count > 1)
+        {
+            // A multi-selection has no meaningful single-track detail.
+            // Hide playback, file actions, match and lyric controls.
+            ++_detailRequestId;
+            _selectedLibraryItem = null;
+            HideDetailPane();
+            return;
+        }
 
         // Extended selection is for Ctrl/Shift batch operations. The right
         // detail pane still follows the most recently selected item and
@@ -7041,22 +7096,27 @@ public sealed partial class MainWindow : Window
 
     private void UpdateBatchMatchActions()
     {
-        if (ConfirmSelectedMatchesButton is null)
+        if (ConfirmSelectedMatchesButton is null
+            || LibraryList is null)
         {
             return;
         }
 
-        int count = GetSelectedWarningMatches().Length;
-        ConfirmSelectedMatchesButton.Visibility =
-            count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        ConfirmSelectedMatchesButton.IsEnabled =
-            !_busy && count > 0;
+        bool multi = LibraryList.SelectedItems.Count > 1;
+        int warnings = GetSelectedWarningMatches().Length;
+        int matched = GetSelectedMatchedItems().Length;
 
-        int clearCount = GetSelectedMatchedItems().Length;
+        // Exactly two batch commands in multi-selection mode. When no
+        // selected row is eligible, disable the command instead of
+        // exposing an unrelated single-track operation.
+        ConfirmSelectedMatchesButton.Visibility =
+            multi ? Visibility.Visible : Visibility.Collapsed;
+        ConfirmSelectedMatchesButton.IsEnabled =
+            multi && !_busy && warnings > 0;
         ClearSelectedMatchesButton.Visibility =
-            clearCount > 1 ? Visibility.Visible : Visibility.Collapsed;
+            multi ? Visibility.Visible : Visibility.Collapsed;
         ClearSelectedMatchesButton.IsEnabled =
-            !_busy && clearCount > 1;
+            multi && !_busy && matched > 0;
     }
 
     private async void ConfirmSelectedMatchesButton_Click(
@@ -7371,6 +7431,27 @@ public sealed partial class MainWindow : Window
                             songId,
                             latest,
                             cancellation.Token);
+
+                        // Validate what the Lyrics tab actually reads,
+                        // not just the provider cache. Local embedded/LRC
+                        // rows are intentionally allowed to retain priority.
+                        LibraryLyricsRecord? canonical =
+                            await lyricsCache.GetLibraryAsync(
+                                item.Entry.SourcePath,
+                                cancellation.Token);
+                        if (canonical is null
+                            || (canonical.Origin == LibraryLyricsOrigin.Netease
+                                && (canonical.SongId != songId
+                                    || !string.Equals(
+                                        canonical.Text,
+                                        latest is { Lines.Count: > 0 }
+                                            ? latest.ToString()
+                                            : null,
+                                        StringComparison.Ordinal))))
+                        {
+                            throw new InvalidDataException(
+                                "Canonical lyrics were not updated in SQLite.");
+                        }
                         cached++;
 
                         if (latest is null || latest.Lines.Count == 0)
@@ -7445,6 +7526,15 @@ public sealed partial class MainWindow : Window
                 });
             }
 
+            // Re-evaluate local embedded/sidecar priority for the affected
+            // sources before any output write. This also removes stale local
+            // signatures when a sidecar disappeared since the last scan.
+            await RefreshLibraryLyricsIndexAsync(
+                new LibraryPlan(
+                    matched.Select(static pair => pair.Item.Entry).ToArray()),
+                _state,
+                cancellation.Token);
+
             // Phase two is optional. Its only input is the canonical DB
             // record; the NetEase endpoint is never fetched a second time.
             SyncExecutionSummary? summary = null;
@@ -7479,7 +7569,8 @@ public sealed partial class MainWindow : Window
                             $"{FriendlyStage(value.Stage)} · " +
                             $"{value.Processed:N0}/{value.Total:N0}");
                         SetProgress(value.Processed, value.Total);
-                        UpdateLiveSyncRow(value);
+                        // This is lyric-only work. Avoid turning a matching
+                        // warning into pending/synced for a brief moment.
                     });
 
                 summary = await Task.Run(
@@ -7495,15 +7586,9 @@ public sealed partial class MainWindow : Window
             }
 
             ++_syncProgressGeneration;
-            await RefreshLibraryAfterSyncAsync(
-                settings,
-                summary,
+            await RefreshMatchedLyricsPresentationAsync(
+                matched.Select(static match => match.Item).ToArray(),
                 cancellation.Token);
-
-            if (_selectedLibraryItem is LibraryDisplayItem selected)
-            {
-                await ShowTrackDetailsAsync(selected);
-            }
 
             int materializationErrors = summary?.Errors.Count ?? 0;
             bool complete =
@@ -7560,9 +7645,8 @@ public sealed partial class MainWindow : Window
         catch (OperationCanceledException)
         {
             ++_syncProgressGeneration;
-            await RefreshLibraryAfterSyncAsync(
-                settings,
-                null,
+            await RefreshMatchedLyricsPresentationAsync(
+                matched.Select(static match => match.Item).ToArray(),
                 CancellationToken.None);
             return false;
         }
@@ -7573,9 +7657,8 @@ public sealed partial class MainWindow : Window
                 "Could not update the lyrics cache.",
                 exception);
 
-            await RefreshLibraryAfterSyncAsync(
-                settings,
-                null,
+            await RefreshMatchedLyricsPresentationAsync(
+                matched.Select(static match => match.Item).ToArray(),
                 CancellationToken.None);
 
             ShowInfo(
@@ -7590,6 +7673,33 @@ public sealed partial class MainWindow : Window
             _operationCancellation = null;
             SetBusy(false, OperationStatusText.Text);
         }
+    }
+
+    private async Task RefreshMatchedLyricsPresentationAsync(
+        IReadOnlyList<LibraryDisplayItem> candidates,
+        CancellationToken cancellationToken)
+    {
+        // SyncExecutor checkpoints to SQLite, so reload only its durable
+        // state. The list's object identity, selection and filters remain
+        // unchanged during a manual matching/lyric action.
+        if (_stateStore is not null)
+        {
+            _state = await _stateStore.LoadAsync(cancellationToken);
+        }
+
+        if (_selectedLibraryItem is LibraryDisplayItem selected
+            && candidates.Any(item =>
+                string.Equals(
+                    item.Entry.SourcePath,
+                    selected.Entry.SourcePath,
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            await ShowTrackDetailsAsync(selected);
+        }
+
+        UpdateBatchMatchActions();
+        RefreshLiveSyncCounters();
+        RefreshDatabaseSize();
     }
 
     private bool HasCachedMatch(
@@ -7608,28 +7718,14 @@ public sealed partial class MainWindow : Window
         _manualPendingSources.Add(
             item.Entry.SourcePath);
 
-        item.SetStatus(
-            "pending",
-            StatusLabel(
-                "pending"));
-
-        if (ReferenceEquals(
-                item,
-                _selectedLibraryItem))
-        {
-            TrackStatusText.Text =
-                item.StatusText;
-            TrackStatusIcon.Glyph =
-                item.StatusGlyph;
-            TrackStatusIcon.Foreground =
-                item.StatusBrush;
-        }
-
+        // Register work for the next sync, but never change the visible
+        // diagnostic classification during a lyric lookup. In particular,
+        // an unconfirmed NetEase warning stays a warning throughout.
         SetTrackSyncState(
             item.Entry.SourcePath,
-            L(
-                "Pending sync",
-                "待同步"),
+            item.Kind == "warning"
+                ? L("Warning", "警告")
+                : item.StatusText,
             detail);
 
         RefreshLiveSyncCounters();
@@ -7654,15 +7750,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // Refresh and presentation share one ground truth: the destination
-        // lyrics. A remote-only preview is not reported as an updated lyric
-        // until the same document has actually been persisted.
-        MarkTrackForEnrichmentSync(
-            item,
-            L(
-                "Fetching and synchronizing the latest NetEase lyrics.",
-                "正在获取并同步最新的网易云歌词。"));
-
+        // No status mutation. The canonical SQLite lyric is committed
+        // before any optional destination materialization.
         await SynchronizeMatchedLyricsAsync([item]);
     }
 
@@ -7936,58 +8025,56 @@ public sealed partial class MainWindow : Window
     {
         LibraryDisplayItem? item =
             _contextLibraryItem
-            ?? LibraryList.SelectedItem
-                as LibraryDisplayItem;
+            ?? LibraryList.SelectedItem as LibraryDisplayItem;
 
-        bool hasItem =
-            item is not null;
+        bool multi = LibraryList.SelectedItems.Count > 1;
+        bool hasItem = item is not null && !multi;
         bool hasDestination =
-            item?.Entry.DestinationPath
-                is string destination
+            item?.Entry.DestinationPath is string destination
             && File.Exists(destination);
 
-        ContextPlayItem.IsEnabled =
-            hasItem;
-        ContextOpenSourceItem.IsEnabled =
-            hasItem;
-        ContextCopySourceItem.IsEnabled =
-            hasItem;
-        ContextFindMatchItem.IsEnabled =
-            hasItem;
-        bool canConfirm =
-            item is not null
-            && GetStoredMatchWarning(
-                item.Entry)
-                is not null;
+        // Do not merely disable single-item actions: hide the entire
+        // group, including its separators, during extended selection.
+        Visibility single = multi
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        ContextPlayItem.Visibility = single;
+        ContextOpenSourceItem.Visibility = single;
+        ContextOpenDestinationItem.Visibility = single;
+        ContextCopySourceItem.Visibility = single;
+        ContextCopyDestinationItem.Visibility = single;
+        ContextFindMatchItem.Visibility = single;
+        ContextFileSeparator.Visibility = single;
+        ContextCopySeparator.Visibility = single;
+        ContextMatchSeparator.Visibility = single;
+
+        ContextPlayItem.IsEnabled = hasItem;
+        ContextOpenSourceItem.IsEnabled = hasItem;
+        ContextCopySourceItem.IsEnabled = hasItem;
+        ContextFindMatchItem.IsEnabled = hasItem && !_busy;
+        ContextOpenDestinationItem.IsEnabled =
+            hasItem && hasDestination;
+        ContextCopyDestinationItem.IsEnabled =
+            hasItem && item!.Entry.DestinationPath is not null;
+
+        bool canConfirm = hasItem
+            && GetStoredMatchWarning(item!.Entry) is not null;
         ContextConfirmMatchItem.Visibility =
-            canConfirm
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            canConfirm ? Visibility.Visible : Visibility.Collapsed;
         ContextConfirmMatchItem.IsEnabled =
-            canConfirm
-            && !_busy;
+            canConfirm && !_busy;
 
         int selectedWarnings = GetSelectedWarningMatches().Length;
         ContextConfirmSelectedMatchesItem.Visibility =
-            selectedWarnings > 1
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            multi ? Visibility.Visible : Visibility.Collapsed;
         ContextConfirmSelectedMatchesItem.IsEnabled =
-            selectedWarnings > 1 && !_busy;
+            multi && selectedWarnings > 0 && !_busy;
 
         int selectedMatches = GetSelectedMatchedItems().Length;
         ContextClearSelectedMatchesItem.Visibility =
-            selectedMatches > 1
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            multi ? Visibility.Visible : Visibility.Collapsed;
         ContextClearSelectedMatchesItem.IsEnabled =
-            selectedMatches > 1 && !_busy;
-
-        ContextOpenDestinationItem.IsEnabled =
-            hasDestination;
-        ContextCopyDestinationItem.IsEnabled =
-            item?.Entry.DestinationPath
-                is not null;
+            multi && selectedMatches > 0 && !_busy;
     }
 
     private async void ContextOpenSourceItem_Click(

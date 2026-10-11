@@ -23,6 +23,7 @@ List<(string Name, Action Test)> tests =
     ("LRC slash delimiter only splits explicit bilingual text", LrcSlashPresentation),
     ("Scanning resolves canonical embedded/local/NetEase lyrics", LibraryLyricsIndexerRegression.Run),
     ("NetEase candidate ranking balances duration and metadata", NeteaseCandidateRanking),
+    ("Auto-matching skips already checked unchanged audio", AutoMatchEligibilityRegression.Run),
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
     ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),
@@ -303,27 +304,41 @@ static void NeteaseCandidateRanking()
                 artist: "Target Artist",
                 album: "Target Album");
 
-    // Fingerprint score is primary.
-    Equal(
-        6L,
-        ranked[0].TrackId);
+    // Among strong fingerprint candidates with equal duration, prefer
+    // the matching artist before minor score/duration differences.
+    Equal(4L, ranked[0].TrackId);
+    Equal(5L, ranked[1].TrackId);
+    Equal(3L, ranked[2].TrackId);
+    Equal(2L, ranked[3].TrackId);
+    Equal(1L, ranked[4].TrackId);
+    Equal(6L, ranked[5].TrackId);
 
-    // For an equal fingerprint, exact duration wins before metadata.
-    Equal(
-        4L,
-        ranked[1].TrackId);
-    Equal(
-        3L,
-        ranked[2].TrackId);
-    Equal(
-        2L,
-        ranked[3].TrackId);
-    Equal(
-        1L,
-        ranked[4].TrackId);
-    Equal(
-        5L,
-        ranked[5].TrackId);
+    IReadOnlyList<NeteaseMatchCandidate> sameDuration =
+        NeteaseCandidateRanker.Rank(
+        [
+            new(100, "Song", "Other Singer", "Album",
+                Score: 0.998, DurationMs: 180_000),
+            new(101, "Song", "Correct Singer", "Album",
+                Score: 0.992, DurationMs: 180_000),
+        ],
+        localDurationMs: 180_000,
+        title: "Song",
+        artist: "Correct Singer",
+        album: "Album");
+    Equal(101L, sameDuration[0].TrackId);
+
+    IReadOnlyList<NeteaseMatchCandidate> poorFingerprint =
+        NeteaseCandidateRanker.Rank(
+        [
+            new(200, "Song", "Correct Singer", "Album",
+                Score: 0.4, DurationMs: 180_000),
+            new(201, "Song", "Other Singer", "Album",
+                Score: 0.99, DurationMs: 180_000),
+        ],
+        localDurationMs: 180_000,
+        title: "Song",
+        artist: "Correct Singer");
+    Equal(201L, poorFingerprint[0].TrackId);
 }
 
 static void Layout()
