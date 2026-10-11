@@ -7799,7 +7799,9 @@ public sealed partial class MainWindow : Window
                 || materializationErrors > 0)
             {
                 string message = fetchErrors.FirstOrDefault()
-                    ?? summary?.Errors.FirstOrDefault()?.Message
+                    ?? (summary?.Errors.FirstOrDefault() is TrackSyncError firstError
+                        ? UserFacingErrors.DescribeSyncError(firstError, IsChinese)
+                        : null)
                     ?? L(
                         "Could not materialize cached lyrics.",
                         "无法写入数据库中缓存的歌词。");
