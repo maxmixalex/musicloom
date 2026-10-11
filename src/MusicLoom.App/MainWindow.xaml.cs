@@ -8097,15 +8097,20 @@ public sealed partial class MainWindow : Window
                 "这个 LRC 可能早于 Musicloom 的归属记录，也可能经过手工编辑。程序无法确定其作者，因此不会未经确认直接替换。"),
             TextWrapping = TextWrapping.WrapWholeWords,
         });
-        content.Children.Add(new TextBlock
+        TextBlock backupExplanation = new()
         {
             Text = L(
                 "Confirming makes a separate byte-for-byte .bak backup beside the LRC first. Only after verifying the backup will MusicLoom adopt this exact file version and try to write the selected NetEase lyrics. The backup is never removed automatically.",
                 "确认后会先在 LRC 同目录创建逐字节一致的 .bak 备份。验证备份成功后，Musicloom 才会接管当前文件版本并尝试写入所选网易云歌词。备份不会被自动删除。"),
             TextWrapping = TextWrapping.WrapWholeWords,
-            Foreground = (Brush)Application.Current.Resources[
-                "TextFillColorSecondaryBrush"],
-        });
+        };
+        if (Application.Current.Resources.TryGetValue(
+                "TextFillColorSecondaryBrush", out object? secondary)
+            && secondary is Brush secondaryBrush)
+        {
+            backupExplanation.Foreground = secondaryBrush;
+        }
+        content.Children.Add(backupExplanation);
         content.Children.Add(new TextBox
         {
             Text = sidecarPath,
