@@ -7978,6 +7978,189 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void AdoptExistingLrcInfoButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        string? source = _pendingSidecarAdoptionSource;
+        if (_busy || source is null
+            || _settings is not MusicLoomSettings settings
+            || !CanAdoptSource(source))
+        {
+            return;
+        }
+
+        LibraryDisplayItem? track = _allLibraryItems.FirstOrDefault(
+            row => string.Equals(
+                row.Entry.SourcePath,
+                source,
+                StringComparison.OrdinalIgnoreCase));
+        if (track?.Entry.DestinationPath is not string destination)
+        {
+            return;
+        }
+
+        string sidecar = SidecarLrcLyricsWriter.GetSidecarPath(destination);
+        if (!await ConfirmLegacyLrcAdoptionAsync(sidecar))
+        {
+            return;
+        }
+
+        if (_busy || !CanAdoptSource(source))
+        {
+            return;
+        }
+
+        ManagedSidecarAdoptionResult result;
+        using CancellationTokenSource cancellation = new();
+        _operationCancellation = cancellation;
+        SetBusy(true, L(
+            "Backing up and adopting existing LRC…",
+            "正在备份并接管现有 LRC……"));
+        try
+        {
+            result = await ManagedSidecarAdoption.BackupAndAdoptAsync(
+                settings, source, destination,
+                new SqliteLyricsCache(DatabasePath),
+                cancellation.Token);
+
+            // Always retain the backup path in diagnostics, even if the
+            // subsequent provider request or lyric write fails.
+            AppDiagnostics.Log(
+                "Existing LRC backed up and adopted: "
+                + result.SidecarPath + " -> " + result.BackupPath);
+        }
+        catch (OperationCanceledException)
+        {
+            ShowInfo(
+                InfoBarSeverity.Informational,
+                L("LRC adoption cancelled", "已取消接管 LRC"),
+                L(
+                    "The destination LRC was not replaced. Any completed backup was preserved.",
+                    "目标 LRC 没有被替换。已经完成的备份会予以保留。"));
+            return;
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Could not safely back up/adopt the existing LRC.",
+                exception);
+            ShowInfo(
+                InfoBarSeverity.Error,
+                L("Could not adopt LRC", "无法接管 LRC"),
+                UserFacingErrors.Describe(exception, IsChinese));
+            return;
+        }
+        finally
+        {
+            _operationCancellation = null;
+            SetBusy(false, OperationStatusText.Text);
+        }
+
+        // Adoption records only the byte-for-byte backed-up version.
+        // The regular executor still rechecks its fingerprint immediately
+        // before replacing the destination, then records the new output.
+        bool synchronized = await SynchronizeMatchedLyricsAsync([track]);
+        ShowInfo(
+            synchronized
+                ? InfoBarSeverity.Success
+                : InfoBarSeverity.Warning,
+            synchronized
+                ? L("LRC adopted and updated", "LRC 已接管并更新")
+                : L("Backup saved; lyric update still pending", "已保存备份，歌词更新尚未完成"),
+            L(
+                (synchronized
+                    ? "The original LRC was preserved at: "
+                    : "Your original LRC is safe at: ")
+                + result.BackupPath,
+                (synchronized
+                    ? "原始 LRC 已备份至："
+                    : "原始 LRC 已安全备份至：")
+                + result.BackupPath));
+    }
+
+    private async Task<bool> ConfirmLegacyLrcAdoptionAsync(
+        string sidecarPath)
+    {
+        TaskCompletionSource<bool> completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        StackPanel content = new()
+        {
+            Spacing = 14,
+            Margin = new Thickness(12, 4, 12, 14),
+        };
+        content.Children.Add(new TextBlock
+        {
+            Text = L(
+                "This LRC predates MusicLoom's ownership records, or it has been edited. MusicLoom cannot determine its author. It will not be replaced without your approval.",
+                "这个 LRC 可能早于 Musicloom 的归属记录，也可能经过手工编辑。程序无法确定其作者，因此不会未经确认直接替换。"),
+            TextWrapping = TextWrapping.WrapWholeWords,
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = L(
+                "Confirming makes a separate byte-for-byte .bak backup beside the LRC first. Only after verifying the backup will MusicLoom adopt this exact file version and try to write the selected NetEase lyrics. The backup is never removed automatically.",
+                "确认后会先在 LRC 同目录创建逐字节一致的 .bak 备份。验证备份成功后，Musicloom 才会接管当前文件版本并尝试写入所选网易云歌词。备份不会被自动删除。"),
+            TextWrapping = TextWrapping.WrapWholeWords,
+            Foreground = (Brush)Application.Current.Resources[
+                "TextFillColorSecondaryBrush"],
+        });
+        content.Children.Add(new TextBox
+        {
+            Text = sidecarPath,
+            IsReadOnly = true,
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        StackPanel buttons = new()
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 10,
+        };
+        Button cancel = new()
+        {
+            Content = L("Cancel", "取消"),
+            MinWidth = 94,
+        };
+        Button confirm = new()
+        {
+            Content = L("Back up and adopt", "备份并接管"),
+            MinWidth = 130,
+        };
+        if (Application.Current.Resources.TryGetValue(
+                "AccentButtonStyle", out object? style)
+            && style is Style accent)
+        {
+            confirm.Style = accent;
+        }
+
+        cancel.Click += (_, _) =>
+        {
+            completion.TrySetResult(false);
+            CloseMatchOverlay();
+        };
+        confirm.Click += (_, _) =>
+        {
+            completion.TrySetResult(true);
+            CloseMatchOverlay();
+        };
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(confirm);
+        content.Children.Add(buttons);
+
+        CloseMatchOverlay();
+        ShowAppOverlay(
+            L("Back up and adopt existing LRC", "备份并接管现有 LRC"),
+            content,
+            maxWidth: 720,
+            maxHeight: 490,
+            onClosed: () => completion.TrySetResult(false),
+            compact: true);
+        return await completion.Task;
+    }
+
     private async void RefreshMatchedLyricsButton_Click(
         object sender,
         RoutedEventArgs e)
