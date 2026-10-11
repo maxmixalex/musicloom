@@ -241,21 +241,21 @@
                       <MenuFlyoutItem x:Name="ContextPlayItem" Text="Play" Click="ContextPlayItem_Click">
                         <MenuFlyoutItem.Icon><SymbolIcon Symbol="Play" /></MenuFlyoutItem.Icon>
                       </MenuFlyoutItem>
-                      <MenuFlyoutSeparator />
+                      <MenuFlyoutSeparator x:Name="ContextFileSeparator" />
                       <MenuFlyoutItem x:Name="ContextOpenSourceItem" Text="Open source folder" Click="ContextOpenSourceItem_Click">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon>
                       </MenuFlyoutItem>
                       <MenuFlyoutItem x:Name="ContextOpenDestinationItem" Text="Open destination folder" Click="ContextOpenDestinationItem_Click">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon>
                       </MenuFlyoutItem>
-                      <MenuFlyoutSeparator />
+                      <MenuFlyoutSeparator x:Name="ContextCopySeparator" />
                       <MenuFlyoutItem x:Name="ContextCopySourceItem" Text="Copy source path" Click="ContextCopySourceItem_Click">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
                       </MenuFlyoutItem>
                       <MenuFlyoutItem x:Name="ContextCopyDestinationItem" Text="Copy destination path" Click="ContextCopyDestinationItem_Click">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
                       </MenuFlyoutItem>
-                      <MenuFlyoutSeparator />
+                      <MenuFlyoutSeparator x:Name="ContextMatchSeparator" />
                       <MenuFlyoutItem x:Name="ContextFindMatchItem" Text="Find NetEase match…" Click="ContextFindMatchItem_Click">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE721;" /></MenuFlyoutItem.Icon>
                       </MenuFlyoutItem>
@@ -304,44 +304,40 @@
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="44" />
                           <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="74" />
                           <ColumnDefinition Width="28" />
                         </Grid.ColumnDefinitions>
                         <Border Width="44" Height="44" CornerRadius="6"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                           <Grid>
                             <Image Source="{Binding Artwork}" Stretch="Uniform" />
-                            <Border Width="17" Height="17" CornerRadius="9"
-                                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                    BorderThickness="1" BorderBrush="{ThemeResource SolidBackgroundFillColorBaseBrush}"
-                                    Visibility="{Binding PlayingIndicatorVisibility}"
-                                    IsHitTestVisible="False">
-                              <FontIcon Glyph="&#xE768;" FontSize="9" Foreground="White"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
                           </Grid>
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
                           <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                     Foreground="{Binding TitleForeground}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
                                      ToolTipService.ToolTip="{Binding TitleToolTip}" />
                           <TextBlock Text="{Binding ArtistAlbum}" FontSize="12"
-                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                     Foreground="{Binding SecondaryForeground}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
                                      ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
                         </StackPanel>
-                        <Border Grid.Column="2" Width="26" Height="26" CornerRadius="13"
-                                Background="{Binding StatusBadgeBackground}"
-                                VerticalAlignment="Center" HorizontalAlignment="Center"
-                                ToolTipService.ToolTip="{Binding StatusText}">
+                        <local:PlayingWaveform Grid.Column="2"
+                                               IsActive="{Binding IsPlaying}"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Right" />
+                        <Grid Grid.Column="3" Width="26" Height="26"
+                              VerticalAlignment="Center" HorizontalAlignment="Center"
+                              ToolTipService.ToolTip="{Binding StatusText}">
                           <FontIcon Glyph="{Binding StatusGlyph}" FontSize="13"
                                     Foreground="{Binding StatusBrush}"
                                     VerticalAlignment="Center" HorizontalAlignment="Center" />
-                        </Border>
+                        </Grid>
                       </Grid>
                     </DataTemplate>
                   </ListView.ItemTemplate>
@@ -1196,44 +1192,40 @@
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="44" />
                           <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="74" />
                           <ColumnDefinition Width="28" />
                         </Grid.ColumnDefinitions>
                         <Border Width="44" Height="44" CornerRadius="6"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                           <Grid>
                             <Image Source="{Binding Artwork}" Stretch="Uniform" />
-                            <Border Width="17" Height="17" CornerRadius="9"
-                                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                    BorderThickness="1" BorderBrush="{ThemeResource SolidBackgroundFillColorBaseBrush}"
-                                    Visibility="{Binding PlayingIndicatorVisibility}"
-                                    IsHitTestVisible="False">
-                              <FontIcon Glyph="&#xE768;" FontSize="9" Foreground="White"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
                           </Grid>
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
                           <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                     Foreground="{Binding TitleForeground}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
                                      ToolTipService.ToolTip="{Binding TitleToolTip}" />
                           <TextBlock Text="{Binding ArtistAlbum}" FontSize="12"
-                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                     Foreground="{Binding SecondaryForeground}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
                                      ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
                         </StackPanel>
-                        <Border Grid.Column="2" Width="26" Height="26" CornerRadius="13"
-                                Background="{Binding StatusBadgeBackground}"
-                                VerticalAlignment="Center" HorizontalAlignment="Center"
-                                ToolTipService.ToolTip="{Binding StatusText}">
+                        <local:PlayingWaveform Grid.Column="2"
+                                               IsActive="{Binding IsPlaying}"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Right" />
+                        <Grid Grid.Column="3" Width="26" Height="26"
+                              VerticalAlignment="Center" HorizontalAlignment="Center"
+                              ToolTipService.ToolTip="{Binding StatusText}">
                           <FontIcon Glyph="{Binding StatusGlyph}" FontSize="13"
                                     Foreground="{Binding StatusBrush}"
                                     VerticalAlignment="Center" HorizontalAlignment="Center" />
-                        </Border>
+                        </Grid>
                       </Grid>
                     </DataTemplate>
                   </ListView.ItemTemplate>

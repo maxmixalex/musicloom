@@ -103,19 +103,6 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-    public Brush StatusBadgeBackground => Kind switch
-    {
-        "warning" =>
-            new SolidColorBrush(
-                Color.FromArgb(24, 202, 116, 0)),
-        "error" =>
-            new SolidColorBrush(
-                Color.FromArgb(24, 196, 43, 28)),
-        _ =>
-            new SolidColorBrush(
-                Color.FromArgb(0, 0, 0, 0)),
-    };
-
     public Brush StatusBrush => Kind switch
     {
         "synced" =>
@@ -139,6 +126,37 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
                 Color.FromArgb(
                     255, 202, 116, 0)),
     };
+
+    // Diagnostic colors are meaningful; ordinary rows retain the
+    // native WinUI text-fill brushes, including the dim subtitle.
+    public Brush TitleForeground => Kind switch
+    {
+        "warning" or "error" => StatusBrush,
+        _ => ThemeBrush("TextFillColorPrimaryBrush",
+            Color.FromArgb(255, 32, 32, 32)),
+    };
+
+    public Brush SecondaryForeground => Kind switch
+    {
+        "warning" =>
+            new SolidColorBrush(Color.FromArgb(158, 202, 116, 0)),
+        "error" =>
+            new SolidColorBrush(Color.FromArgb(158, 196, 43, 28)),
+        _ => ThemeBrush("TextFillColorSecondaryBrush",
+            Color.FromArgb(158, 90, 90, 90)),
+    };
+
+    private static Brush ThemeBrush(string key, Color fallback)
+    {
+        if (Application.Current?.Resources is ResourceDictionary resources
+            && resources.TryGetValue(key, out object? value)
+            && value is Brush brush)
+        {
+            return brush;
+        }
+
+        return new SolidColorBrush(fallback);
+    }
 
     public string StatusGlyph => Kind switch
     {
@@ -195,8 +213,8 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
                 nameof(StatusBrush));
             OnPropertyChanged(
                 nameof(StatusGlyph));
-            OnPropertyChanged(
-                nameof(StatusBadgeBackground));
+            OnPropertyChanged(nameof(TitleForeground));
+            OnPropertyChanged(nameof(SecondaryForeground));
         }
     }
 
