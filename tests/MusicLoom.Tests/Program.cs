@@ -22,6 +22,7 @@ List<(string Name, Action Test)> tests =
     ("LRC projection preserves original/translation order", LrcPresentationOrder),
     ("LRC slash delimiter only splits explicit bilingual text", LrcSlashPresentation),
     ("Scanning resolves canonical embedded/local/NetEase lyrics", LibraryLyricsIndexerRegression.Run),
+    ("Managed LRC provenance and bilingual errors are regression-tested", ManagedSidecarRegression.Run),
     ("NetEase candidate ranking balances duration and metadata", NeteaseCandidateRanking),
     ("Auto-matching skips already checked unchanged audio", AutoMatchEligibilityRegression.Run),
     ("Library layout keeps legacy artist/album behavior", Layout),
