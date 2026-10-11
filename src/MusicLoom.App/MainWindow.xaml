@@ -304,9 +304,18 @@
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="44" />
                           <ColumnDefinition Width="*" />
-                          <ColumnDefinition Width="74" />
                           <ColumnDefinition Width="28" />
                         </Grid.ColumnDefinitions>
+                        <!-- Draw the recording's real amplitude envelope
+                             underneath the entire row's content. -->
+                        <local:PlayingWaveform Grid.Column="0"
+                                               Grid.ColumnSpan="3"
+                                               Margin="-10,-7"
+                                               HorizontalAlignment="Stretch"
+                                               VerticalAlignment="Stretch"
+                                               IsActive="{Binding IsPlaying}"
+                                               Samples="{Binding WaveformSamples}"
+                                               PlaybackProgress="{Binding PlaybackProgress}" />
                         <Border Width="44" Height="44" CornerRadius="6"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                           <Grid>
@@ -327,11 +336,8 @@
                                      MaxLines="{Binding RowMaxLines}"
                                      ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
                         </StackPanel>
-                        <local:PlayingWaveform Grid.Column="2"
-                                               IsActive="{Binding IsPlaying}"
-                                               VerticalAlignment="Center"
-                                               HorizontalAlignment="Right" />
-                        <Grid Grid.Column="3" Width="26" Height="26"
+
+                        <Grid Grid.Column="2" Width="26" Height="26"
                               VerticalAlignment="Center" HorizontalAlignment="Center"
                               ToolTipService.ToolTip="{Binding StatusText}">
                           <FontIcon Glyph="{Binding StatusGlyph}" FontSize="13"
@@ -1192,9 +1198,18 @@
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="44" />
                           <ColumnDefinition Width="*" />
-                          <ColumnDefinition Width="74" />
                           <ColumnDefinition Width="28" />
                         </Grid.ColumnDefinitions>
+                        <!-- Draw the recording's real amplitude envelope
+                             underneath the entire row's content. -->
+                        <local:PlayingWaveform Grid.Column="0"
+                                               Grid.ColumnSpan="3"
+                                               Margin="-10,-7"
+                                               HorizontalAlignment="Stretch"
+                                               VerticalAlignment="Stretch"
+                                               IsActive="{Binding IsPlaying}"
+                                               Samples="{Binding WaveformSamples}"
+                                               PlaybackProgress="{Binding PlaybackProgress}" />
                         <Border Width="44" Height="44" CornerRadius="6"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                           <Grid>
@@ -1215,11 +1230,8 @@
                                      MaxLines="{Binding RowMaxLines}"
                                      ToolTipService.ToolTip="{Binding SubtitleToolTip}" />
                         </StackPanel>
-                        <local:PlayingWaveform Grid.Column="2"
-                                               IsActive="{Binding IsPlaying}"
-                                               VerticalAlignment="Center"
-                                               HorizontalAlignment="Right" />
-                        <Grid Grid.Column="3" Width="26" Height="26"
+
+                        <Grid Grid.Column="2" Width="26" Height="26"
                               VerticalAlignment="Center" HorizontalAlignment="Center"
                               ToolTipService.ToolTip="{Binding StatusText}">
                           <FontIcon Glyph="{Binding StatusGlyph}" FontSize="13"
