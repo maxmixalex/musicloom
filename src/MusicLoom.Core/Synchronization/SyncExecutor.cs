@@ -1336,18 +1336,18 @@ public sealed class SyncExecutor
             await File.ReadAllTextAsync(sidecarPath, cancellationToken));
         string actualFingerprint = ComputeLyricsFingerprint(existing);
 
-        // A known mismatch means an external modification: never override
-        // its evidence even if an older provider cache happens to match.
-        if (!string.IsNullOrWhiteSpace(previousFingerprint))
-        {
-            return string.Equals(
+        if (!string.IsNullOrWhiteSpace(previousFingerprint)
+            && string.Equals(
                 actualFingerprint, previousFingerprint,
-                StringComparison.OrdinalIgnoreCase);
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
         }
 
-        // Older builds can lose the track fingerprint on a source rescan.
-        // Recover only when the current LRC exactly matches persisted
-        // MusicLoom output or the old provider version.
+        // The TrackState hash may be stale as well as absent. An exact
+        // independently recorded managed output is valid evidence even
+        // when the transient track hash disagrees. If neither matches,
+        // the file is protected against overwrite/removal.
         return _managedLyricsRegistry is not null
             && await _managedLyricsRegistry.IsKnownOutputAsync(
                 sourcePath, destinationPath, actualFingerprint,
