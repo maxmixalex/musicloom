@@ -106,10 +106,13 @@ internal static class LibraryLyricsIndexerRegression
                 sourcePath, 42,
                 LrcDocument.Parse("[00:01.000]NetEase candidate"));
 
-            // The next warm scan sees unchanged signatures and does not
-            // re-open the same source audio.
+            // A provider update changed the indexed remote signature,
+            // so the next pass rechecks local priority once. A second
+            // identical warm pass must not reopen source audio again.
             await indexer.RefreshAsync(plan, state);
-            Equal(1, embeddedReads);
+            Equal(2, embeddedReads);
+            await indexer.RefreshAsync(plan, state);
+            Equal(2, embeddedReads);
 
             embedded = null;
             await File.AppendAllTextAsync(sourcePath, "newtag");
