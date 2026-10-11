@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Data.Sqlite;
 using MusicLoom.Core.Lyrics;
 
@@ -11,7 +9,7 @@ namespace MusicLoom.App;
 /// full rewrite of sync_tracks and keeps lyrics when the destination is absent.
 /// </summary>
 internal sealed class SqliteLyricsCache :
-    ITrackLyricsCache, ILibraryLyricsCache, IManagedLyricsOutputRegistry
+    ITrackLyricsCache, ILibraryLyricsCache
 {
     private readonly string _databasePath;
 
@@ -102,40 +100,6 @@ internal sealed class SqliteLyricsCache :
 
         try
         {
-            if (explicitSelection)
-            {
-                // A manual match replaces the provider cache before the
-                // writer can verify an older generated .lrc. Keep the
-                // previous canonical provider version's fingerprint so a
-                // legacy output lacking TrackState provenance is safe to
-                // upgrade *only* when its actual bytes still match.
-                await using SqliteCommand previous = connection.CreateCommand();
-                previous.Transaction = transaction;
-                previous.CommandText =
-                    "SELECT lrc FROM sync_lyrics WHERE source_path = $source;";
-                previous.Parameters.AddWithValue("$source", sourcePath);
-                string? oldText = (await previous.ExecuteScalarAsync(
-                    cancellationToken)) as string;
-                if (!string.IsNullOrWhiteSpace(oldText)
-                    && !string.Equals(oldText, document, StringComparison.Ordinal))
-                {
-                    string oldFingerprint = Fingerprint(
-                        LrcDocument.Parse(oldText).ToString());
-                    await using SqliteCommand history = connection.CreateCommand();
-                    history.Transaction = transaction;
-                    history.CommandText =
-                        """
-                        INSERT INTO previous_managed_lrc (source_path, fingerprint)
-                        VALUES ($source, $fingerprint)
-                        ON CONFLICT(source_path) DO UPDATE SET
-                            fingerprint = excluded.fingerprint;
-                        """;
-                    history.Parameters.AddWithValue("$source", sourcePath);
-                    history.Parameters.AddWithValue("$fingerprint", oldFingerprint);
-                    await history.ExecuteNonQueryAsync(cancellationToken);
-                }
-            }
-
             await using (SqliteCommand remote = connection.CreateCommand())
             {
                 remote.Transaction = transaction;
@@ -219,64 +183,6 @@ internal sealed class SqliteLyricsCache :
             transaction.Rollback();
             throw;
         }
-    }
-
-    private static string Fingerprint(string text) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))
-            .ToLowerInvariant();
-
-    public async Task<bool> IsKnownOutputAsync(
-        string sourcePath, string destinationAudioPath,
-        string normalizedFingerprint,
-        CancellationToken cancellationToken = default)
-    {
-        await using SqliteConnection connection =
-            await OpenAsync(cancellationToken);
-        await using SqliteCommand command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT EXISTS (
-                SELECT 1 FROM managed_lrc_output
-                WHERE source_path = $source AND destination_path = $destination
-                  AND fingerprint = $fingerprint
-            ) OR EXISTS (
-                SELECT 1 FROM previous_managed_lrc
-                WHERE source_path = $source AND fingerprint = $fingerprint
-            );
-            """;
-        command.Parameters.AddWithValue("$source", sourcePath);
-        command.Parameters.AddWithValue(
-            "$destination", Path.GetFullPath(destinationAudioPath));
-        command.Parameters.AddWithValue("$fingerprint", normalizedFingerprint);
-        return Convert.ToInt32(
-            await command.ExecuteScalarAsync(cancellationToken)) != 0;
-    }
-
-    public async Task RecordWrittenAsync(
-        string sourcePath, string destinationAudioPath,
-        string normalizedFingerprint,
-        CancellationToken cancellationToken = default)
-    {
-        await using SqliteConnection connection =
-            await OpenAsync(cancellationToken);
-        await using SqliteCommand command = connection.CreateCommand();
-        command.CommandText =
-            """
-            INSERT INTO managed_lrc_output (
-                source_path, destination_path, fingerprint, recorded_at
-            ) VALUES ($source, $destination, $fingerprint, $time)
-            ON CONFLICT(source_path) DO UPDATE SET
-                destination_path = excluded.destination_path,
-                fingerprint = excluded.fingerprint,
-                recorded_at = excluded.recorded_at;
-            """;
-        command.Parameters.AddWithValue("$source", sourcePath);
-        command.Parameters.AddWithValue(
-            "$destination", Path.GetFullPath(destinationAudioPath));
-        command.Parameters.AddWithValue("$fingerprint", normalizedFingerprint);
-        command.Parameters.AddWithValue("$time",
-            DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
-        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<LibraryLyricsRecord?> GetLibraryAsync(
@@ -538,21 +444,6 @@ internal sealed class SqliteLyricsCache :
                     updated_at TEXT NOT NULL
                 );
 
-                -- Durable proof of MusicLoom-written LRC output: unrelated
-                -- provider/metadata changes cannot erase its fingerprint.
-                CREATE TABLE IF NOT EXISTS managed_lrc_output (
-                    source_path TEXT PRIMARY KEY COLLATE NOCASE,
-                    destination_path TEXT NOT NULL COLLATE NOCASE,
-                    fingerprint TEXT NOT NULL,
-                    recorded_at TEXT NOT NULL
-                );
-
-                -- Upgrade assistance for older MusicLoom sidecars where
-                -- track state lost the last output fingerprint.
-                CREATE TABLE IF NOT EXISTS previous_managed_lrc (
-                    source_path TEXT PRIMARY KEY COLLATE NOCASE,
-                    fingerprint TEXT NOT NULL
-                );
                 """;
             await init.ExecuteNonQueryAsync(cancellationToken);
 
