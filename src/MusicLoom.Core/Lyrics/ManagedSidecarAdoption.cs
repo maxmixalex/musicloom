@@ -105,7 +105,7 @@ public static class ManagedSidecarAdoption
         }
 
         string normalized = LrcDocument.Parse(
-            await File.ReadAllTextAsync(lrcPath, cancellationToken)).ToString();
+            await File.ReadAllTextAsync(backupPath, cancellationToken)).ToString();
         string fingerprint = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(normalized)))
             .ToLowerInvariant();
@@ -122,12 +122,13 @@ public static class ManagedSidecarAdoption
 
     private static bool IsUnder(string path, string parent)
     {
-        string root = Path.TrimEndingDirectorySeparator(
-            Path.GetFullPath(parent));
-        string prefix = root + Path.DirectorySeparatorChar;
-        return path.StartsWith(prefix,
-            OperatingSystem.IsWindows()
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal);
+        string relative = Path.GetRelativePath(
+            Path.GetFullPath(parent), path);
+        return !Path.IsPathRooted(relative)
+            && relative != "."
+            && relative != ".."
+            && !relative.StartsWith(
+                ".." + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal);
     }
 }
