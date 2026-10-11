@@ -48,6 +48,9 @@ public enum LibraryLyricsOrigin
     Embedded,
     Sidecar,
     Netease,
+    // Explicit user-selected provider lyrics. This intent is durable and
+    // takes priority over an embedded or sidecar lyric on future scans.
+    ManualNetease,
 }
 
 public sealed record LibraryLyricsRecord(

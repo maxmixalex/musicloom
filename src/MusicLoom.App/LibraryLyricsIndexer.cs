@@ -125,9 +125,37 @@ internal sealed class LibraryLyricsIndexer
             entry.SourcePath,
             out LibraryLyricsRecord? current);
 
+        // Recover the user's prior manual confirmation when upgrading
+        // from builds that had no explicit lyric-provenance mode. Ordinary
+        // automatic matches still follow local-first precedence.
+        bool confirmedProvider = track?.NeteaseMatchConfirmed == true
+            && remote is { HasLyrics: true };
+        bool explicitProvider =
+            current?.Origin == LibraryLyricsOrigin.ManualNetease
+            && current.SongId == songId;
+        bool preferProvider = explicitProvider || confirmedProvider;
+
         if (current?.SourceSignature == signature
-            && current.SongId == songId)
+            && current.SongId == songId
+            && (!preferProvider
+                || current.Origin == LibraryLyricsOrigin.ManualNetease))
         {
+            return;
+        }
+
+        // User-selected lyrics survive source-tag/sidecar rescans and
+        // remain distinct from automatic recognition.
+        if (preferProvider && remote is not null)
+        {
+            LibraryLyricsRecord preferred = new(
+                entry.SourcePath,
+                LibraryLyricsOrigin.ManualNetease,
+                remote.Lrc,
+                songId,
+                signature,
+                DateTimeOffset.UtcNow);
+            changed.Add(preferred);
+            currentRows[entry.SourcePath] = preferred;
             return;
         }
 

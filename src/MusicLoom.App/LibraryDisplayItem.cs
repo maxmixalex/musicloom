@@ -14,6 +14,8 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
     private string _kind;
     private string _statusText;
     private bool _isPlaying;
+    private float[]? _waveformSamples;
+    private double _playbackProgress;
     private TextWrapping _rowTextWrapping =
         TextWrapping.NoWrap;
     private TextTrimming _rowTextTrimming =
@@ -93,8 +95,36 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
     public string? SubtitleToolTip =>
         _subtitleToolTip;
 
-    public bool IsPlaying =>
-        _isPlaying;
+    public bool IsPlaying => _isPlaying;
+
+    // The values come from decoded PCM RMS; no synthetic animation.
+    public float[]? WaveformSamples => _waveformSamples;
+    public double PlaybackProgress => _playbackProgress;
+
+    public void SetWaveform(float[]? samples)
+    {
+        if (ReferenceEquals(samples, _waveformSamples))
+        {
+            return;
+        }
+
+        _waveformSamples = samples;
+        OnPropertyChanged(nameof(WaveformSamples));
+    }
+
+    public void SetPlaybackProgress(double progress)
+    {
+        double value = double.IsFinite(progress)
+            ? Math.Clamp(progress, 0, 1)
+            : 0;
+        if (Math.Abs(value - _playbackProgress) < 0.0005)
+        {
+            return;
+        }
+
+        _playbackProgress = value;
+        OnPropertyChanged(nameof(PlaybackProgress));
+    }
 
     // Selection remains a ListView concern. Playback and sync problems are
     // independent, so neither changes the selection background or indicator.

@@ -56,11 +56,32 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
             reader.GetInt32(3));
     }
 
-    public async Task SaveAsync(
+    public Task SaveAsync(
         string sourcePath,
         long songId,
         LrcDocument? lyrics,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        SaveCoreAsync(
+            sourcePath, songId, lyrics,
+            explicitSelection: false, cancellationToken);
+
+    // Only a deliberate "Use selected" / "Update lyrics" action may
+    // override locally indexed lyrics. Auto-matching never calls this.
+    public Task SaveExplicitAsync(
+        string sourcePath,
+        long songId,
+        LrcDocument? lyrics,
+        CancellationToken cancellationToken = default) =>
+        SaveCoreAsync(
+            sourcePath, songId, lyrics,
+            explicitSelection: true, cancellationToken);
+
+    private async Task SaveCoreAsync(
+        string sourcePath,
+        long songId,
+        LrcDocument? lyrics,
+        bool explicitSelection,
+        CancellationToken cancellationToken)
     {
         await using SqliteConnection connection =
             await OpenAsync(cancellationToken);
@@ -104,9 +125,9 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
                 await remote.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            // Preserve embedded or hand-managed local lyrics. They outrank
-            // any provider match; the scanner may reevaluate their source
-            // signatures later without allowing NetEase to erase them.
+            // Passive recognition preserves local lyrics. An explicit
+            // selection changes provenance to ManualNetease atomically,
+            // so later scans know the user's preference is intentional.
             await using (SqliteCommand canonical =
                 connection.CreateCommand())
             {
@@ -126,22 +147,31 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
                         song_id = excluded.song_id,
                         source_signature = excluded.source_signature,
                         updated_at = excluded.updated_at
-                    WHERE library_lyrics.origin NOT IN (
-                        $embedded, $sidecar);
+                    WHERE $explicit = 1
+                       OR library_lyrics.origin NOT IN (
+                           $embedded, $sidecar, $manual);
                     """;
                 canonical.Parameters.AddWithValue("$source", sourcePath);
                 canonical.Parameters.AddWithValue(
-                    "$origin", (int)LibraryLyricsOrigin.Netease);
+                    "$origin", (int)(explicitSelection
+                        ? LibraryLyricsOrigin.ManualNetease
+                        : LibraryLyricsOrigin.Netease));
                 canonical.Parameters.AddWithValue(
                     "$lrc", document is null ? DBNull.Value : document);
                 canonical.Parameters.AddWithValue("$songId", songId);
                 canonical.Parameters.AddWithValue(
-                    "$signature", "provider:" + stamp);
+                    "$signature",
+                    (explicitSelection ? "manual-provider:" : "provider:")
+                    + stamp);
                 canonical.Parameters.AddWithValue("$updatedAt", stamp);
                 canonical.Parameters.AddWithValue(
                     "$embedded", (int)LibraryLyricsOrigin.Embedded);
                 canonical.Parameters.AddWithValue(
                     "$sidecar", (int)LibraryLyricsOrigin.Sidecar);
+                canonical.Parameters.AddWithValue(
+                    "$manual", (int)LibraryLyricsOrigin.ManualNetease);
+                canonical.Parameters.AddWithValue(
+                    "$explicit", explicitSelection ? 1 : 0);
                 await canonical.ExecuteNonQueryAsync(cancellationToken);
             }
 
