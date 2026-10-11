@@ -113,6 +113,24 @@ internal static class ManagedSidecarRegression
                 Path.Combine(root, "musicloom.db")).IsKnownOutputAsync(
                     sourcePath, destination, Hash(latest)));
 
+            // Source rescans can leave a stale track-level hash. The
+            // independent verified managed-output record is sufficient
+            // to recover that output without a false conflict.
+            state.Tracks[sourcePath] = completed with
+            {
+                LyricsFingerprint = "stale-legacy-hash",
+            };
+            await cache.SaveExplicitAsync(
+                sourcePath, 42,
+                LrcDocument.Parse("[00:01.000]Latest safely verified"));
+            SyncExecutionSummary recovered = await executor.ExecuteAsync(
+                settings, new LibraryPlan([entry]), state, store,
+                lyricsOnly: true);
+            Assert(recovered.Errors.Count == 0);
+            Assert((await File.ReadAllTextAsync(sidecar))
+                == "[00:01.000]Latest safely verified");
+            completed = (await store.LoadAsync()).Tracks[sourcePath];
+
             // An external modification must still block replacement.
             await File.WriteAllTextAsync(
                 sidecar, "[00:01.000]User-edited content");
