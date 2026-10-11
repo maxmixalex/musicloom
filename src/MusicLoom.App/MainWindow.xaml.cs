@@ -85,6 +85,7 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _waveformCancellation;
     private readonly Dictionary<string, CachedWaveform> _waveformCache =
         new(StringComparer.OrdinalIgnoreCase);
+    private ReactiveAudioFrames? _playingAudioFrames;
     private bool _busy;
     private bool _loadingSettings = true;
     private bool _refreshingLocalizedChoices;
@@ -219,12 +220,12 @@ public sealed partial class MainWindow : Window
             {
                 // Reproduce the originally failing SizeChanged pathway.
                 host.Width = 520;
-                waveform.PlaybackProgress = 0.5;
+                waveform.Samples = BuildWaveformSmokeFrame(0.35f);
             }
             else if (successfulRenders == 2)
             {
                 host.Width = 640;
-                waveform.PlaybackProgress = 0.85;
+                waveform.Samples = BuildWaveformSmokeFrame(0.85f);
             }
             else if (successfulRenders == 3)
             {
@@ -249,15 +250,20 @@ public sealed partial class MainWindow : Window
             }
         };
 
-        float[] fixture = new float[384];
-        for (int i = 0; i < fixture.Length; i++)
+        waveform.Samples = BuildWaveformSmokeFrame(0.6f);
+        waveform.IsActive = true;
+    }
+
+    private static float[] BuildWaveformSmokeFrame(float amplitude)
+    {
+        float[] levels = new float[ReactiveAudioFrames.BandCount];
+        for (int i = 0; i < levels.Length; i++)
         {
-            fixture[i] = (float)(
-                Math.Abs(Math.Sin(i / 12.0)) * 0.85);
+            levels[i] = amplitude *
+                (float)Math.Abs(Math.Sin(i / 3.4));
         }
 
-        waveform.Samples = fixture;
-        waveform.IsActive = true;
+        return levels;
     }
 
     private void InitializePlayer()
@@ -313,7 +319,7 @@ public sealed partial class MainWindow : Window
         {
             Interval =
                 TimeSpan.FromMilliseconds(
-                    120),
+                    50),
         };
         timer.Tick +=
             PlayerTimer_Tick;
@@ -476,49 +482,50 @@ public sealed partial class MainWindow : Window
         CancellationTokenSource operation = new();
         _waveformCancellation = operation;
         string path = item.Entry.SourcePath;
+        _playingAudioFrames = null;
         item.SetWaveform(null);
-        item.SetPlaybackProgress(0);
 
         try
         {
             FileInfo source = new(path);
+            ReactiveAudioFrames? frames;
             if (_waveformCache.TryGetValue(path, out CachedWaveform? cached)
                 && cached.Size == source.Length
                 && cached.LastWriteUtcTicks == source.LastWriteTimeUtc.Ticks)
             {
-                if (ReferenceEquals(_playingLibraryItem, item))
+                frames = cached.Frames;
+            }
+            else
+            {
+                // Actual frequency-domain energy and PCM loudness per 50 ms
+                // frame. This is unrelated to the horizontal playback
+                // progress track that made the previous visual static.
+                frames = await new ReactiveAudioAnalyzer()
+                    .AnalyzeAsync(path, operation.Token);
+                if (frames is null || operation.IsCancellationRequested)
                 {
-                    item.SetWaveform(cached.Samples);
+                    return;
                 }
-                return;
+
+                if (_waveformCache.Count >= 8)
+                {
+                    _waveformCache.Remove(_waveformCache.Keys.First());
+                }
+
+                _waveformCache[path] = new CachedWaveform(
+                    source.Length,
+                    source.LastWriteTimeUtc.Ticks,
+                    frames);
             }
 
-            float[]? levels = await new TrackWaveformAnalyzer()
-                .AnalyzeAsync(path, operation.Token);
-            if (operation.IsCancellationRequested
-                || levels is not { Length: > 1 })
-            {
-                return;
-            }
-
-            if (_waveformCache.Count >= 8)
-            {
-                _waveformCache.Remove(_waveformCache.Keys.First());
-            }
-            _waveformCache[path] = new CachedWaveform(
-                source.Length,
-                source.LastWriteTimeUtc.Ticks,
-                levels);
-
-            // A library scan may have recreated the display item during
-            // decoding. Update the playing row by source identity, not the
-            // stale object reference captured when playback started.
-            if (string.Equals(
+            if (!operation.IsCancellationRequested
+                && string.Equals(
                     _playingLibraryItem?.Entry.SourcePath,
                     path,
                     StringComparison.OrdinalIgnoreCase))
             {
-                _playingLibraryItem?.SetWaveform(levels);
+                _playingAudioFrames = frames;
+                UpdateReactiveWaveform();
             }
         }
         catch (OperationCanceledException)
@@ -527,12 +534,29 @@ public sealed partial class MainWindow : Window
         catch (Exception exception)
         {
             AppDiagnostics.LogException(
-                "Could not analyze the playing audio waveform.", exception);
+                "Could not analyze live music frequency/loudness.", exception);
         }
     }
 
+    private void UpdateReactiveWaveform()
+    {
+        if (_playingLibraryItem is not LibraryDisplayItem item
+            || _playingAudioFrames is not ReactiveAudioFrames frames
+            || _mediaPlayer.PlaybackSession.PlaybackState
+                != MediaPlaybackState.Playing)
+        {
+            return;
+        }
+
+        // Audio timestamps select measured spectral frames. The shape
+        // itself expresses the frequencies/volume at that moment, not
+        // how far the song's playback position has advanced across the row.
+        TimeSpan time = _mediaPlayer.PlaybackSession.Position;
+        item.SetWaveform(frames.At(time));
+    }
+
     private sealed record CachedWaveform(
-        long Size, long LastWriteUtcTicks, float[] Samples);
+        long Size, long LastWriteUtcTicks, ReactiveAudioFrames Frames);
 
     private async Task PlayNetEasePreviewAsync(
         NeteaseMatchCandidate candidate,
@@ -560,6 +584,7 @@ public sealed partial class MainWindow : Window
                     false);
             _playingLibraryItem = null;
             _waveformCancellation?.Cancel();
+            _playingAudioFrames = null;
             _playingPreviewCandidate =
                 candidate;
             _playbackQueue = [];
@@ -835,6 +860,7 @@ public sealed partial class MainWindow : Window
         object e)
     {
         UpdatePlayerProgress();
+        UpdateReactiveWaveform();
         UpdatePlaybackLyrics();
     }
 
@@ -879,11 +905,6 @@ public sealed partial class MainWindow : Window
         {
             _updatingPlayerProgress = false;
         }
-
-        _playingLibraryItem?.SetPlaybackProgress(
-            durationSeconds > 0
-                ? positionSeconds / durationSeconds
-                : 0);
 
         PlayerTimeText.Text =
             $"{FormatPlayerTime(position)} / {FormatPlayerTime(duration)}";
@@ -3622,7 +3643,6 @@ public sealed partial class MainWindow : Window
             _playingLibraryItem
                 ?.Entry.SourcePath;
         float[]? playingWaveform = _playingLibraryItem?.WaveformSamples;
-        double playingProgress = _playingLibraryItem?.PlaybackProgress ?? 0;
         string[] queueSources =
             _playbackQueue
                 .Select(static item =>
@@ -3685,7 +3705,6 @@ public sealed partial class MainWindow : Window
             {
                 displayItem.SetPlaying(true);
                 displayItem.SetWaveform(playingWaveform);
-                displayItem.SetPlaybackProgress(playingProgress);
                 _playingLibraryItem =
                     displayItem;
             }
