@@ -56,10 +56,14 @@ public sealed class SidecarLrcLyricsWriter : ITrackLyricsWriter
                     encoderShouldEmitUTF8Identifier: false),
                 cancellationToken);
 
+            // Honor the overwrite preference at the filesystem
+            // operation too, not only at the earlier Exists check.
+            // Otherwise a target created concurrently could be replaced
+            // despite OverrideExisting = false.
             File.Move(
                 temporary,
                 sidecar,
-                overwrite: true);
+                overwrite: overrideExisting);
         }
         finally
         {

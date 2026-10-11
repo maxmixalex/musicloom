@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.Scanning;
 using MusicLoom.Core.State;
@@ -9,9 +7,10 @@ namespace MusicLoom.App;
 
 /// <summary>
 /// Resolves the one canonical lyric document during a library scan.
-/// Embedded source tags > user-managed .lrc > NetEase provider cache.
-/// Destination sidecars previously created by MusicLoom are output replicas,
-/// so they never outrank source tags or the canonical NetEase document.
+/// Embedded source tags > source-sidecar .lrc > NetEase provider cache,
+/// except for explicit user-selected NetEase lyrics.
+/// The destination directory is exclusively generated output: its LRCs
+/// must never override a canonical database document during scanning.
 /// </summary>
 internal sealed class LibraryLyricsIndexer
 {
@@ -106,20 +105,13 @@ internal sealed class LibraryLyricsIndexer
         string sourceSidecarPath =
             SidecarLrcLyricsWriter.GetSidecarPath(entry.SourcePath);
 
-        string? destinationSidecarPath =
-            entry.DestinationPath is string destination
-                ? SidecarLrcLyricsWriter.GetSidecarPath(destination)
-                : null;
-
         string signature = string.Join(
             "|",
             Stamp(entry.SourcePath),
             Stamp(sourceSidecarPath),
-            Stamp(destinationSidecarPath),
             songId?.ToString() ?? "none",
             remote?.FetchedAt.UtcTicks.ToString() ?? "no-remote",
-            remote?.MergeVersion.ToString() ?? "no-merge-version",
-            track?.LyricsFingerprint ?? "no-fingerprint");
+            remote?.MergeVersion.ToString() ?? "no-merge-version");
 
         currentRows.TryGetValue(
             entry.SourcePath,
@@ -186,92 +178,6 @@ internal sealed class LibraryLyricsIndexer
             }
         }
 
-        if (lyrics is null
-            && destinationSidecarPath is not null
-            && !string.Equals(
-                sourceSidecarPath,
-                destinationSidecarPath,
-                StringComparison.OrdinalIgnoreCase))
-        {
-            string? destinationSidecar =
-                await ReadIfPresentAsync(
-                    destinationSidecarPath, cancellationToken);
-
-            if (!string.IsNullOrWhiteSpace(destinationSidecar))
-            {
-                bool generatedOutput =
-                    IsManagedOutput(
-                        destinationSidecar,
-                        track?.LyricsFingerprint);
-
-                if (!generatedOutput
-                    && remote?.HasLyrics == true
-                    && string.Equals(
-                        LrcDocument.Parse(destinationSidecar).ToString(),
-                        remote.Lrc,
-                        StringComparison.Ordinal))
-                {
-                    // A replica identical to MusicLoom's cached output
-                    // cannot be distinguished from another writer, but it
-                    // has no user-only edits to protect or re-import.
-                    generatedOutput = true;
-                }
-
-                if (!generatedOutput
-                    && string.IsNullOrWhiteSpace(track?.LyricsFingerprint)
-                    && entry.DestinationPath is string destinationAudio)
-                {
-                    // Old state may have lost a generated LRC fingerprint.
-                    // Consult durable output history before misclassifying
-                    // that file as a user-managed source-sidecar override.
-                    LrcDocument parsed = LrcDocument.Parse(destinationSidecar);
-                    if (parsed.Lines.Count > 0)
-                    {
-                        string digest = Convert.ToHexString(
-                            SHA256.HashData(
-                                Encoding.UTF8.GetBytes(parsed.ToString())))
-                            .ToLowerInvariant();
-                        generatedOutput =
-                            await _cache.IsKnownOutputAsync(
-                                entry.SourcePath,
-                                destinationAudio,
-                                digest,
-                                cancellationToken);
-                    }
-                }
-
-                if (!generatedOutput)
-                {
-                    origin = LibraryLyricsOrigin.Sidecar;
-                    lyrics = destinationSidecar;
-                }
-                else if (remote is null
-                    && songId is long oldSongId)
-                {
-                    // One-time migration from an old version of MusicLoom
-                    // that only recorded a fingerprint and wrote an LRC.
-                    LrcDocument migrated =
-                        LrcDocument.Parse(destinationSidecar);
-                    if (migrated.Lines.Count > 0)
-                    {
-                        await _cache.SaveAsync(
-                            entry.SourcePath,
-                            oldSongId,
-                            migrated,
-                            cancellationToken);
-                        remote = await _cache.GetAsync(
-                            entry.SourcePath,
-                            oldSongId,
-                            cancellationToken);
-                        if (remote is not null)
-                        {
-                            remoteRows[entry.SourcePath] = remote;
-                        }
-                    }
-                }
-            }
-        }
-
         if (lyrics is null && remote?.HasLyrics == true)
         {
             origin = LibraryLyricsOrigin.Netease;
@@ -283,18 +189,6 @@ internal sealed class LibraryLyricsIndexer
             // provider record; neither can resurrect a previous match.
             origin = LibraryLyricsOrigin.Netease;
         }
-
-        // A one-time migration above may have added a remote row. Persist
-        // its timestamp in the signature to make the warm path idempotent.
-        signature = string.Join(
-            "|",
-            Stamp(entry.SourcePath),
-            Stamp(sourceSidecarPath),
-            Stamp(destinationSidecarPath),
-            songId?.ToString() ?? "none",
-            remote?.FetchedAt.UtcTicks.ToString() ?? "no-remote",
-            remote?.MergeVersion.ToString() ?? "no-merge-version",
-            track?.LyricsFingerprint ?? "no-fingerprint");
 
         if (current is not null
             && current.Origin == origin
@@ -346,29 +240,4 @@ internal sealed class LibraryLyricsIndexer
             : $"{Path.GetFullPath(path)}:missing";
     }
 
-    private static bool IsManagedOutput(
-        string text,
-        string? expectedFingerprint)
-    {
-        if (string.IsNullOrWhiteSpace(expectedFingerprint))
-        {
-            return false;
-        }
-
-        LrcDocument parsed = LrcDocument.Parse(text);
-        if (parsed.Lines.Count == 0)
-        {
-            return false;
-        }
-
-        string hash = Convert.ToHexString(
-            SHA256.HashData(
-                Encoding.UTF8.GetBytes(parsed.ToString())))
-            .ToLowerInvariant();
-
-        return string.Equals(
-            hash,
-            expectedFingerprint,
-            StringComparison.OrdinalIgnoreCase);
-    }
 }
