@@ -28,6 +28,25 @@ try
             $"Decoded window contains too little non-silent audio ({nonZero} samples).");
     }
 
+    float[]? envelope = await new TrackWaveformAnalyzer()
+        .AnalyzeAsync(path);
+    if (envelope is null
+        || envelope.Length != TrackWaveformAnalyzer.Resolution)
+    {
+        throw new InvalidOperationException(
+            "The playing-row waveform did not produce a complete PCM envelope.");
+    }
+
+    // The first second of the fixture is silent; the remaining four
+    // seconds contain real 440 Hz audio. Synthetic looping artwork would
+    // not pass this test.
+    if (envelope.Take(50).Any(static value => value > 0.02f)
+        || envelope.Skip(120).Max() < 0.5f)
+    {
+        throw new InvalidOperationException(
+            "Decoded waveform does not reflect silence and loud audio.");
+    }
+
     FingerprintResult fingerprint = NeteaseFingerprint.Generate(samples);
     if (fingerprint.Peaks.Count == 0)
     {

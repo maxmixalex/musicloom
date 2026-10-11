@@ -82,6 +82,9 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _settingsSaveCancellation;
     private int _syncProgressGeneration;
     private CancellationTokenSource? _playbackTransitionCancellation;
+    private CancellationTokenSource? _waveformCancellation;
+    private readonly Dictionary<string, CachedWaveform> _waveformCache =
+        new(StringComparer.OrdinalIgnoreCase);
     private bool _busy;
     private bool _loadingSettings = true;
     private bool _refreshingLocalizedChoices;
@@ -246,6 +249,8 @@ public sealed partial class MainWindow : Window
         _playerTimer?.Stop();
         _playbackTransitionCancellation
             ?.Cancel();
+        _waveformCancellation?.Cancel();
+        _waveformCancellation?.Dispose();
         CloseMatchOverlay();
         _mediaPlayer.Dispose();
     }
@@ -296,6 +301,7 @@ public sealed partial class MainWindow : Window
 
             _playingLibraryItem = item;
             _playingPreviewCandidate = null;
+            _ = LoadWaveformForTrackAsync(item);
 
             if (_activePlaybackLyric
                 is not null)
@@ -377,6 +383,76 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    // The visualizer is an asynchronous, cancellable PCM analysis of the
+    // actual file. Only the currently playing song gets decoded, and recent
+    // results are reused while their source file metadata is unchanged.
+    private async Task LoadWaveformForTrackAsync(
+        LibraryDisplayItem item)
+    {
+        _waveformCancellation?.Cancel();
+        _waveformCancellation?.Dispose();
+
+        CancellationTokenSource operation = new();
+        _waveformCancellation = operation;
+        string path = item.Entry.SourcePath;
+        item.SetWaveform(null);
+        item.SetPlaybackProgress(0);
+
+        try
+        {
+            FileInfo source = new(path);
+            if (_waveformCache.TryGetValue(path, out CachedWaveform? cached)
+                && cached.Size == source.Length
+                && cached.LastWriteUtcTicks == source.LastWriteTimeUtc.Ticks)
+            {
+                if (ReferenceEquals(_playingLibraryItem, item))
+                {
+                    item.SetWaveform(cached.Samples);
+                }
+                return;
+            }
+
+            float[]? levels = await new TrackWaveformAnalyzer()
+                .AnalyzeAsync(path, operation.Token);
+            if (operation.IsCancellationRequested
+                || levels is not { Length: > 1 })
+            {
+                return;
+            }
+
+            if (_waveformCache.Count >= 8)
+            {
+                _waveformCache.Remove(_waveformCache.Keys.First());
+            }
+            _waveformCache[path] = new CachedWaveform(
+                source.Length,
+                source.LastWriteTimeUtc.Ticks,
+                levels);
+
+            // A library scan may have recreated the display item during
+            // decoding. Update the playing row by source identity, not the
+            // stale object reference captured when playback started.
+            if (string.Equals(
+                    _playingLibraryItem?.Entry.SourcePath,
+                    path,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _playingLibraryItem?.SetWaveform(levels);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Could not analyze the playing audio waveform.", exception);
+        }
+    }
+
+    private sealed record CachedWaveform(
+        long Size, long LastWriteUtcTicks, float[] Samples);
+
     private async Task PlayNetEasePreviewAsync(
         NeteaseMatchCandidate candidate,
         TimeSpan? startPosition = null)
@@ -402,6 +478,7 @@ public sealed partial class MainWindow : Window
                 ?.SetPlaying(
                     false);
             _playingLibraryItem = null;
+            _waveformCancellation?.Cancel();
             _playingPreviewCandidate =
                 candidate;
             _playbackQueue = [];
@@ -721,6 +798,11 @@ public sealed partial class MainWindow : Window
         {
             _updatingPlayerProgress = false;
         }
+
+        _playingLibraryItem?.SetPlaybackProgress(
+            durationSeconds > 0
+                ? positionSeconds / durationSeconds
+                : 0);
 
         PlayerTimeText.Text =
             $"{FormatPlayerTime(position)} / {FormatPlayerTime(duration)}";
@@ -3451,6 +3533,8 @@ public sealed partial class MainWindow : Window
         string? playingSource =
             _playingLibraryItem
                 ?.Entry.SourcePath;
+        float[]? playingWaveform = _playingLibraryItem?.WaveformSamples;
+        double playingProgress = _playingLibraryItem?.PlaybackProgress ?? 0;
         string[] queueSources =
             _playbackQueue
                 .Select(static item =>
@@ -3511,8 +3595,9 @@ public sealed partial class MainWindow : Window
                     entry.SourcePath,
                     StringComparison.OrdinalIgnoreCase))
             {
-                displayItem.SetPlaying(
-                    true);
+                displayItem.SetPlaying(true);
+                displayItem.SetWaveform(playingWaveform);
+                displayItem.SetPlaybackProgress(playingProgress);
                 _playingLibraryItem =
                     displayItem;
             }
