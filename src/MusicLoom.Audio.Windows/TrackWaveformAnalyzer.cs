@@ -110,7 +110,12 @@ public sealed class TrackWaveformAnalyzer
                     read - offset, Math.Max(1L, next - processed));
                 for (int i = offset; i < offset + count; i++)
                 {
-                    float sample = Math.Clamp(buffer[i], -1f, 1f);
+                    // Broken decoders/files can produce NaN or infinity.
+                    // Never let them propagate to WinUI's native geometry.
+                    float value = buffer[i];
+                    float sample = float.IsFinite(value)
+                        ? Math.Clamp(value, -1f, 1f)
+                        : 0f;
                     squares[bin] += (double)sample * sample;
                 }
 
@@ -123,9 +128,12 @@ public sealed class TrackWaveformAnalyzer
         float[] rms = new float[Resolution];
         for (int index = 0; index < rms.Length; index++)
         {
-            rms[index] = counts[index] == 0
+            float amplitude = counts[index] == 0
                 ? 0f
                 : (float)Math.Sqrt(squares[index] / counts[index]);
+            rms[index] = float.IsFinite(amplitude)
+                ? Math.Clamp(amplitude, 0f, 1f)
+                : 0f;
         }
 
         // Scale each recording to its own 95th-percentile level. The
@@ -134,7 +142,8 @@ public sealed class TrackWaveformAnalyzer
         float[] sorted = (float[])rms.Clone();
         Array.Sort(sorted);
         float reference = sorted[(int)((sorted.Length - 1) * 0.95)];
-        if (reference <= 0.0001f)
+        if (!float.IsFinite(reference)
+            || reference <= 0.0001f)
         {
             return rms;
         }

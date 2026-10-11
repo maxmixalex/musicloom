@@ -47,6 +47,61 @@ try
             "Decoded waveform does not reflect silence and loud audio.");
     }
 
+    // Native Path.Data used to crash with E_INVALIDARG at playback.
+    // Test finite, bounded coordinates for real audio, corrupt samples,
+    // extreme values, and temporarily invalid layout dimensions.
+    WaveformCoordinate[] shape = TrackWaveformGeometry.Project(
+        envelope, 640, 60);
+    if (shape.Length != TrackWaveformAnalyzer.Resolution
+        || shape.Any(static p =>
+            !double.IsFinite(p.X)
+            || !double.IsFinite(p.Y)
+            || p.X < 0 || p.X > 640
+            || p.Y < 0 || p.Y > 60))
+    {
+        throw new InvalidOperationException(
+            "The decoded envelope generated invalid WinUI coordinates.");
+    }
+
+    float[] nonFiniteSamples =
+    [
+        float.NaN,
+        float.PositiveInfinity,
+        float.NegativeInfinity,
+        -5f,
+        0f,
+        0.5f,
+        5f,
+    ];
+    foreach ((double width, double height) in new[]
+    {
+        (400d, 62d), (2d, 2d), (double.NaN, 62d),
+        (400d, double.PositiveInfinity), (40_000d, 30d),
+        (-1d, 62d), (0d, 0d),
+    })
+    {
+        WaveformCoordinate[] projected = TrackWaveformGeometry.Project(
+            nonFiniteSamples, width, height);
+        if ((!double.IsFinite(width)
+                || !double.IsFinite(height)
+                || width < 2 || height < 2 || width > 16_384)
+            && projected.Length != 0)
+        {
+            throw new InvalidOperationException(
+                "Invalid layout dimensions must not produce native geometry.");
+        }
+
+        if (projected.Any(p =>
+            !double.IsFinite(p.X)
+            || !double.IsFinite(p.Y)
+            || p.X < 0 || p.Y < 0
+            || p.X > width || p.Y > height))
+        {
+            throw new InvalidOperationException(
+                "Corrupt PCM samples must not produce invalid geometry.");
+        }
+    }
+
     FingerprintResult fingerprint = NeteaseFingerprint.Generate(samples);
     if (fingerprint.Peaks.Count == 0)
     {
