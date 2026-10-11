@@ -704,6 +704,7 @@ public sealed class SyncExecutor
                 {
                     await EnsureManualLyricsWriteSafeAsync(
                         entry.SourcePath, entry.DestinationPath,
+                        lookup.Lyrics,
                         partial.LyricsFingerprint, cancellationToken);
                 }
 
@@ -1279,7 +1280,7 @@ public sealed class SyncExecutor
                 : StringComparison.Ordinal);
 
     private async Task EnsureManualLyricsWriteSafeAsync(
-        string sourcePath, string destinationPath,
+        string sourcePath, string destinationPath, LrcDocument targetLyrics,
         string? previousFingerprint, CancellationToken cancellationToken)
     {
         if (_lyricsWriter is not SidecarLrcLyricsWriter)
@@ -1288,8 +1289,23 @@ public sealed class SyncExecutor
         }
 
         string sidecar = SidecarLrcLyricsWriter.GetSidecarPath(destinationPath);
-        if (File.Exists(sidecar)
-            && !await IsSafeManagedSidecarAsync(
+        if (!File.Exists(sidecar))
+        {
+            return;
+        }
+
+        // An LRC already containing exactly the desired document requires
+        // no destructive replacement, regardless of legacy attribution.
+        string current = await File.ReadAllTextAsync(sidecar, cancellationToken);
+        if (string.Equals(
+                LrcDocument.Parse(current).ToString(),
+                targetLyrics.ToString(),
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!await IsSafeManagedSidecarAsync(
                 sourcePath, destinationPath, sidecar,
                 previousFingerprint, cancellationToken))
         {

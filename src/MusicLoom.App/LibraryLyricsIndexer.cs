@@ -205,6 +205,19 @@ internal sealed class LibraryLyricsIndexer
                         track?.LyricsFingerprint);
 
                 if (!generatedOutput
+                    && remote?.HasLyrics == true
+                    && string.Equals(
+                        LrcDocument.Parse(destinationSidecar).ToString(),
+                        remote.Lrc,
+                        StringComparison.Ordinal))
+                {
+                    // A replica identical to MusicLoom's cached output
+                    // cannot be distinguished from another writer, but it
+                    // has no user-only edits to protect or re-import.
+                    generatedOutput = true;
+                }
+
+                if (!generatedOutput
                     && string.IsNullOrWhiteSpace(track?.LyricsFingerprint)
                     && entry.DestinationPath is string destinationAudio)
                 {
