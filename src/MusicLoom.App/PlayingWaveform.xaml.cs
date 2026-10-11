@@ -6,13 +6,15 @@ using Windows.Foundation;
 namespace MusicLoom.App;
 
 /// <summary>
-/// Renders a decoded song's actual RMS envelope over the whole list row.
-/// There is no looping placeholder sine: the current playback position
-/// advances the darker played region over the underlying amplitude curve.
+/// Renders a real PCM RMS envelope behind the currently playing row.
+/// Coordinates are bounded before reaching native WinUI shapes; a failed
+/// visualization cannot take down the audio player or the application.
 /// </summary>
 public sealed partial class PlayingWaveform : UserControl
 {
     private readonly RectangleGeometry _playedClip = new();
+    private readonly RectangleGeometry _outerClip = new();
+    private bool _renderFailed;
 
     public static readonly DependencyProperty IsActiveProperty =
         DependencyProperty.Register(
@@ -57,6 +59,7 @@ public sealed partial class PlayingWaveform : UserControl
     {
         InitializeComponent();
         PlayedLayer.Clip = _playedClip;
+        WaveRoot.Clip = _outerClip;
         Loaded += (_, _) => RenderWaveform();
         SizeChanged += (_, _) => RenderWaveform();
     }
@@ -73,81 +76,120 @@ public sealed partial class PlayingWaveform : UserControl
 
     private void RenderWaveform()
     {
-        float[]? values = Samples;
-        bool show = IsActive
-            && values is { Length: > 1 };
-        Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (!show || values is null
-            || ActualWidth <= 1 || ActualHeight <= 1)
+        if (_renderFailed)
         {
             return;
         }
 
-        double width = ActualWidth;
-        double height = ActualHeight;
-        double baseline = height - 3;
-        double amplitudeHeight = Math.Max(1, height - 9);
-
-        double WaveY(int index)
+        try
         {
-            // A slight three-bin average eliminates codec-window jaggies
-            // without inventing dynamics that are absent in the recording.
-            float level = values[index] * 0.6f
-                + values[Math.Max(0, index - 1)] * 0.2f
-                + values[Math.Min(values.Length - 1, index + 1)] * 0.2f;
-            return baseline - Math.Clamp(level, 0f, 1f) * amplitudeHeight;
+            float[]? values = Samples;
+            bool show = IsActive && values is { Length: > 1 };
+            Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (!show || values is null)
+            {
+                return;
+            }
+
+            double width = ActualWidth;
+            double height = ActualHeight;
+            WaveformCoordinate[] shape = TrackWaveformGeometry.Project(
+                values, width, height);
+            if (shape.Length < 2)
+            {
+                return;
+            }
+
+            // Distinct PointCollections are intentional. WinUI must not
+            // receive the same mutable native object for two shape owners.
+            PointCollection unplayedLine = new();
+            PointCollection playedLine = new();
+            PointCollection unplayedArea = new();
+            PointCollection playedArea = new();
+            double baseline = Math.Clamp(height - 3, 0, height);
+            Point first = new(0, baseline);
+            unplayedArea.Add(first);
+            playedArea.Add(first);
+
+            foreach (WaveformCoordinate point in shape)
+            {
+                Point visualPoint = new(point.X, point.Y);
+                unplayedLine.Add(visualPoint);
+                playedLine.Add(visualPoint);
+                unplayedArea.Add(visualPoint);
+                playedArea.Add(visualPoint);
+            }
+
+            Point last = new(width, baseline);
+            unplayedArea.Add(last);
+            playedArea.Add(last);
+
+            // Child bounds cannot change Canvas's DesiredSize, so updating
+            // the waveform cannot produce another expanding layout cycle.
+            PlayedLayer.Width = width;
+            PlayedLayer.Height = height;
+            UnplayedLine.Points = unplayedLine;
+            PlayedLine.Points = playedLine;
+            UnplayedArea.Points = unplayedArea;
+            PlayedArea.Points = playedArea;
+            UpdatePlaybackClip();
         }
-
-        PathFigure contour = new()
+        catch (Exception error)
         {
-            StartPoint = new Point(0, WaveY(0)),
-            IsClosed = false,
-            IsFilled = false,
-        };
-        PathFigure surface = new()
-        {
-            StartPoint = new Point(0, baseline),
-            IsClosed = true,
-            IsFilled = true,
-        };
-        surface.Segments.Add(new LineSegment
-        {
-            Point = new Point(0, WaveY(0)),
-        });
-        for (int i = 1; i < values.Length; i++)
-        {
-            Point point = new(
-                width * i / (values.Length - 1),
-                WaveY(i));
-            contour.Segments.Add(new LineSegment { Point = point });
-            surface.Segments.Add(new LineSegment { Point = point });
+            DisableWaveform(error);
         }
-        surface.Segments.Add(new LineSegment
-        {
-            Point = new Point(width, baseline),
-        });
-
-        PathGeometry line = new();
-        line.Figures.Add(contour);
-        PathGeometry fill = new();
-        fill.Figures.Add(surface);
-
-        UnplayedLine.Data = line;
-        PlayedLine.Data = line;
-        UnplayedArea.Data = fill;
-        PlayedArea.Data = fill;
-        UpdatePlaybackClip();
     }
 
     private void UpdatePlaybackClip()
     {
-        double width = Math.Max(0, ActualWidth);
-        double height = Math.Max(0, ActualHeight);
-        double progress = double.IsFinite(PlaybackProgress)
-            ? Math.Clamp(PlaybackProgress, 0, 1)
-            : 0;
+        if (_renderFailed)
+        {
+            return;
+        }
 
-        _playedClip.Rect = new Rect(
-            0, 0, width * progress, height);
+        try
+        {
+            double width = ActualWidth;
+            double height = ActualHeight;
+            if (!double.IsFinite(width)
+                || !double.IsFinite(height)
+                || width <= 0
+                || height <= 0
+                || width > 16_384
+                || height > 16_384)
+            {
+                return;
+            }
+
+            double progress = double.IsFinite(PlaybackProgress)
+                ? Math.Clamp(PlaybackProgress, 0, 1)
+                : 0;
+            _outerClip.Rect = new Rect(0, 0, width, height);
+            _playedClip.Rect = new Rect(
+                0, 0, width * progress, height);
+        }
+        catch (Exception error)
+        {
+            DisableWaveform(error);
+        }
+    }
+
+    private void DisableWaveform(Exception error)
+    {
+        // Optional artwork must never terminate playback. Disable this
+        // instance once rather than retrying from every SizeChanged event.
+        _renderFailed = true;
+        try
+        {
+            Visibility = Visibility.Collapsed;
+            AppDiagnostics.LogException(
+                "Waveform visualization disabled after a render error.",
+                error);
+        }
+        catch
+        {
+            // Diagnostics failures must not turn a visual fallback into a
+            // second unhandled exception.
+        }
     }
 }
