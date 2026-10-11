@@ -7526,6 +7526,15 @@ public sealed partial class MainWindow : Window
                 });
             }
 
+            // Re-evaluate local embedded/sidecar priority for the affected
+            // sources before any output write. This also removes stale local
+            // signatures when a sidecar disappeared since the last scan.
+            await RefreshLibraryLyricsIndexAsync(
+                new LibraryPlan(
+                    matched.Select(static pair => pair.Item.Entry).ToArray()),
+                _state,
+                cancellation.Token);
+
             // Phase two is optional. Its only input is the canonical DB
             // record; the NetEase endpoint is never fetched a second time.
             SyncExecutionSummary? summary = null;
