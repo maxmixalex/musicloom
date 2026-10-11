@@ -160,6 +160,64 @@ internal static class ManagedSidecarRegression
             Assert(UserFacingErrors.TranslateCoreMessage(
                 "Existing sidecar lyrics cannot be replaced automatically",
                 true).Contains("目标 LRC", StringComparison.Ordinal));
+
+            // A truly old, unrecognized sidecar cannot be overwritten
+            // until a user explicitly backs it up and adopts it.
+            byte[] originalBytes = System.Text.Encoding.UTF8.GetPreamble()
+                .Concat(System.Text.Encoding.UTF8.GetBytes(
+                    "[00:01.000]User-edited content\r\n# Keep this comment\r\n"))
+                .ToArray();
+            await File.WriteAllBytesAsync(sidecar, originalBytes);
+            ManagedSidecarAdoptionResult adopted =
+                await ManagedSidecarAdoption.BackupAndAdoptAsync(
+                    settings, sourcePath, destination, cache);
+            Assert(File.Exists(adopted.BackupPath));
+            Assert(adopted.BackupPath.EndsWith(".bak", StringComparison.Ordinal));
+            Assert((await File.ReadAllBytesAsync(adopted.BackupPath))
+                .SequenceEqual(originalBytes));
+            Assert((await File.ReadAllBytesAsync(sidecar))
+                .SequenceEqual(originalBytes));
+            Assert(await cache.IsKnownOutputAsync(
+                sourcePath, destination, adopted.AdoptedFingerprint));
+
+            // A replayed lyrics-only sync now succeeds and retains the
+            // original byte-for-byte backup on disk.
+            SyncExecutionSummary afterAdoption = await executor.ExecuteAsync(
+                settings, new LibraryPlan([entry]), state, store,
+                lyricsOnly: true);
+            Assert(afterAdoption.Errors.Count == 0);
+            Assert((await File.ReadAllTextAsync(sidecar))
+                == "[00:01.000]Another update");
+            Assert((await File.ReadAllBytesAsync(adopted.BackupPath))
+                .SequenceEqual(originalBytes));
+
+            // A later manual edit still invalidates the adopted hash.
+            await File.WriteAllTextAsync(
+                sidecar, "[00:01.000]An edit after adoption");
+            await cache.SaveExplicitAsync(
+                sourcePath, 42,
+                LrcDocument.Parse("[00:01.000]A third remote update"));
+            SyncExecutionSummary editedAgain = await executor.ExecuteAsync(
+                settings, new LibraryPlan([entry]), state, store,
+                lyricsOnly: true);
+            Assert(editedAgain.Errors.Count == 1);
+            Assert((await File.ReadAllTextAsync(sidecar))
+                == "[00:01.000]An edit after adoption");
+
+            // Never back up/adopt a destination outside the configured
+            // library, even if that path happens to exist.
+            bool unsafePathRejected = false;
+            try
+            {
+                await ManagedSidecarAdoption.BackupAndAdoptAsync(
+                    settings, sourcePath,
+                    Path.Combine(root, "outside.mp3"), cache);
+            }
+            catch (InvalidDataException)
+            {
+                unsafePathRejected = true;
+            }
+            Assert(unsafePathRejected);
         }
         finally
         {
