@@ -131,6 +131,28 @@ internal sealed class LibraryLyricsIndexer
             return;
         }
 
+        // A deliberate NetEase lyric choice outranks automatic local
+        // discovery. Keep it until the match is changed or suppressed;
+        // never silently restore source-embedded/sidecar lyrics on rescan.
+        if (current is
+            {
+                Origin: LibraryLyricsOrigin.ManualNetease,
+            }
+            && current.SongId == songId
+            && remote is not null)
+        {
+            LibraryLyricsRecord preferred = new(
+                entry.SourcePath,
+                LibraryLyricsOrigin.ManualNetease,
+                remote.Lrc,
+                songId,
+                signature,
+                DateTimeOffset.UtcNow);
+            changed.Add(preferred);
+            currentRows[entry.SourcePath] = preferred;
+            return;
+        }
+
         string? embedded =
             await Task.Run(
                 () => _readEmbedded(entry.SourcePath),

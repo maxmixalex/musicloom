@@ -7272,7 +7272,10 @@ public sealed partial class MainWindow : Window
             LibraryLyricsRecord? canonical =
                 await lyricStore.GetLibraryAsync(item.Entry.SourcePath);
 
-            if (canonical is { Origin: LibraryLyricsOrigin.Netease })
+            if (canonical is not null
+                && canonical.Origin is
+                    LibraryLyricsOrigin.Netease
+                    or LibraryLyricsOrigin.ManualNetease)
             {
                 // Source files may temporarily be absent; never leave an
                 // old remote lyric displayed after the match is suppressed.
@@ -7426,7 +7429,7 @@ public sealed partial class MainWindow : Window
                         && current.NeteaseSongId == songId
                         && !current.NeteaseMatchSuppressed)
                     {
-                        await lyricsCache.SaveAsync(
+                        await lyricsCache.SaveExplicitAsync(
                             item.Entry.SourcePath,
                             songId,
                             latest,
@@ -7440,14 +7443,14 @@ public sealed partial class MainWindow : Window
                                 item.Entry.SourcePath,
                                 cancellation.Token);
                         if (canonical is null
-                            || (canonical.Origin == LibraryLyricsOrigin.Netease
-                                && (canonical.SongId != songId
-                                    || !string.Equals(
-                                        canonical.Text,
-                                        latest is { Lines.Count: > 0 }
-                                            ? latest.ToString()
-                                            : null,
-                                        StringComparison.Ordinal))))
+                            || canonical.Origin != LibraryLyricsOrigin.ManualNetease
+                            || canonical.SongId != songId
+                            || !string.Equals(
+                                canonical.Text,
+                                latest is { Lines.Count: > 0 }
+                                    ? latest.ToString()
+                                    : null,
+                                StringComparison.Ordinal))
                         {
                             throw new InvalidDataException(
                                 "Canonical lyrics were not updated in SQLite.");

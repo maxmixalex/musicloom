@@ -200,6 +200,51 @@ internal static class LibraryLyricsIndexerRegression
                     "Canonical row was not persisted.");
             Equal(LibraryLyricsOrigin.Netease, indexed.Origin);
             True(!indexed.HasLyrics);
+
+            // Regression: a manually chosen cover (e.g. 冬の花) must
+            // replace the displayed lyric despite an existing embedded
+            // or local LRC, and survive repeated scans/restarts.
+            string explicitLyrics =
+                "[00:01.000]Selected cover from NetEase";
+            await cache.SaveExplicitAsync(
+                sourcePath, 42, LrcDocument.Parse(explicitLyrics));
+            indexed = await new SqliteLyricsCache(database)
+                .GetLibraryAsync(sourcePath)
+                ?? throw new InvalidOperationException("Manual lyric missing.");
+            Equal(LibraryLyricsOrigin.ManualNetease, indexed.Origin);
+            Equal(explicitLyrics, indexed.Text);
+            await File.WriteAllTextAsync(
+                localLrc, "[00:01.000]Old local lyrics");
+            await indexer.RefreshAsync(plan, state);
+            indexed = await GetCanonicalAsync(cache, sourcePath);
+            Equal(LibraryLyricsOrigin.ManualNetease, indexed.Origin);
+            Equal(explicitLyrics, indexed.Text);
+            await indexer.RefreshAsync(plan, state);
+            indexed = await GetCanonicalAsync(cache, sourcePath);
+            Equal(LibraryLyricsOrigin.ManualNetease, indexed.Origin);
+            Equal(explicitLyrics, indexed.Text);
+
+            // Background provider refresh must not undo explicit intent.
+            await cache.SaveAsync(
+                sourcePath, 42,
+                LrcDocument.Parse("[00:03.000]New provider version"));
+            await indexer.RefreshAsync(plan, state);
+            indexed = await GetCanonicalAsync(cache, sourcePath);
+            Equal(LibraryLyricsOrigin.ManualNetease, indexed.Origin);
+            Equal("[00:03.000]New provider version", indexed.Text);
+
+            // Clearing the NetEase match restores the local source
+            // according to ordinary automatic precedence.
+            state.Tracks[sourcePath] =
+                state.Tracks[sourcePath] with
+                {
+                    NeteaseSongId = null,
+                    NeteaseMatchSuppressed = true,
+                };
+            await indexer.RefreshAsync(plan, state);
+            indexed = await GetCanonicalAsync(cache, sourcePath);
+            Equal(LibraryLyricsOrigin.Sidecar, indexed.Origin);
+            Equal("[00:01.000]Old local lyrics", indexed.Text);
         }
         finally
         {
