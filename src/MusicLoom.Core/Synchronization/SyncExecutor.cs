@@ -12,7 +12,8 @@ namespace MusicLoom.Core.Synchronization;
 public sealed record TrackSyncError(
     string SourcePath,
     string Stage,
-    string Message);
+    string Message,
+    SidecarLyricsConflictKind? SidecarConflict = null);
 
 public sealed record TrackSyncWarning(
     string SourcePath,
@@ -779,7 +780,8 @@ public sealed class SyncExecutor
                 errors.Add(new TrackSyncError(
                     entry.SourcePath,
                     stage,
-                    exception.Message));
+                    exception.Message,
+                    (exception as SidecarLyricsConflictException)?.Kind));
 
                 progress?.Report(new SyncExecutionProgress(
                     index + 1,

@@ -2349,7 +2349,8 @@ public sealed partial class MainWindow : Window
                     provider,
                     lyricsWriter,
                     lyricsCache: lyricStore,
-                    libraryLyricsCache: lyricStore);
+                    libraryLyricsCache: lyricStore,
+                    managedLyricsRegistry: lyricStore);
 
             SyncProgressTracker progressTracker = new();
 
@@ -7722,7 +7723,8 @@ public sealed partial class MainWindow : Window
                     provider,
                     writer,
                     lyricsCache: lyricsCache,
-                    libraryLyricsCache: lyricsCache);
+                    libraryLyricsCache: lyricsCache,
+                    managedLyricsRegistry: lyricsCache);
 
                 SyncProgressTracker tracker = new();
                 Progress<SyncExecutionProgress> progress =
