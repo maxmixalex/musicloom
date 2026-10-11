@@ -140,6 +140,40 @@ internal static class UserFacingErrors
             return "规范歌词未能写入数据库，请查看诊断日志。";
         }
 
+        // Local scan details are status descriptions, not exceptions.
+        // They must remain specific and localized rather than degrading
+        // into a generic error message in the track-details pane.
+        string? translatedPlanDetail = message switch
+        {
+            "Source file changed." => "源音频文件发生变化。",
+            "Destination file changed." => "目标音频文件发生变化。",
+            "Destination file is missing." => "目标音频文件不存在。",
+            "Destination path changed." => "目标文件位置发生变化。",
+            "Processing recipe changed." => "同步处理设置发生变化。",
+            "Enrichment retry is due." => "需要重新检查歌词或匹配信息。",
+            "Capturing source quick hash." => "正在补充源文件校验信息。",
+            "Not present in MusicLoom state." => "数据库中尚无此歌曲的同步记录。",
+            "Refreshing metadata state." => "正在刷新歌曲元数据记录。",
+            "Source or destination requires revalidation." =>
+                "源文件或目标文件需要重新校验。",
+            "Enrichment requires synchronization." =>
+                "歌曲的歌词或匹配信息需要同步。",
+            "Materialize canonical cached lyrics." =>
+                "需要将数据库中的规范歌词写入目标文件。",
+            _ => null,
+        };
+        if (translatedPlanDetail is not null)
+        {
+            return translatedPlanDetail;
+        }
+
+        if (message.StartsWith(
+                "Metadata could not be read; copying to the destination root.",
+                StringComparison.Ordinal))
+        {
+            return "无法读取元数据，将文件复制到目标目录根目录。详见诊断日志。";
+        }
+
         // Never leak a raw English exception into a Chinese UI. Preserve
         // its full technical message in AppDiagnostics instead.
         return "操作未完成。详细原因已记录在诊断日志中。";
