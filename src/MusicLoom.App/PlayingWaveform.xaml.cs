@@ -17,6 +17,10 @@ public sealed partial class PlayingWaveform : UserControl
     private readonly RectangleGeometry _outerClip = new();
     private bool _renderFailed;
 
+    // Used by the Windows UI launch regression to confirm that native
+    // shapes were actually rendered, not merely that the app started.
+    public event EventHandler? Rendered;
+
     public static readonly DependencyProperty IsActiveProperty =
         DependencyProperty.Register(
             nameof(IsActive),
@@ -134,6 +138,10 @@ public sealed partial class PlayingWaveform : UserControl
             UnplayedArea.Points = unplayedArea;
             PlayedArea.Points = playedArea;
             UpdatePlaybackClip();
+            if (!_renderFailed)
+            {
+                Rendered?.Invoke(this, EventArgs.Empty);
+            }
         }
         catch (Exception error)
         {
