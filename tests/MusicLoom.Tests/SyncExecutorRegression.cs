@@ -22,13 +22,14 @@ internal static class SyncExecutorRegression
         await NoMatchIsNonFatalAsync();
         await SyncWithoutMatchingDoesNotCallRecognizerAsync();
         await LyricsOnlyRefreshAvoidsOtherWritesAsync();
-        await LyricsOnlyRefreshProtectsUserSidecarAsync();
+        await LyricsOnlyRefreshRespectsDisabledOverwriteAsync();
+        await LyricsOnlyRefreshOverwritesTargetWhenEnabledAsync();
         await CachedLyricsAvoidsSecondNetworkFetchAsync();
         await LegacyMergedLyricsCacheForcesRefreshAsync();
         await CanonicalEmbeddedLyricsNeverUseRemoteAsync();
         await CanonicalSidecarLyricsWriteWithoutRemoteAsync();
         await FetchSuccessSurvivesOutputFailureAsync();
-        await NoLyricsCacheProtectsUnmanagedOutputAsync();
+        await NoLyricsPreservesExistingTargetAsync();
         MatchWarningHandlesChineseAndArtistSubsets();
         ProgressTrackerRejectsStaleStages();
         await WarningGatesLyricsUntilConfirmationAsync();
@@ -297,40 +298,32 @@ internal static class SyncExecutorRegression
             .SequenceEqual(new byte[] { 9, 8, 7 }));
     }
 
-    private static async Task LyricsOnlyRefreshProtectsUserSidecarAsync()
+    private static async Task LyricsOnlyRefreshRespectsDisabledOverwriteAsync()
     {
-        await using Fixture fixture =
-            await Fixture.CreateAsync(
-                lyricsEnabled: true,
-                overrideExisting: false);
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: false);
 
         Directory.CreateDirectory(
             Path.GetDirectoryName(fixture.DestinationPath)!);
-        await File.WriteAllBytesAsync(
-            fixture.DestinationPath,
-            [9, 8, 7]);
+        await File.WriteAllBytesAsync(fixture.DestinationPath, [9, 8, 7]);
 
         string sidecar =
-            SidecarLrcLyricsWriter.GetSidecarPath(
-                fixture.DestinationPath);
-        await File.WriteAllTextAsync(
-            sidecar,
-            "[00:01.000]User-edited lyric");
+            SidecarLrcLyricsWriter.GetSidecarPath(fixture.DestinationPath);
+        const string olderTarget = "[00:01.000]Previous target artifact";
+        await File.WriteAllTextAsync(sidecar, olderTarget);
 
         PlanEntry entry = fixture.Plan.Entries[0] with
         {
             Status = PlanEntryStatus.Modified,
             NeedsAudioCopy = false,
         };
-
         SyncExecutionSummary summary = await new SyncExecutor(
             new LocalLibraryMaterializer(),
-            new FakeRecognizer(
-                TrackRecognitionResult.Matched(42)),
+            new FakeRecognizer(TrackRecognitionResult.Matched(42)),
             new FakeLyricsProvider(
                 LyricsLookupResult.Found(
-                    LrcDocument.Parse(
-                        "[00:01.000]New lyric"))),
+                    LrcDocument.Parse("[00:01.000]New provider lyric"))),
             new SidecarLrcLyricsWriter()).ExecuteAsync(
                 fixture.Settings,
                 new LibraryPlan([entry]),
@@ -338,11 +331,64 @@ internal static class SyncExecutorRegression
                 fixture.StateStore,
                 lyricsOnly: true);
 
-        Equal(1, summary.Errors.Count);
-        Equal(0, summary.CompletedTracks);
-        Equal(
-            "[00:01.000]User-edited lyric",
-            await File.ReadAllTextAsync(sidecar));
+        Equal(0, summary.Errors.Count);
+        Equal(1, summary.CompletedTracks);
+        Equal(0, summary.WrittenLyrics);
+        Equal(1, summary.ExistingLyrics);
+        Equal(olderTarget, await File.ReadAllTextAsync(sidecar));
+        True((await File.ReadAllBytesAsync(fixture.SourcePath))
+            .SequenceEqual(new byte[] { 1, 2, 3, 4, 5, 6 }));
+    }
+
+    private static async Task LyricsOnlyRefreshOverwritesTargetWhenEnabledAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true,
+            overrideExisting: true);
+
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(fixture.DestinationPath)!);
+        await File.WriteAllBytesAsync(fixture.DestinationPath, [9, 8, 7]);
+
+        string sidecar =
+            SidecarLrcLyricsWriter.GetSidecarPath(fixture.DestinationPath);
+        const string oldOutput = "[00:01.000]Legacy output, no provenance";
+        const string requestedOutput = "[00:01.000]Current selected lyrics";
+        await File.WriteAllTextAsync(sidecar, oldOutput);
+
+        string sourceSidecar =
+            SidecarLrcLyricsWriter.GetSidecarPath(fixture.SourcePath);
+        await File.WriteAllTextAsync(
+            sourceSidecar, "[00:01.000]Independent source LRC");
+
+        PlanEntry entry = fixture.Plan.Entries[0] with
+        {
+            Status = PlanEntryStatus.Modified,
+            NeedsAudioCopy = false,
+        };
+        SyncExecutionSummary summary = await new SyncExecutor(
+            new LocalLibraryMaterializer(),
+            new FakeRecognizer(TrackRecognitionResult.Matched(42)),
+            new FakeLyricsProvider(
+                LyricsLookupResult.Found(
+                    LrcDocument.Parse(requestedOutput))),
+            new SidecarLrcLyricsWriter()).ExecuteAsync(
+                fixture.Settings,
+                new LibraryPlan([entry]),
+                fixture.State,
+                fixture.StateStore,
+                lyricsOnly: true);
+
+        Equal(0, summary.Errors.Count);
+        Equal(1, summary.CompletedTracks);
+        Equal(1, summary.WrittenLyrics);
+        Equal(requestedOutput, await File.ReadAllTextAsync(sidecar));
+        Equal("[00:01.000]Independent source LRC",
+            await File.ReadAllTextAsync(sourceSidecar));
+        True((await File.ReadAllBytesAsync(fixture.SourcePath))
+            .SequenceEqual(new byte[] { 1, 2, 3, 4, 5, 6 }));
+        True((await File.ReadAllBytesAsync(fixture.DestinationPath))
+            .SequenceEqual(new byte[] { 9, 8, 7 }));
     }
 
     private static async Task CachedLyricsAvoidsSecondNetworkFetchAsync()
@@ -540,7 +586,7 @@ internal static class SyncExecutorRegression
         True(await lyricsCache.GetAsync(fixture.SourcePath, 99) is null);
     }
 
-    private static async Task NoLyricsCacheProtectsUnmanagedOutputAsync()
+    private static async Task NoLyricsPreservesExistingTargetAsync()
     {
         await using Fixture fixture = await Fixture.CreateAsync(
             lyricsEnabled: true,
@@ -579,8 +625,9 @@ internal static class SyncExecutorRegression
                 fixture.StateStore,
                 lyricsOnly: true);
 
-        Equal(1, result.Errors.Count);
-        Equal(0, result.CompletedTracks);
+        Equal(0, result.Errors.Count);
+        Equal(1, result.CompletedTracks);
+        Equal(1, result.NoLyrics);
         Equal(
             "[00:01.000]Do not delete this manual lyric",
             await File.ReadAllTextAsync(sidecar));
@@ -592,7 +639,7 @@ internal static class SyncExecutorRegression
         True(!cached.HasLyrics);
 
         TrackState state = await fixture.LoadTrackStateAsync();
-        Equal(string.Empty, state.RecipeVersion);
+        Equal(SyncRecipe.For(fixture.Settings), state.RecipeVersion);
     }
 
     private static void MatchWarningHandlesChineseAndArtistSubsets()
