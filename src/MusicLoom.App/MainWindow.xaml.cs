@@ -2076,7 +2076,7 @@ public sealed partial class MainWindow : Window
                 ShowInfo(
                     InfoBarSeverity.Error,
                     L("Match persistence failed", "匹配结果保存失败"),
-                    UserFacingErrors.Describe(exception));
+                    UserFacingErrors.Describe(exception, IsChinese));
             }
 
             _operationCancellation = null;
@@ -2468,7 +2468,7 @@ public sealed partial class MainWindow : Window
                 SetTrackSyncState(
                     error.SourcePath,
                     L("Error", "错误"),
-                    $"[{error.Stage}] {error.Message}",
+                    $"[{error.Stage}] {UserFacingErrors.DescribeSyncError(error, IsChinese)}",
                     isError: true);
             }
 
@@ -2512,8 +2512,8 @@ public sealed partial class MainWindow : Window
                         "Sync completed with errors",
                         "同步完成，但有错误"),
                     L(
-                        $"{summary.Errors.Count:N0} errors. First: {Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {first.Message}",
-                        $"{summary.Errors.Count:N0} 个错误。第一个：{Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {first.Message}"));
+                        $"{summary.Errors.Count:N0} errors. First: {Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {UserFacingErrors.DescribeSyncError(first, IsChinese)}",
+                        $"{summary.Errors.Count:N0} 个错误。第一个：{Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {UserFacingErrors.DescribeSyncError(first, IsChinese)}"));
             }
             else if (summary.Warnings.Count > 0)
             {
@@ -2914,7 +2914,9 @@ public sealed partial class MainWindow : Window
             TrackSyncStateText.Text =
                 L("Error", "错误");
             TrackSyncLogText.Text =
-                item.Entry.Detail
+                (item.Entry.Detail is string rawDetail
+                    ? UserFacingErrors.TranslateCoreMessage(rawDetail, IsChinese)
+                    : null)
                 ?? L(
                     "The current scan reports an error.",
                     "当前扫描报告了错误。");
@@ -2949,7 +2951,9 @@ public sealed partial class MainWindow : Window
             TrackSyncStateText.Text =
                 L("Syncing", "同步中");
             TrackSyncLogText.Text =
-                item.Entry.Detail
+                (item.Entry.Detail is string rawDetail
+                    ? UserFacingErrors.TranslateCoreMessage(rawDetail, IsChinese)
+                    : null)
                 ?? L(
                     "Synchronization is in progress.",
                     "正在同步。");
@@ -2961,7 +2965,9 @@ public sealed partial class MainWindow : Window
                     "Pending sync",
                     "待同步");
             TrackSyncLogText.Text =
-                item.Entry.Detail
+                (item.Entry.Detail is string rawDetail
+                    ? UserFacingErrors.TranslateCoreMessage(rawDetail, IsChinese)
+                    : null)
                 ?? L(
                     "This track has pending work.",
                     "此歌曲存在待处理的同步工作。");
@@ -3266,7 +3272,7 @@ public sealed partial class MainWindow : Window
                 SetTrackSyncState(
                     error.SourcePath,
                     L("Error", "错误"),
-                    $"[{error.Stage}] {error.Message}",
+                    $"[{error.Stage}] {UserFacingErrors.DescribeSyncError(error, IsChinese)}",
                     isError: true);
             }
 
@@ -7642,7 +7648,7 @@ public sealed partial class MainWindow : Window
                 catch (Exception exception)
                 {
                     fetchErrors.Add(
-                        $"{item.Title}: {exception.Message}");
+                        $"{item.Title}: {UserFacingErrors.Describe(exception, IsChinese)}");
                     AppDiagnostics.LogException(
                         "Could not cache matched lyrics.",
                         exception);
@@ -7835,7 +7841,7 @@ public sealed partial class MainWindow : Window
             ShowInfo(
                 InfoBarSeverity.Warning,
                 L("Lyrics update failed", "歌词更新失败"),
-                UserFacingErrors.Describe(exception));
+                UserFacingErrors.Describe(exception, IsChinese));
             return false;
         }
         finally
