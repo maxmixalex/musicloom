@@ -65,39 +65,93 @@ internal sealed class SqliteLyricsCache : ITrackLyricsCache, ILibraryLyricsCache
         await using SqliteConnection connection =
             await OpenAsync(cancellationToken);
 
-        await using SqliteCommand command =
-            connection.CreateCommand();
-        command.CommandText =
-            """
-            INSERT INTO sync_lyrics (
-                source_path, song_id, lrc, fetched_at, merge_version
-            ) VALUES (
-                $source, $songId, $lrc, $fetched, $mergeVersion
-            )
-            ON CONFLICT(source_path) DO UPDATE SET
-                song_id = excluded.song_id,
-                lrc = excluded.lrc,
-                fetched_at = excluded.fetched_at,
-                merge_version = excluded.merge_version;
-            """;
+        // Both tables describe one logical lyric update. Never publish
+        // a new remote cache while leaving the Lyrics tab on an old
+        // NetEase song or lyric document.
+        using SqliteTransaction transaction =
+            connection.BeginTransaction();
+        string? document = lyrics is { Lines.Count: > 0 }
+            ? lyrics.ToString()
+            : null;
+        string stamp = DateTimeOffset.UtcNow.ToString(
+            "O", CultureInfo.InvariantCulture);
 
-        command.Parameters.AddWithValue("$source", sourcePath);
-        command.Parameters.AddWithValue("$songId", songId);
-        command.Parameters.AddWithValue(
-            "$lrc",
-            lyrics is { Lines.Count: > 0 }
-                ? lyrics.ToString()
-                : DBNull.Value);
-        command.Parameters.AddWithValue(
-            "$fetched",
-            DateTimeOffset.UtcNow.ToString(
-                "O",
-                CultureInfo.InvariantCulture));
-        command.Parameters.AddWithValue(
-            "$mergeVersion",
-            LrcDocument.MergeAlgorithmVersion);
+        try
+        {
+            await using (SqliteCommand remote = connection.CreateCommand())
+            {
+                remote.Transaction = transaction;
+                remote.CommandText =
+                    """
+                    INSERT INTO sync_lyrics (
+                        source_path, song_id, lrc, fetched_at, merge_version
+                    ) VALUES (
+                        $source, $songId, $lrc, $fetched, $mergeVersion
+                    )
+                    ON CONFLICT(source_path) DO UPDATE SET
+                        song_id = excluded.song_id,
+                        lrc = excluded.lrc,
+                        fetched_at = excluded.fetched_at,
+                        merge_version = excluded.merge_version;
+                    """;
+                remote.Parameters.AddWithValue("$source", sourcePath);
+                remote.Parameters.AddWithValue("$songId", songId);
+                remote.Parameters.AddWithValue(
+                    "$lrc", document is null ? DBNull.Value : document);
+                remote.Parameters.AddWithValue("$fetched", stamp);
+                remote.Parameters.AddWithValue(
+                    "$mergeVersion", LrcDocument.MergeAlgorithmVersion);
+                await remote.ExecuteNonQueryAsync(cancellationToken);
+            }
 
-        await command.ExecuteNonQueryAsync(cancellationToken);
+            // Preserve embedded or hand-managed local lyrics. They outrank
+            // any provider match; the scanner may reevaluate their source
+            // signatures later without allowing NetEase to erase them.
+            await using (SqliteCommand canonical =
+                connection.CreateCommand())
+            {
+                canonical.Transaction = transaction;
+                canonical.CommandText =
+                    """
+                    INSERT INTO library_lyrics (
+                        source_path, origin, lrc, song_id,
+                        source_signature, updated_at
+                    ) VALUES (
+                        $source, $origin, $lrc, $songId,
+                        $signature, $updatedAt
+                    )
+                    ON CONFLICT(source_path) DO UPDATE SET
+                        origin = excluded.origin,
+                        lrc = excluded.lrc,
+                        song_id = excluded.song_id,
+                        source_signature = excluded.source_signature,
+                        updated_at = excluded.updated_at
+                    WHERE library_lyrics.origin NOT IN (
+                        $embedded, $sidecar);
+                    """;
+                canonical.Parameters.AddWithValue("$source", sourcePath);
+                canonical.Parameters.AddWithValue(
+                    "$origin", (int)LibraryLyricsOrigin.Netease);
+                canonical.Parameters.AddWithValue(
+                    "$lrc", document is null ? DBNull.Value : document);
+                canonical.Parameters.AddWithValue("$songId", songId);
+                canonical.Parameters.AddWithValue(
+                    "$signature", "provider:" + stamp);
+                canonical.Parameters.AddWithValue("$updatedAt", stamp);
+                canonical.Parameters.AddWithValue(
+                    "$embedded", (int)LibraryLyricsOrigin.Embedded);
+                canonical.Parameters.AddWithValue(
+                    "$sidecar", (int)LibraryLyricsOrigin.Sidecar);
+                await canonical.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
     }
 
     public async Task<LibraryLyricsRecord?> GetLibraryAsync(
