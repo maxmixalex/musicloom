@@ -172,11 +172,92 @@ public sealed partial class MainWindow : Window
         ApplyLanguage();
         HideDetailPane();
         ResetTrackDetails();
+        InstallWaveformSmokeIfRequested();
 
         _ = InitializeSettingsAsync();
 
         StartupTrace.Mark(
             "MainWindow.ctor.ready");
+    }
+
+    private void InstallWaveformSmokeIfRequested()
+    {
+        string? marker = Environment.GetEnvironmentVariable(
+            "MUSICLOOM_WAVEFORM_SMOKE_MARKER");
+        if (string.IsNullOrWhiteSpace(marker))
+        {
+            return;
+        }
+
+        // CI previously launched MusicLoom successfully but never
+        // exercised the native Path.Data renderer, missing a fatal crash.
+        // Mount a real waveform control only in this explicit test mode.
+        if (Navigation.Content is not Grid root)
+        {
+            AppDiagnostics.Log(
+                "Waveform smoke failed: navigation content is not a Grid.");
+            return;
+        }
+
+        Grid host = new()
+        {
+            Width = 640,
+            Height = 62,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetRow(host, 1);
+        root.Children.Add(host);
+
+        PlayingWaveform waveform = new();
+        host.Children.Add(waveform);
+        int successfulRenders = 0;
+        waveform.Rendered += (_, _) =>
+        {
+            successfulRenders++;
+            if (successfulRenders == 1)
+            {
+                // Reproduce the originally failing SizeChanged pathway.
+                host.Width = 520;
+                waveform.PlaybackProgress = 0.5;
+            }
+            else if (successfulRenders == 2)
+            {
+                host.Width = 640;
+                waveform.PlaybackProgress = 0.85;
+            }
+            else if (successfulRenders == 3)
+            {
+                try
+                {
+                    string? directory = Path.GetDirectoryName(marker);
+                    if (!string.IsNullOrWhiteSpace(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+
+                    File.WriteAllText(
+                        marker,
+                        "Three real native waveform render/resize passes succeeded.");
+                }
+                catch (Exception exception)
+                {
+                    AppDiagnostics.LogException(
+                        "Could not write waveform smoke marker.",
+                        exception);
+                }
+            }
+        };
+
+        float[] fixture = new float[384];
+        for (int i = 0; i < fixture.Length; i++)
+        {
+            fixture[i] = (float)(
+                Math.Abs(Math.Sin(i / 12.0)) * 0.85);
+        }
+
+        waveform.Samples = fixture;
+        waveform.IsActive = true;
     }
 
     private void InitializePlayer()
