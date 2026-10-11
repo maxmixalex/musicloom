@@ -6,34 +6,24 @@
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
     Visibility="Collapsed">
-  <!-- A Canvas ignores child shape bounds during measure. This prevents
-       the waveform geometry from changing the row's desired size and
-       recursively triggering SizeChanged/render cycles. -->
+  <!-- The entire row is a low-contrast Fluent surface. The curve is the
+       measured frequency profile of the current 50 ms PCM window,
+       not a progress indicator or an endlessly looping artificial wave. -->
   <Grid x:Name="WaveRoot" IsHitTestVisible="False">
     <Canvas x:Name="WaveCanvas"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
             IsHitTestVisible="False">
-      <Polygon x:Name="UnplayedArea"
+      <Polygon x:Name="WaveArea"
                Fill="{ThemeResource AccentFillColorTertiaryBrush}"
-               Opacity="0.10"
+               Opacity="0.045"
                IsHitTestVisible="False" />
-      <Polyline x:Name="UnplayedLine"
+      <Polyline x:Name="WaveLine"
                 Stroke="{ThemeResource AccentFillColorDefaultBrush}"
                 StrokeThickness="1.15"
-                Opacity="0.20"
+                StrokeLineJoin="Round"
+                Opacity="0.15"
                 IsHitTestVisible="False" />
-      <Canvas x:Name="PlayedLayer" IsHitTestVisible="False">
-        <Polygon x:Name="PlayedArea"
-                 Fill="{ThemeResource AccentFillColorSecondaryBrush}"
-                 Opacity="0.20"
-                 IsHitTestVisible="False" />
-        <Polyline x:Name="PlayedLine"
-                  Stroke="{ThemeResource AccentFillColorDefaultBrush}"
-                  StrokeThickness="1.4"
-                  Opacity="0.38"
-                  IsHitTestVisible="False" />
-      </Canvas>
     </Canvas>
   </Grid>
 </UserControl>
