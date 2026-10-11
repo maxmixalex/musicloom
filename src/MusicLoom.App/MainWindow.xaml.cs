@@ -1436,14 +1436,14 @@ public sealed partial class MainWindow : Window
                     "Settings error",
                     "设置错误"),
                 UserFacingErrors.Describe(
-                    exception));
+                    exception, IsChinese));
 
             AddActivity(
                 L(
                     "Settings error",
                     "设置错误"),
                 UserFacingErrors.Describe(
-                    exception));
+                    exception, IsChinese));
         }
         finally
         {
@@ -2615,7 +2615,7 @@ public sealed partial class MainWindow : Window
                     "Sync failed",
                     "同步失败"),
                 UserFacingErrors.Describe(
-                    exception));
+                    exception, IsChinese));
         }
         finally
         {
@@ -3323,7 +3323,7 @@ public sealed partial class MainWindow : Window
                     "Sync finished, but the library view could not refresh",
                     "同步已完成，但无法刷新音乐库视图"),
                 UserFacingErrors.Describe(
-                    exception));
+                    exception, IsChinese));
         }
     }
 
@@ -6926,7 +6926,7 @@ public sealed partial class MainWindow : Window
             {
                 status.Text =
                     UserFacingErrors.Describe(
-                        exception);
+                        exception, IsChinese);
             }
             finally
             {
@@ -7051,7 +7051,7 @@ public sealed partial class MainWindow : Window
                             new LyricDisplayLine(
                                 UserFacingErrors
                                     .Describe(
-                                        exception),
+                                        exception, IsChinese),
                                 null,
                                 LyricsDisplayModes
                                     .OriginalOnly),
@@ -9152,7 +9152,7 @@ public sealed partial class MainWindow : Window
                     "Could not save settings",
                     "无法保存设置"),
                 UserFacingErrors.Describe(
-                    exception));
+                    exception, IsChinese));
         }
     }
 
@@ -9667,7 +9667,7 @@ public sealed partial class MainWindow : Window
         {
             DiagnosticsConsole.Text =
                 UserFacingErrors.Describe(
-                    exception);
+                    exception, IsChinese);
         }
     }
 
@@ -10073,7 +10073,7 @@ public sealed partial class MainWindow : Window
     {
         string message =
             UserFacingErrors.Describe(
-                exception);
+                exception, IsChinese);
 
         AddActivity(
             L("Error", "错误"),
