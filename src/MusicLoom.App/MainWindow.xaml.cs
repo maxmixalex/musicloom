@@ -7411,6 +7411,27 @@ public sealed partial class MainWindow : Window
                             songId,
                             latest,
                             cancellation.Token);
+
+                        // Validate what the Lyrics tab actually reads,
+                        // not just the provider cache. Local embedded/LRC
+                        // rows are intentionally allowed to retain priority.
+                        LibraryLyricsRecord? canonical =
+                            await lyricsCache.GetLibraryAsync(
+                                item.Entry.SourcePath,
+                                cancellation.Token);
+                        if (canonical is null
+                            || (canonical.Origin == LibraryLyricsOrigin.Netease
+                                && (canonical.SongId != songId
+                                    || !string.Equals(
+                                        canonical.Text,
+                                        latest is { Lines.Count: > 0 }
+                                            ? latest.ToString()
+                                            : null,
+                                        StringComparison.Ordinal))))
+                        {
+                            throw new InvalidDataException(
+                                "Canonical lyrics were not updated in SQLite.");
+                        }
                         cached++;
 
                         if (latest is null || latest.Lines.Count == 0)
@@ -7519,7 +7540,8 @@ public sealed partial class MainWindow : Window
                             $"{FriendlyStage(value.Stage)} · " +
                             $"{value.Processed:N0}/{value.Total:N0}");
                         SetProgress(value.Processed, value.Total);
-                        UpdateLiveSyncRow(value);
+                        // This is lyric-only work. Avoid turning a matching
+                        // warning into pending/synced for a brief moment.
                     });
 
                 summary = await Task.Run(
@@ -7535,15 +7557,9 @@ public sealed partial class MainWindow : Window
             }
 
             ++_syncProgressGeneration;
-            await RefreshLibraryAfterSyncAsync(
-                settings,
-                summary,
+            await RefreshMatchedLyricsPresentationAsync(
+                matched.Select(static match => match.Item).ToArray(),
                 cancellation.Token);
-
-            if (_selectedLibraryItem is LibraryDisplayItem selected)
-            {
-                await ShowTrackDetailsAsync(selected);
-            }
 
             int materializationErrors = summary?.Errors.Count ?? 0;
             bool complete =
@@ -7600,9 +7616,8 @@ public sealed partial class MainWindow : Window
         catch (OperationCanceledException)
         {
             ++_syncProgressGeneration;
-            await RefreshLibraryAfterSyncAsync(
-                settings,
-                null,
+            await RefreshMatchedLyricsPresentationAsync(
+                matched.Select(static match => match.Item).ToArray(),
                 CancellationToken.None);
             return false;
         }
@@ -7613,9 +7628,8 @@ public sealed partial class MainWindow : Window
                 "Could not update the lyrics cache.",
                 exception);
 
-            await RefreshLibraryAfterSyncAsync(
-                settings,
-                null,
+            await RefreshMatchedLyricsPresentationAsync(
+                matched.Select(static match => match.Item).ToArray(),
                 CancellationToken.None);
 
             ShowInfo(
@@ -7630,6 +7644,33 @@ public sealed partial class MainWindow : Window
             _operationCancellation = null;
             SetBusy(false, OperationStatusText.Text);
         }
+    }
+
+    private async Task RefreshMatchedLyricsPresentationAsync(
+        IReadOnlyList<LibraryDisplayItem> candidates,
+        CancellationToken cancellationToken)
+    {
+        // SyncExecutor checkpoints to SQLite, so reload only its durable
+        // state. The list's object identity, selection and filters remain
+        // unchanged during a manual matching/lyric action.
+        if (_stateStore is not null)
+        {
+            _state = await _stateStore.LoadAsync(cancellationToken);
+        }
+
+        if (_selectedLibraryItem is LibraryDisplayItem selected
+            && candidates.Any(item =>
+                string.Equals(
+                    item.Entry.SourcePath,
+                    selected.Entry.SourcePath,
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            await ShowTrackDetailsAsync(selected);
+        }
+
+        UpdateBatchMatchActions();
+        RefreshLiveSyncCounters();
+        RefreshDatabaseSize();
     }
 
     private bool HasCachedMatch(
@@ -7648,28 +7689,14 @@ public sealed partial class MainWindow : Window
         _manualPendingSources.Add(
             item.Entry.SourcePath);
 
-        item.SetStatus(
-            "pending",
-            StatusLabel(
-                "pending"));
-
-        if (ReferenceEquals(
-                item,
-                _selectedLibraryItem))
-        {
-            TrackStatusText.Text =
-                item.StatusText;
-            TrackStatusIcon.Glyph =
-                item.StatusGlyph;
-            TrackStatusIcon.Foreground =
-                item.StatusBrush;
-        }
-
+        // Register work for the next sync, but never change the visible
+        // diagnostic classification during a lyric lookup. In particular,
+        // an unconfirmed NetEase warning stays a warning throughout.
         SetTrackSyncState(
             item.Entry.SourcePath,
-            L(
-                "Pending sync",
-                "待同步"),
+            item.Kind == "warning"
+                ? L("Warning", "警告")
+                : item.StatusText,
             detail);
 
         RefreshLiveSyncCounters();
@@ -7694,15 +7721,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // Refresh and presentation share one ground truth: the destination
-        // lyrics. A remote-only preview is not reported as an updated lyric
-        // until the same document has actually been persisted.
-        MarkTrackForEnrichmentSync(
-            item,
-            L(
-                "Fetching and synchronizing the latest NetEase lyrics.",
-                "正在获取并同步最新的网易云歌词。"));
-
+        // No status mutation. The canonical SQLite lyric is committed
+        // before any optional destination materialization.
         await SynchronizeMatchedLyricsAsync([item]);
     }
 
