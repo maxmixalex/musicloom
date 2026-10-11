@@ -77,6 +77,7 @@ public sealed partial class MainWindow : Window
     private LibraryPlan? _plan;
     private LibraryDisplayItem? _selectedLibraryItem;
     private LibraryDisplayItem? _contextLibraryItem;
+    private string? _pendingSidecarAdoptionSource;
     private LibraryDisplayItem? _playlistContextItem;
     private CancellationTokenSource? _operationCancellation;
     private CancellationTokenSource? _settingsSaveCancellation;
@@ -2561,6 +2562,8 @@ public sealed partial class MainWindow : Window
                 TrackSyncError first =
                     summary.Errors[0];
 
+                TrackSyncError? adoptable = summary.Errors.FirstOrDefault(
+                    static error => IsAdoptableLrcConflict(error));
                 ShowInfo(
                     InfoBarSeverity.Warning,
                     L(
@@ -2568,7 +2571,8 @@ public sealed partial class MainWindow : Window
                         "同步完成，但有错误"),
                     L(
                         $"{summary.Errors.Count:N0} errors. First: {Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {UserFacingErrors.DescribeSyncError(first, IsChinese)}",
-                        $"{summary.Errors.Count:N0} 个错误。第一个：{Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {UserFacingErrors.DescribeSyncError(first, IsChinese)}"));
+                        $"{summary.Errors.Count:N0} 个错误。第一个：{Path.GetFileName(first.SourcePath)} · {FriendlyStage(first.Stage)} · {UserFacingErrors.DescribeSyncError(first, IsChinese)}"),
+                    sidecarAdoptionSource: adoptable?.SourcePath);
             }
             else if (summary.Warnings.Count > 0)
             {
@@ -7839,10 +7843,13 @@ public sealed partial class MainWindow : Window
                     ?? L(
                         "Could not materialize cached lyrics.",
                         "无法写入数据库中缓存的歌词。");
+                TrackSyncError? adoptable = summary?.Errors.FirstOrDefault(
+                    static error => IsAdoptableLrcConflict(error));
                 ShowInfo(
                     InfoBarSeverity.Warning,
                     L("Some lyrics still need attention", "部分歌词需要处理"),
-                    message);
+                    message,
+                    sidecarAdoptionSource: adoptable?.SourcePath);
             }
             else if (deferred > 0)
             {
@@ -9997,6 +10004,9 @@ public sealed partial class MainWindow : Window
             && HasCachedMatch(
                 selectedMatch.Entry.SourcePath);
 
+        AdoptExistingLrcInfoButton.IsEnabled =
+            !busy && _pendingSidecarAdoptionSource is not null;
+
         LibraryProgressPanel.Visibility =
             busy
                 ? Visibility.Visible
@@ -10103,11 +10113,48 @@ public sealed partial class MainWindow : Window
             value;
     }
 
+    private static bool IsAdoptableLrcConflict(TrackSyncError error) =>
+        error.SidecarConflict is
+            SidecarLyricsConflictKind.ReplacementBlocked
+            or SidecarLyricsConflictKind.ModifiedExisting;
+
+    private bool CanAdoptSource(string sourcePath)
+    {
+        if (_settings is not MusicLoomSettings settings
+            || LyricsStorageModes.Normalize(
+                settings.Organizer.Lyrics.StorageMode)
+                != LyricsStorageModes.Sidecar
+            || !HasCachedMatch(sourcePath))
+        {
+            return false;
+        }
+
+        LibraryDisplayItem? item = _allLibraryItems.FirstOrDefault(
+            row => string.Equals(
+                row.Entry.SourcePath, sourcePath,
+                StringComparison.OrdinalIgnoreCase));
+        return item?.Entry.DestinationPath is string destination
+            && File.Exists(
+                SidecarLrcLyricsWriter.GetSidecarPath(destination));
+    }
+
     private void ShowInfo(
         InfoBarSeverity severity,
         string title,
-        string message)
+        string message,
+        string? sidecarAdoptionSource = null)
     {
+        _pendingSidecarAdoptionSource =
+            sidecarAdoptionSource is string source && CanAdoptSource(source)
+                ? source
+                : null;
+
+        AdoptExistingLrcInfoButton.Visibility =
+            _pendingSidecarAdoptionSource is null
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        AdoptExistingLrcInfoButton.IsEnabled =
+            !_busy && _pendingSidecarAdoptionSource is not null;
         AppInfoBar.Severity = severity;
         AppInfoBar.Title = title;
         AppInfoBar.Message = message;
@@ -10478,6 +10525,8 @@ public sealed partial class MainWindow : Window
             L(
                 "Clear selected matches",
                 "批量置空所选匹配");
+        AdoptExistingLrcInfoButtonText.Text =
+            L("Back up and adopt LRC", "备份并接管现有 LRC");
 
         PlaylistsTitleText.Text =
             L(
