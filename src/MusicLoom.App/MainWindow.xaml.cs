@@ -1010,6 +1010,11 @@ public sealed partial class MainWindow : Window
         object sender,
         DoubleTappedRoutedEventArgs e)
     {
+        if (LibraryList.SelectedItems.Count > 1)
+        {
+            return;
+        }
+
         LibraryDisplayItem? item =
             (e.OriginalSource
                 as FrameworkElement)
@@ -3893,6 +3898,16 @@ public sealed partial class MainWindow : Window
         SelectionChangedEventArgs e)
     {
         UpdateBatchMatchActions();
+
+        if (LibraryList.SelectedItems.Count > 1)
+        {
+            // A multi-selection has no meaningful single-track detail.
+            // Hide playback, file actions, match and lyric controls.
+            ++_detailRequestId;
+            _selectedLibraryItem = null;
+            HideDetailPane();
+            return;
+        }
 
         // Extended selection is for Ctrl/Shift batch operations. The right
         // detail pane still follows the most recently selected item and
@@ -7081,22 +7096,27 @@ public sealed partial class MainWindow : Window
 
     private void UpdateBatchMatchActions()
     {
-        if (ConfirmSelectedMatchesButton is null)
+        if (ConfirmSelectedMatchesButton is null
+            || LibraryList is null)
         {
             return;
         }
 
-        int count = GetSelectedWarningMatches().Length;
-        ConfirmSelectedMatchesButton.Visibility =
-            count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        ConfirmSelectedMatchesButton.IsEnabled =
-            !_busy && count > 0;
+        bool multi = LibraryList.SelectedItems.Count > 1;
+        int warnings = GetSelectedWarningMatches().Length;
+        int matched = GetSelectedMatchedItems().Length;
 
-        int clearCount = GetSelectedMatchedItems().Length;
+        // Exactly two batch commands in multi-selection mode. When no
+        // selected row is eligible, disable the command instead of
+        // exposing an unrelated single-track operation.
+        ConfirmSelectedMatchesButton.Visibility =
+            multi ? Visibility.Visible : Visibility.Collapsed;
+        ConfirmSelectedMatchesButton.IsEnabled =
+            multi && !_busy && warnings > 0;
         ClearSelectedMatchesButton.Visibility =
-            clearCount > 1 ? Visibility.Visible : Visibility.Collapsed;
+            multi ? Visibility.Visible : Visibility.Collapsed;
         ClearSelectedMatchesButton.IsEnabled =
-            !_busy && clearCount > 1;
+            multi && !_busy && matched > 0;
     }
 
     private async void ConfirmSelectedMatchesButton_Click(
@@ -7996,58 +8016,56 @@ public sealed partial class MainWindow : Window
     {
         LibraryDisplayItem? item =
             _contextLibraryItem
-            ?? LibraryList.SelectedItem
-                as LibraryDisplayItem;
+            ?? LibraryList.SelectedItem as LibraryDisplayItem;
 
-        bool hasItem =
-            item is not null;
+        bool multi = LibraryList.SelectedItems.Count > 1;
+        bool hasItem = item is not null && !multi;
         bool hasDestination =
-            item?.Entry.DestinationPath
-                is string destination
+            item?.Entry.DestinationPath is string destination
             && File.Exists(destination);
 
-        ContextPlayItem.IsEnabled =
-            hasItem;
-        ContextOpenSourceItem.IsEnabled =
-            hasItem;
-        ContextCopySourceItem.IsEnabled =
-            hasItem;
-        ContextFindMatchItem.IsEnabled =
-            hasItem;
-        bool canConfirm =
-            item is not null
-            && GetStoredMatchWarning(
-                item.Entry)
-                is not null;
+        // Do not merely disable single-item actions: hide the entire
+        // group, including its separators, during extended selection.
+        Visibility single = multi
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        ContextPlayItem.Visibility = single;
+        ContextOpenSourceItem.Visibility = single;
+        ContextOpenDestinationItem.Visibility = single;
+        ContextCopySourceItem.Visibility = single;
+        ContextCopyDestinationItem.Visibility = single;
+        ContextFindMatchItem.Visibility = single;
+        ContextFileSeparator.Visibility = single;
+        ContextCopySeparator.Visibility = single;
+        ContextMatchSeparator.Visibility = single;
+
+        ContextPlayItem.IsEnabled = hasItem;
+        ContextOpenSourceItem.IsEnabled = hasItem;
+        ContextCopySourceItem.IsEnabled = hasItem;
+        ContextFindMatchItem.IsEnabled = hasItem && !_busy;
+        ContextOpenDestinationItem.IsEnabled =
+            hasItem && hasDestination;
+        ContextCopyDestinationItem.IsEnabled =
+            hasItem && item!.Entry.DestinationPath is not null;
+
+        bool canConfirm = hasItem
+            && GetStoredMatchWarning(item!.Entry) is not null;
         ContextConfirmMatchItem.Visibility =
-            canConfirm
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            canConfirm ? Visibility.Visible : Visibility.Collapsed;
         ContextConfirmMatchItem.IsEnabled =
-            canConfirm
-            && !_busy;
+            canConfirm && !_busy;
 
         int selectedWarnings = GetSelectedWarningMatches().Length;
         ContextConfirmSelectedMatchesItem.Visibility =
-            selectedWarnings > 1
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            multi ? Visibility.Visible : Visibility.Collapsed;
         ContextConfirmSelectedMatchesItem.IsEnabled =
-            selectedWarnings > 1 && !_busy;
+            multi && selectedWarnings > 0 && !_busy;
 
         int selectedMatches = GetSelectedMatchedItems().Length;
         ContextClearSelectedMatchesItem.Visibility =
-            selectedMatches > 1
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            multi ? Visibility.Visible : Visibility.Collapsed;
         ContextClearSelectedMatchesItem.IsEnabled =
-            selectedMatches > 1 && !_busy;
-
-        ContextOpenDestinationItem.IsEnabled =
-            hasDestination;
-        ContextCopyDestinationItem.IsEnabled =
-            item?.Entry.DestinationPath
-                is not null;
+            multi && selectedMatches > 0 && !_busy;
     }
 
     private async void ContextOpenSourceItem_Click(
