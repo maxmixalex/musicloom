@@ -86,6 +86,8 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<string, CachedWaveform> _waveformCache =
         new(StringComparer.OrdinalIgnoreCase);
     private ReactiveAudioFrames? _playingAudioFrames;
+    private float[]? _smoothedAudioFrame;
+    private TimeSpan _lastReactiveTime;
     private bool _busy;
     private bool _loadingSettings = true;
     private bool _refreshingLocalizedChoices;
@@ -483,6 +485,8 @@ public sealed partial class MainWindow : Window
         _waveformCancellation = operation;
         string path = item.Entry.SourcePath;
         _playingAudioFrames = null;
+        _smoothedAudioFrame = null;
+        _lastReactiveTime = TimeSpan.Zero;
         item.SetWaveform(null);
 
         try
@@ -549,10 +553,39 @@ public sealed partial class MainWindow : Window
         }
 
         // Audio timestamps select measured spectral frames. The shape
-        // itself expresses the frequencies/volume at that moment, not
-        // how far the song's playback position has advanced across the row.
+        // itself expresses the frequencies and loudness at that moment,
+        // not how far progress has moved across the row.
         TimeSpan time = _mediaPlayer.PlaybackSession.Position;
-        item.SetWaveform(frames.At(time));
+        float[] measured = frames.At(time);
+
+        // Respect actual player output gain, including the fade during
+        // track changes. Low-level audio produces a quieter wave.
+        double volume = Math.Clamp(_mediaPlayer.Volume, 0, 1);
+        float gain = (float)Math.Sqrt(volume);
+        bool discontinuity = _smoothedAudioFrame is null
+            || Math.Abs((time - _lastReactiveTime).TotalSeconds) > 0.6;
+        if (discontinuity)
+        {
+            _smoothedAudioFrame = new float[measured.Length];
+            for (int i = 0; i < measured.Length; i++)
+            {
+                _smoothedAudioFrame[i] = measured[i] * gain;
+            }
+        }
+        else
+        {
+            // Lightweight temporal damping prevents 20 Hz PCM windows
+            // from making sharp, strobing jumps in the Fluent background.
+            for (int i = 0; i < measured.Length; i++)
+            {
+                float target = measured[i] * gain;
+                _smoothedAudioFrame![i] +=
+                    (target - _smoothedAudioFrame[i]) * 0.38f;
+            }
+        }
+
+        _lastReactiveTime = time;
+        item.SetWaveform((float[])_smoothedAudioFrame!.Clone());
     }
 
     private sealed record CachedWaveform(
@@ -585,6 +618,7 @@ public sealed partial class MainWindow : Window
             _playingLibraryItem = null;
             _waveformCancellation?.Cancel();
             _playingAudioFrames = null;
+            _smoothedAudioFrame = null;
             _playingPreviewCandidate =
                 candidate;
             _playbackQueue = [];
