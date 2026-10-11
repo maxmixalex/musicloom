@@ -24,6 +24,7 @@ List<(string Name, Action Test)> tests =
     ("Scanning resolves canonical embedded/local/NetEase lyrics", LibraryLyricsIndexerRegression.Run),
     ("NetEase candidate ranking balances duration and metadata", NeteaseCandidateRanking),
     ("Auto-matching skips already checked unchanged audio", AutoMatchEligibilityRegression.Run),
+    ("Match confirmation and clearing immediately reconcile row status", MatchActionStatusRegression.Run),
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
     ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),
