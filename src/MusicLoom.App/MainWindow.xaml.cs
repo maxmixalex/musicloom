@@ -5076,7 +5076,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void CopyAllLyricsTextItem_Click(
+    private async void CopyAllLyricsTextItem_Click(
         object sender,
         RoutedEventArgs e)
     {
@@ -5090,12 +5090,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        CopyText(
+        await CopyTextAsync(
             BuildPlainLyricText(
                 lines));
     }
 
-    private void CopyAllLyricsLrcItem_Click(
+    private async void CopyAllLyricsLrcItem_Click(
         object sender,
         RoutedEventArgs e)
     {
@@ -5109,7 +5109,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        CopyText(
+        await CopyTextAsync(
             BuildLrcLyricText(
                 lines));
     }
@@ -5318,7 +5318,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void CopyLyricLineTextItem_Click(
+    private async void CopyLyricLineTextItem_Click(
         object sender,
         RoutedEventArgs e)
     {
@@ -5334,12 +5334,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        CopyText(
+        await CopyTextAsync(
             BuildPlainLyricText(
                 [line]));
     }
 
-    private void CopyLyricLineLrcItem_Click(
+    private async void CopyLyricLineLrcItem_Click(
         object sender,
         RoutedEventArgs e)
     {
@@ -5355,7 +5355,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        CopyText(
+        await CopyTextAsync(
             BuildLrcLyricText(
                 [line]));
     }
@@ -8376,6 +8376,13 @@ public sealed partial class MainWindow : Window
         ContextConfirmMatchItem.IsEnabled =
             canConfirm && !_busy;
 
+        bool canClear = hasItem
+            && HasCachedMatch(item!.Entry.SourcePath);
+        ContextClearMatchItem.Visibility =
+            canClear ? Visibility.Visible : Visibility.Collapsed;
+        ContextClearMatchItem.IsEnabled =
+            canClear && !_busy;
+
         int selectedWarnings = GetSelectedWarningMatches().Length;
         ContextConfirmSelectedMatchesItem.Visibility =
             multi ? Visibility.Visible : Visibility.Collapsed;
@@ -8386,6 +8393,10 @@ public sealed partial class MainWindow : Window
         ContextClearSelectedMatchesItem.Visibility =
             multi ? Visibility.Visible : Visibility.Collapsed;
         ContextClearSelectedMatchesItem.IsEnabled =
+            multi && selectedMatches > 0 && !_busy;
+        ContextUpdateSelectedLyricsItem.Visibility =
+            multi ? Visibility.Visible : Visibility.Collapsed;
+        ContextUpdateSelectedLyricsItem.IsEnabled =
             multi && selectedMatches > 0 && !_busy;
     }
 
@@ -8440,19 +8451,19 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void ContextCopySourceItem_Click(
+    private async void ContextCopySourceItem_Click(
         object sender,
         RoutedEventArgs e)
     {
         if (GetContextItem()
             is LibraryDisplayItem item)
         {
-            CopyText(
+            await CopyTextAsync(
                 item.Entry.SourcePath);
         }
     }
 
-    private void ContextCopyDestinationItem_Click(
+    private async void ContextCopyDestinationItem_Click(
         object sender,
         RoutedEventArgs e)
     {
@@ -8460,7 +8471,7 @@ public sealed partial class MainWindow : Window
                 ?.Entry.DestinationPath
             is string path)
         {
-            CopyText(path);
+            await CopyTextAsync(path);
         }
     }
 
@@ -8492,19 +8503,76 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void ContextClearMatchItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (GetContextItem() is LibraryDisplayItem item
+            && HasCachedMatch(item.Entry.SourcePath))
+        {
+            LibraryList.SelectedItem = item;
+            await SuppressNeteaseMatchAsync(item);
+        }
+    }
+
+    private async void ContextUpdateSelectedLyricsItem_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await SynchronizeMatchedLyricsAsync(
+            GetSelectedMatchedItems());
+    }
+
     private LibraryDisplayItem?
         GetContextItem() =>
         _contextLibraryItem
         ?? LibraryList.SelectedItem
             as LibraryDisplayItem;
 
-    private static void CopyText(
+    private async Task CopyTextAsync(
         string text)
     {
-        DataPackage package = new();
-        package.SetText(text);
-        Clipboard.SetContent(package);
-        Clipboard.Flush();
+        try
+        {
+            DataPackage package = new();
+            package.SetText(text);
+            await ClipboardAccessRetry.RunAsync(
+                () => Clipboard.SetContent(package));
+        }
+        catch (Exception exception)
+        {
+            // A temporarily locked clipboard must never crash the UI.
+            AppDiagnostics.LogException(
+                "Could not copy text to the clipboard.",
+                exception);
+            bool clipboardBusy =
+                exception is System.Runtime.InteropServices.COMException com
+                && com.HResult == ClipboardAccessRetry.ClipboardBusyHresult;
+            ShowInfo(
+                InfoBarSeverity.Warning,
+                L("Copy failed", "复制失败"),
+                clipboardBusy
+                    ? L(
+                        "Another app is using the clipboard. Please try again.",
+                        "其他程序正在占用剪贴板，请稍后重试。")
+                    : L(
+                        "Could not access the clipboard. See the diagnostic log.",
+                        "无法访问剪贴板，请查看诊断日志。"));
+            return;
+        }
+
+        try
+        {
+            // SetContent already copied the text. Flush makes it persist
+            // past process exit; failure here must never crash a user action.
+            await ClipboardAccessRetry.RunAsync(Clipboard.Flush);
+        }
+        catch (Exception exception)
+        {
+            AppDiagnostics.LogException(
+                "Clipboard copy succeeded, but Flush could not persist it.",
+                exception);
+        }
     }
 
     private static async Task OpenInExplorerAsync(
@@ -10550,6 +10618,10 @@ public sealed partial class MainWindow : Window
             L(
                 "Confirm NetEase match",
                 "确认网易云匹配");
+        ContextClearMatchItem.Text =
+            L(
+                "Clear NetEase match",
+                "置空网易云匹配");
         ContextConfirmSelectedMatchesItem.Text =
             L(
                 "Confirm selected matches",
@@ -10558,6 +10630,10 @@ public sealed partial class MainWindow : Window
             L(
                 "Clear selected matches",
                 "批量置空所选匹配");
+        ContextUpdateSelectedLyricsItem.Text =
+            L(
+                "Update selected lyrics",
+                "批量更新所选歌词");
 
         PlaylistsTitleText.Text =
             L(

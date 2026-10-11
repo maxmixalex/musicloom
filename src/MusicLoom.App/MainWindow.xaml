@@ -262,6 +262,10 @@
                       <MenuFlyoutItem x:Name="ContextConfirmMatchItem" Text="Confirm NetEase match" Visibility="Collapsed" Click="ContextConfirmMatchItem_Click">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE73E;" /></MenuFlyoutItem.Icon>
                       </MenuFlyoutItem>
+                      <MenuFlyoutItem x:Name="ContextClearMatchItem" Text="Clear NetEase match"
+                                      Visibility="Collapsed" Click="ContextClearMatchItem_Click">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+                      </MenuFlyoutItem>
                       <MenuFlyoutItem x:Name="ContextConfirmSelectedMatchesItem" Text="Confirm selected matches"
                                       Visibility="Collapsed" Click="ContextConfirmSelectedMatchesItem_Click">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE73E;" /></MenuFlyoutItem.Icon>
@@ -269,6 +273,10 @@
                       <MenuFlyoutItem x:Name="ContextClearSelectedMatchesItem" Text="Clear selected matches"
                                       Visibility="Collapsed" Click="ContextClearSelectedMatchesItem_Click">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+                      </MenuFlyoutItem>
+                      <MenuFlyoutItem x:Name="ContextUpdateSelectedLyricsItem" Text="Update selected lyrics"
+                                      Visibility="Collapsed" Click="ContextUpdateSelectedLyricsItem_Click">
+                        <MenuFlyoutItem.Icon><SymbolIcon Symbol="Refresh" /></MenuFlyoutItem.Icon>
                       </MenuFlyoutItem>
                     </MenuFlyout>
                   </ListView.ContextFlyout>

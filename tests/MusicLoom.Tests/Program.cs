@@ -25,6 +25,7 @@ List<(string Name, Action Test)> tests =
     ("NetEase candidate ranking balances duration and metadata", NeteaseCandidateRanking),
     ("Auto-matching skips already checked unchanged audio", AutoMatchEligibilityRegression.Run),
     ("Match confirmation and clearing immediately reconcile row status", MatchActionStatusRegression.Run),
+    ("Clipboard busy errors use bounded asynchronous retries", ClipboardAccessRetryRegression.Run),
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
     ("Warm library scan skips metadata parsing", WarmScanSkipsMetadata),
