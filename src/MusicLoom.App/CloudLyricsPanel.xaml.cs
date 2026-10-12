@@ -35,7 +35,22 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     private LrcDocument? _previewDocument;
     private bool _busy;
 
-    public CloudLyricsSource Source { get; set; }
+    private CloudLyricsSource _source;
+    public CloudLyricsSource Source
+    {
+        get => _source;
+        set
+        {
+            _source = value;
+            AudioRecognizeButton.Visibility =
+                value == CloudLyricsSource.KugouMusic
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            AudioRecognizeButton.IsEnabled =
+                value == CloudLyricsSource.KugouMusic
+                && _sourcePath is not null;
+        }
+    }
     public event EventHandler<CloudLyricsAcceptedEventArgs>? LyricsAccepted;
 
     public CloudLyricsPanel()
@@ -49,6 +64,9 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         ArtistBox.PlaceholderText = L("Artist", "艺术家");
         TitleBox.PlaceholderText = L("Title", "歌曲名");
         SearchButton.Content = L("Search", "搜索");
+        AudioRecognizeButton.Content = L(
+            "Audio recognize (experimental)",
+            "音频识别（实验性）");
         UseLyricsButton.Content = L("Use selected lyrics", "采用所选歌词");
         if (CandidatesList.ItemsSource is null)
         {
@@ -78,6 +96,8 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             ? L("Select a track.", "请选择一首歌曲。")
             : L("Search by artist and title.", "按艺术家和歌名搜索。");
         UseLyricsButton.IsEnabled = false;
+        AudioRecognizeButton.IsEnabled = path is not null
+            && Source == CloudLyricsSource.KugouMusic;
     }
 
     private string L(string english, string chinese) =>
@@ -217,5 +237,6 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     {
         CancelRequest();
         _client.Dispose();
+        DisposeAudioRecognition();
     }
 }
