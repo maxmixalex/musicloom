@@ -1,6 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Dispatching;
 using Windows.Foundation;
 
 namespace MusicLoom.App;
@@ -15,6 +17,9 @@ public sealed partial class PlayingWaveform : UserControl
     private readonly RectangleGeometry _outerClip = new();
     private bool _renderFailed;
     private bool _rendering;
+    private bool _renderQueued;
+    private bool _isVisible;
+    private Storyboard? _opacityStoryboard;
 
     public event EventHandler? Rendered;
 
@@ -49,7 +54,71 @@ public sealed partial class PlayingWaveform : UserControl
         InitializeComponent();
         WaveRoot.Clip = _outerClip;
         Loaded += (_, _) => RenderWaveform();
-        SizeChanged += (_, _) => RenderWaveform();
+        // Coalesce live GridSplitter resize events into a single low-priority
+        // render rather than rebuilding geometry for every pointer pixel.
+        SizeChanged += (_, _) => QueueResizeRender();
+    }
+
+    private void QueueResizeRender()
+    {
+        if (_renderQueued || _renderFailed)
+        {
+            return;
+        }
+        _renderQueued = true;
+        if (!DispatcherQueue.TryEnqueue(
+                DispatcherQueuePriority.Low,
+                () =>
+                {
+                    _renderQueued = false;
+                    RenderWaveform();
+                }))
+        {
+            _renderQueued = false;
+        }
+    }
+
+    private void SetVisibleWithFade(bool show)
+    {
+        if (_isVisible == show)
+        {
+            return;
+        }
+
+        _isVisible = show;
+        _opacityStoryboard?.Stop();
+        if (show)
+        {
+            Visibility = Visibility.Visible;
+        }
+
+        DoubleAnimation transition = new()
+        {
+            From = show ? 0 : 1,
+            To = show ? 1 : 0,
+            Duration = new Duration(
+                TimeSpan.FromMilliseconds(show ? 280 : 240)),
+            EasingFunction = new QuadraticEase
+            {
+                EasingMode = EasingMode.EaseInOut,
+            },
+        };
+        WaveRoot.Opacity = show ? 0 : 1;
+        Storyboard.SetTarget(transition, WaveRoot);
+        Storyboard.SetTargetProperty(transition, "Opacity");
+
+        Storyboard storyboard = new();
+        storyboard.Children.Add(transition);
+        storyboard.Completed += (_, _) =>
+        {
+            WaveRoot.Opacity = show ? 1 : 0;
+            if (!show && !_isVisible)
+            {
+                Visibility = Visibility.Collapsed;
+            }
+        };
+        _opacityStoryboard = storyboard;
+        storyboard.Begin();
     }
 
     private static void OnInputChanged(
@@ -69,7 +138,7 @@ public sealed partial class PlayingWaveform : UserControl
         {
             float[]? levels = Samples;
             bool show = IsActive && levels is { Length: > 2 };
-            Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            SetVisibleWithFade(show);
             if (!show || levels is null)
             {
                 return;
@@ -89,10 +158,10 @@ public sealed partial class PlayingWaveform : UserControl
 
             // Catmull-Rom interpolation between measured adjacent frequency
             // bands yields a flowing profile. No synthetic time oscillator.
-            const int Subdivisions = 5;
+            const int Subdivisions = 8;
             PointCollection contour = new();
             PointCollection surface = new();
-            double baseline = height * 0.69;
+            double baseline = height * 0.82;
             surface.Add(new Point(0, height));
 
             for (int i = 0; i < levels.Length - 1; i++)
@@ -103,7 +172,10 @@ public sealed partial class PlayingWaveform : UserControl
                     double value = SmoothBand(levels, i, t);
                     double x = width *
                         (i + t) / (levels.Length - 1);
-                    double y = baseline - value * (height * 0.46);
+                    // Expand quieter passages perceptually, preserving genuine
+                    // spectrum peaks and avoiding a fabricated time oscillator.
+                    double response = Math.Pow(value, 0.58);
+                    double y = baseline - response * (height * 0.74);
                     y = Math.Clamp(y, 0, height);
                     Point point = new(x, y);
                     contour.Add(point);
@@ -114,7 +186,7 @@ public sealed partial class PlayingWaveform : UserControl
             double finalValue = SafeLevel(levels[^1]);
             Point end = new(
                 width,
-                Math.Clamp(baseline - finalValue * height * 0.46, 0, height));
+                Math.Clamp(baseline - Math.Pow(finalValue, 0.58) * height * 0.74, 0, height));
             contour.Add(end);
             surface.Add(end);
             surface.Add(new Point(width, height));

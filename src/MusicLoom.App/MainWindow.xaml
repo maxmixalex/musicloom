@@ -10,7 +10,14 @@
     mc:Ignorable="d"
     Title="MusicLoom">
 
-  <NavigationView
+  <Grid x:Name="AppRoot">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+    <TitleBar x:Name="AppTitleBar" Grid.Row="0" Title="MusicLoom" />
+    <NavigationView
+      Grid.Row="1"
       x:Name="Navigation"
       IsBackButtonVisible="Collapsed"
       IsSettingsVisible="False"
@@ -331,13 +338,13 @@
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
                           <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                     Foreground="{Binding TitleForeground}"
+                                     Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
                                      ToolTipService.ToolTip="{Binding TitleToolTip}" />
                           <TextBlock Text="{Binding ArtistAlbum}" FontSize="12"
-                                     Foreground="{Binding SecondaryForeground}"
+                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
@@ -382,6 +389,7 @@
                 HorizontalAlignment="Stretch"
                 ResizeDirection="Columns"
                 ResizeBehavior="PreviousAndNext"
+                DragIncrement="3"
                 Visibility="Collapsed" />
 
             <Border
@@ -513,9 +521,11 @@
                     </StackPanel>
                   </StackPanel>
 
+                  <StackPanel Grid.Column="2" Spacing="7"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center">
                   <Button
                       x:Name="DetailPlayButton"
-                      Grid.Column="2"
                       Width="48"
                       Height="48"
                       Padding="0"
@@ -525,6 +535,10 @@
                       ToolTipService.ToolTip="Play track">
                     <SymbolIcon x:Name="DetailPlayIcon" Symbol="Play" />
                   </Button>
+                  <TextBlock x:Name="DetailDurationText" Text="—"
+                             HorizontalAlignment="Center" FontSize="12"
+                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                  </StackPanel>
 
                   <Button
                       x:Name="CloseDetailButton"
@@ -1224,13 +1238,13 @@
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
                           <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                     Foreground="{Binding TitleForeground}"
+                                     Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
                                      ToolTipService.ToolTip="{Binding TitleToolTip}" />
                           <TextBlock Text="{Binding ArtistAlbum}" FontSize="12"
-                                     Foreground="{Binding SecondaryForeground}"
+                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
@@ -1870,5 +1884,6 @@
         </Grid>
       </Border>
     </Grid>
-  </NavigationView>
+    </NavigationView>
+  </Grid>
 </Window>

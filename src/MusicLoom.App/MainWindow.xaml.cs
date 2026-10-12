@@ -150,6 +150,8 @@ public sealed partial class MainWindow : Window
         StartupTrace.Mark(
             "MainWindow.InitializeComponent.after");
 
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
         InitializePlayer();
         Closed += MainWindow_Closed;
         ApplyWindowIcon();
@@ -1803,7 +1805,7 @@ public sealed partial class MainWindow : Window
     private void ApplyAppearance(
         MusicLoomSettings settings)
     {
-        Navigation.RequestedTheme =
+        AppRoot.RequestedTheme =
             UiThemeModes.Normalize(
                 settings.Ui.Theme) switch
             {
@@ -1813,6 +1815,7 @@ public sealed partial class MainWindow : Window
                     ElementTheme.Dark,
                 _ => ElementTheme.Default,
             };
+        Navigation.RequestedTheme = AppRoot.RequestedTheme;
 
         AppearanceManager.Apply(
             this,
@@ -4297,6 +4300,7 @@ public sealed partial class MainWindow : Window
         TrackTitleText.Text = string.Empty;
         TrackArtistText.Text = string.Empty;
         TrackAlbumText.Text = string.Empty;
+        DetailDurationText.Text = "—";
         TrackStatusText.Text = string.Empty;
         TrackStatusIcon.Glyph = "\uE823";
         TrackStatusIcon.Foreground =
@@ -4826,6 +4830,7 @@ public sealed partial class MainWindow : Window
                 payload.Format;
             TrackDurationText.Text =
                 payload.Duration;
+            DetailDurationText.Text = payload.Duration;
             TrackBitrateText.Text =
                 payload.Bitrate;
             TrackSampleRateText.Text =
