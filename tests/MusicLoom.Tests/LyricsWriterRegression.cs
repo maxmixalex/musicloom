@@ -106,8 +106,8 @@ internal static class LyricsWriterRegression
                 throw new InvalidOperationException(
                     "Repeated embedded lyric cleanup should be a no-op.");
             }
-            if (!stable.AsSpan().SequenceEqual(
-                    await IOFile.ReadAllBytesAsync(path)))
+            byte[] cleanedAgain = await IOFile.ReadAllBytesAsync(path);
+            if (!stable.AsSpan().SequenceEqual(cleanedAgain))
             {
                 throw new InvalidOperationException(
                     "Repeated cleanup modified an already clean file.");
