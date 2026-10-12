@@ -1775,7 +1775,7 @@
             <ColumnDefinition Width="72" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="142" />
+            <ColumnDefinition Width="190" />
           </Grid.ColumnDefinitions>
 
           <Button
@@ -1915,10 +1915,11 @@
 
           </Grid>
 
-          <Grid Grid.Column="3" VerticalAlignment="Center" ColumnSpacing="12">
+          <Grid Grid.Column="3" VerticalAlignment="Center" ColumnSpacing="10">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="108" />
+              <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <FontIcon
                 x:Name="PlayerVolumeIcon"
@@ -1938,10 +1939,22 @@
                 <local:PercentageSliderValueConverter />
               </Slider.ThumbToolTipValueConverter>
             </Slider>
+            <Button x:Name="ImmersiveOpenButton" Grid.Column="2"
+                    Width="34" Height="34" Padding="0"
+                    Click="ImmersiveOpenButton_Click"
+                    ToolTipService.ToolTip="Fullscreen immersive player">
+              <FontIcon Glyph="&#xE740;" FontSize="16" />
+            </Button>
           </Grid>
         </Grid>
       </Border>
     </Grid>
     </NavigationView>
+    <Grid x:Name="ImmersiveHost" Grid.RowSpan="2"
+          Visibility="Collapsed">
+      <local:ImmersivePlayer x:Name="ImmersiveView"
+                             HorizontalAlignment="Stretch"
+                             VerticalAlignment="Stretch" />
+    </Grid>
   </Grid>
 </Window>

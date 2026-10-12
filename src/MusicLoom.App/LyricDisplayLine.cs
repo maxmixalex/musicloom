@@ -43,8 +43,13 @@ internal sealed class LyricDisplayLine :
                 nameof(PrimaryFontSize));
             OnPropertyChanged(
                 nameof(SecondaryFontSize));
+            OnPropertyChanged(nameof(ImmersiveOpacity));
+            OnPropertyChanged(nameof(ImmersiveFontSize));
         }
     }
+
+    public double ImmersiveOpacity => IsActive ? 1.0 : 0.48;
+    public double ImmersiveFontSize => IsActive ? 28.0 : 22.0;
 
     public double PrimaryFontSize =>
         IsActive ? 20 : 16;

@@ -157,6 +157,8 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         InitializePlayer();
         InstallLyricScrollSuppression(LyricsList);
+        InstallLyricScrollSuppression(ImmersiveView.LyricsList);
+        InitializeImmersivePlayer();
         Closed += MainWindow_Closed;
         ApplyWindowIcon();
 
@@ -427,6 +429,11 @@ public sealed partial class MainWindow : Window
                     ? Visibility.Visible
                     : Visibility.Collapsed;
             ConfigureAuxiliaryLongText();
+
+            if (_immersiveActive)
+            {
+                await UpdateImmersiveTrackAsync(item);
+            }
 
             if (startPosition
                 is TimeSpan initialPosition)
@@ -948,6 +955,13 @@ public sealed partial class MainWindow : Window
 
         PlayerTimeText.Text =
             $"{FormatPlayerTime(position)} / {FormatPlayerTime(duration)}";
+        if (_immersiveActive)
+        {
+            ImmersiveView.SetProgress(
+                positionSeconds,
+                durationSeconds,
+                PlayerTimeText.Text);
+        }
     }
 
     private void UpdatePlayerVisualState()
@@ -961,6 +975,10 @@ public sealed partial class MainWindow : Window
             playing
                 ? Symbol.Pause
                 : Symbol.Play;
+        if (_immersiveActive)
+        {
+            ImmersiveView.SetPlaying(playing);
+        }
 
         ToolTipService.SetToolTip(
             PlayerPlayPauseButton,
@@ -1028,7 +1046,15 @@ public sealed partial class MainWindow : Window
         IEnumerable<LyricDisplayLine> source;
         ListView targetList;
 
-        if (_playingPreviewCandidate is not null
+        if (_immersiveActive
+            && _playingLibraryItem is not null
+            && ImmersiveView.LyricsList.ItemsSource
+                is IEnumerable<LyricDisplayLine> immersiveLines)
+        {
+            source = immersiveLines;
+            targetList = ImmersiveView.LyricsList;
+        }
+        else if (_playingPreviewCandidate is not null
             && _activeMatchDialogCandidate
                 is NeteaseMatchCandidate match
             && match.TrackId
@@ -10807,6 +10833,10 @@ public sealed partial class MainWindow : Window
                 "Prefer original",
                 "优先原文");
         CopyAllLyricsButtonText.Text = L("Copy", "复制");
+        ToolTipService.SetToolTip(
+            ImmersiveOpenButton,
+            L("Open immersive player", "打开沉浸式播放器"));
+        ImmersiveView.Localize(L);
         ToolTipService.SetToolTip(ClearLyricsButton,
             L("Clear all lyrics", "清空全部歌词"));
         ToolTipService.SetToolTip(AdjustLyricsButton,
