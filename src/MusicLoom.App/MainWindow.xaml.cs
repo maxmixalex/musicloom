@@ -437,7 +437,9 @@ public sealed partial class MainWindow : Window
 
             if (_immersiveActive)
             {
-                await UpdateImmersiveTrackAsync(item);
+                // Album inspection / database loading must not postpone
+                // starting audio when the fullscreen view is open.
+                _ = UpdateImmersiveTrackAsync(item);
             }
 
             if (startPosition
@@ -1131,8 +1133,10 @@ public sealed partial class MainWindow : Window
         if (DateTimeOffset.UtcNow >= _lyricFollowBlockedUntil
             && !ReferenceEquals(active, _lastAutoScrolledLyric))
         {
-            ScrollLyricIntoViewSmoothly(targetList, active);
-            _lastAutoScrolledLyric = active;
+            if (ScrollLyricIntoViewSmoothly(targetList, active))
+            {
+                _lastAutoScrolledLyric = active;
+            }
         }
     }
 

@@ -55,21 +55,36 @@ public sealed partial class MainWindow
         return null;
     }
 
-    private static void ScrollLyricIntoViewSmoothly(
+    private static bool ScrollLyricIntoViewSmoothly(
         ListView list,
         LyricDisplayLine line)
     {
         ScrollViewer? viewer = FindLyricDescendant<ScrollViewer>(list);
         if (viewer is null)
         {
-            return;
+            return false;
         }
 
         if (list.ContainerFromItem(line) is not ListViewItem row)
         {
-            // A distant virtualized line must be realized first.
-            list.ScrollIntoView(line);
-            return;
+            // Never snap via ScrollIntoView: if a distant item is still
+            // virtualized, animate toward its estimated position instead.
+            if (viewer.ScrollableHeight < 1
+                || list.ItemsSource is not IEnumerable<LyricDisplayLine> source)
+            {
+                return false;
+            }
+            LyricDisplayLine[] lines = source.ToArray();
+            int index = Array.IndexOf(lines, line);
+            if (index < 0)
+            {
+                return false;
+            }
+            double approximation = viewer.ScrollableHeight
+                * index / Math.Max(1, lines.Length - 1);
+            viewer.ChangeView(null, approximation, null,
+                disableAnimation: false);
+            return true;
         }
 
         try
@@ -83,14 +98,16 @@ public sealed partial class MainWindow
                 Math.Clamp(desired, 0, Math.Max(0, viewer.ScrollableHeight)),
                 null,
                 disableAnimation: false);
+            return true;
         }
         catch (ArgumentException)
         {
             // Virtualization can recycle the row during a resize.
+            return false;
         }
     }
 
-    private static void AnimateLyricFont(
+    private void AnimateLyricFont(
         ListView list,
         LyricDisplayLine line,
         bool expand)
@@ -121,15 +138,40 @@ public sealed partial class MainWindow
             storyboard.Begin();
         }
 
+        bool immersive = ReferenceEquals(list, ImmersiveView.LyricsList);
         if (FindLyricDescendant<TextBlock>(row, "PrimaryLyricText")
             is TextBlock primary)
         {
-            Animate(primary, expand ? 16 : 20, expand ? 20 : 16);
+            double ordinary = immersive ? 22 : 16;
+            double active = immersive ? 28 : 20;
+            Animate(primary,
+                expand ? ordinary : active,
+                expand ? active : ordinary);
         }
-        if (FindLyricDescendant<TextBlock>(row, "SecondaryLyricText")
-            is TextBlock secondary)
+        if (!immersive
+            && FindLyricDescendant<TextBlock>(row, "SecondaryLyricText")
+                is TextBlock secondary)
         {
             Animate(secondary, expand ? 13 : 15, expand ? 15 : 13);
+        }
+        if (immersive
+            && FindLyricDescendant<StackPanel>(row) is StackPanel area)
+        {
+            DoubleAnimation opacity = new()
+            {
+                From = expand ? 0.48 : 1.0,
+                To = expand ? 1.0 : 0.48,
+                Duration = new Duration(TimeSpan.FromMilliseconds(250)),
+                EasingFunction = new QuadraticEase
+                {
+                    EasingMode = EasingMode.EaseInOut,
+                },
+            };
+            Storyboard.SetTarget(opacity, area);
+            Storyboard.SetTargetProperty(opacity, "Opacity");
+            Storyboard storyboard = new();
+            storyboard.Children.Add(opacity);
+            storyboard.Begin();
         }
     }
 }
