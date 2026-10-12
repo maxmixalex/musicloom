@@ -756,6 +756,14 @@
                     </Grid>
                   </TabViewItem>
 
+                  <TabViewItem x:Name="QqLyricsTab"
+                               Header="QQ Music" IsClosable="False">
+                    <local:CloudLyricsPanel x:Name="QqCloudLyricsPanel" />
+                  </TabViewItem>
+                  <TabViewItem x:Name="KugouLyricsTab"
+                               Header="KuGou Music" IsClosable="False">
+                    <local:CloudLyricsPanel x:Name="KugouCloudLyricsPanel" />
+                  </TabViewItem>
                   <TabViewItem x:Name="MatchTab" Header="NetEase match" IsClosable="False">
                     <StackPanel Padding="4,14" Spacing="12">
                       <Border

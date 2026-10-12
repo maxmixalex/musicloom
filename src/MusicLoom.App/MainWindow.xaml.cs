@@ -159,6 +159,7 @@ public sealed partial class MainWindow : Window
         InstallLyricScrollSuppression(LyricsList);
         InstallLyricScrollSuppression(ImmersiveView.LyricsList);
         InitializeImmersivePlayer();
+        InitializeCloudLyricsPanels();
         Closed += MainWindow_Closed;
         ApplyWindowIcon();
 
@@ -349,6 +350,8 @@ public sealed partial class MainWindow : Window
         _waveformCancellation?.Cancel();
         _waveformCancellation?.Dispose();
         CloseMatchOverlay();
+        QqCloudLyricsPanel.Dispose();
+        KugouCloudLyricsPanel.Dispose();
         _mediaPlayer.Dispose();
     }
 
@@ -4332,6 +4335,8 @@ public sealed partial class MainWindow : Window
         _currentLyricsRaw = null;
         _currentArtworkBytes = null;
 
+        QqCloudLyricsPanel.SetTrack(null);
+        KugouCloudLyricsPanel.SetTrack(null);
         TrackTitleText.Text = string.Empty;
         TrackArtistText.Text = string.Empty;
         TrackAlbumText.Text = string.Empty;
@@ -4753,6 +4758,11 @@ public sealed partial class MainWindow : Window
     {
         int requestId =
             ++_detailRequestId;
+
+        QqCloudLyricsPanel.SetTrack(
+            item.Entry.SourcePath, item.Artist, item.Title);
+        KugouCloudLyricsPanel.SetTrack(
+            item.Entry.SourcePath, item.Artist, item.Title);
 
         TrackTitleText.Text =
             item.Title;
@@ -10837,6 +10847,10 @@ public sealed partial class MainWindow : Window
             ImmersiveOpenButton,
             L("Open immersive player", "打开沉浸式播放器"));
         ImmersiveView.Localize(L);
+        QqLyricsTab.Header = L("QQ Music lyrics", "QQ 音乐歌词");
+        KugouLyricsTab.Header = L("KuGou Music lyrics", "酷狗音乐歌词");
+        QqCloudLyricsPanel.Localize(L);
+        KugouCloudLyricsPanel.Localize(L);
         ToolTipService.SetToolTip(ClearLyricsButton,
             L("Clear all lyrics", "清空全部歌词"));
         ToolTipService.SetToolTip(AdjustLyricsButton,

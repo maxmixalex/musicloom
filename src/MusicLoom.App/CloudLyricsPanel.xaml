@@ -1,0 +1,79 @@
+<UserControl
+    x:Class="MusicLoom.App.CloudLyricsPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MusicLoom.App">
+  <Grid Padding="8,14" RowSpacing="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+    <Grid Grid.Row="0" ColumnSpacing="8">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <TextBox x:Name="ArtistBox" Grid.Column="0"
+               PlaceholderText="Artist" />
+      <TextBox x:Name="TitleBox" Grid.Column="1"
+               PlaceholderText="Title" />
+      <Button x:Name="SearchButton" Grid.Column="2"
+              Content="Search" Click="SearchButton_Click"
+              Padding="14,7" />
+    </Grid>
+    <TextBlock x:Name="ProviderStatus" Grid.Row="1"
+               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+               TextTrimming="CharacterEllipsis" />
+
+    <Grid Grid.Row="2" ColumnSpacing="12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="1*" />
+        <ColumnDefinition Width="1*" />
+      </Grid.ColumnDefinitions>
+      <Border Grid.Column="0" CornerRadius="8"
+              BorderThickness="1"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+        <ListView x:Name="CandidatesList"
+                  SelectionMode="Single"
+                  SelectionChanged="CandidatesList_SelectionChanged"
+                  HorizontalContentAlignment="Stretch">
+          <ListView.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Padding="8" Spacing="3">
+                <TextBlock Text="{Binding Title}"
+                           FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Artist}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Album}"
+                           FontSize="12"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+            </DataTemplate>
+          </ListView.ItemTemplate>
+        </ListView>
+      </Border>
+      <Border Grid.Column="1" CornerRadius="8"
+              Padding="12" BorderThickness="1"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <TextBlock x:Name="LyricsPreview"
+                     TextWrapping="Wrap"
+                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </ScrollViewer>
+      </Border>
+    </Grid>
+    <Grid Grid.Row="3">
+      <Button x:Name="UseLyricsButton"
+              HorizontalAlignment="Right"
+              Content="Use selected lyrics"
+              Click="UseLyricsButton_Click"
+              IsEnabled="False" />
+    </Grid>
+  </Grid>
+</UserControl>
