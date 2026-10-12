@@ -50,7 +50,7 @@ internal static class TimedLyricsRegression
         Assert(doc.Lines[0].Words![0].Start ==
                 TimeSpan.FromMilliseconds(500),
             "QRC word starts must be absolute, not line-relative.");
-        Assert(doc.Lines[0].Words[1].End ==
+        Assert(doc.Lines[0].Words![1].End ==
                 TimeSpan.FromMilliseconds(1400),
             "QRC word duration was lost.");
 
@@ -94,7 +94,7 @@ internal static class TimedLyricsRegression
         Assert(original.Text == "Hello"
             && original.Words![0].Start ==
                 TimeSpan.FromMilliseconds(500)
-            && original.Words[1].Start ==
+            && original.Words![1].Start ==
                 TimeSpan.FromMilliseconds(900),
             "KuGou word times must be relative to line start.");
         Assert(decoded.Lines.Any(line => line.Text == "你好"),
