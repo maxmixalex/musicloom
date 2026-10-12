@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml.Controls;
+using MusicLoom.Audio.Windows;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.LyricsProviders;
 
@@ -10,6 +11,9 @@ public sealed partial class MainWindow
     {
         QqCloudLyricsPanel.Source = CloudLyricsSource.QqMusic;
         KugouCloudLyricsPanel.Source = CloudLyricsSource.KugouMusic;
+        KugouCloudLyricsPanel.CaptureAudioPcm16 =
+            (path, token) => new KugouPcmWindowDecoder()
+                .DecodeAsync(path, token);
         QqCloudLyricsPanel.LyricsAccepted += CloudLyricsPanel_LyricsAccepted;
         KugouCloudLyricsPanel.LyricsAccepted += CloudLyricsPanel_LyricsAccepted;
     }
