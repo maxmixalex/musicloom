@@ -6,6 +6,7 @@
     <Project Path="src/MusicLoom.AudioFingerprint/MusicLoom.AudioFingerprint.csproj" />
     <Project Path="src/MusicLoom.Audio.Windows/MusicLoom.Audio.Windows.csproj" />
     <Project Path="src/MusicLoom.Netease/MusicLoom.Netease.csproj" />
+    <Project Path="src/MusicLoom.LyricsProviders/MusicLoom.LyricsProviders.csproj" />
     <Project Path="src/MusicLoom.Cli/MusicLoom.Cli.csproj" />
     <Project Path="src/MusicLoom.App/MusicLoom.App.csproj" />
   </Folder>

@@ -9,6 +9,7 @@
     <ProjectReference Include="../../src/MusicLoom.Tagging/MusicLoom.Tagging.csproj" />
     <ProjectReference Include="../../src/MusicLoom.AudioFingerprint/MusicLoom.AudioFingerprint.csproj" />
     <ProjectReference Include="../../src/MusicLoom.Netease/MusicLoom.Netease.csproj" />
+    <ProjectReference Include="../../src/MusicLoom.LyricsProviders/MusicLoom.LyricsProviders.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../../src/MusicLoom.App/LibraryDatabase.cs"

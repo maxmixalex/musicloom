@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MusicLoom.Tests" />
+    <ProjectReference Include="../MusicLoom.Core/MusicLoom.Core.csproj" />
+  </ItemGroup>
+</Project>
