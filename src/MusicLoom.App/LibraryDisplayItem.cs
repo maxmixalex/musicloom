@@ -14,6 +14,7 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
     private string _kind;
     private string _statusText;
     private bool _isPlaying;
+    private bool _useDarkSemanticColors;
     private float[]? _waveformSamples;
     private TextWrapping _rowTextWrapping =
         TextWrapping.NoWrap;
@@ -116,29 +117,40 @@ internal sealed class LibraryDisplayItem : INotifyPropertyChanged
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-    public Brush StatusBrush => Kind switch
+    // Diagnostic accents must remain legible on both dark and light
+    // backgrounds, independently of the user's configurable main accent.
+    public Brush StatusBrush => new SolidColorBrush(
+        Kind switch
+        {
+            "synced" => _useDarkSemanticColors
+                ? Color.FromArgb(255, 121, 220, 145)
+                : Color.FromArgb(255, 16, 124, 65),
+            "error" => _useDarkSemanticColors
+                ? Color.FromArgb(255, 255, 138, 132)
+                : Color.FromArgb(255, 196, 43, 28),
+            "warning" => _useDarkSemanticColors
+                ? Color.FromArgb(255, 252, 194, 84)
+                : Color.FromArgb(255, 202, 116, 0),
+            "syncing" => _useDarkSemanticColors
+                ? Color.FromArgb(255, 122, 187, 255)
+                : Color.FromArgb(255, 0, 120, 212),
+            _ => _useDarkSemanticColors
+                ? Color.FromArgb(255, 252, 194, 84)
+                : Color.FromArgb(255, 202, 116, 0),
+        });
+
+    public void SetDarkTheme(bool enabled)
     {
-        "synced" =>
-            new SolidColorBrush(
-                Color.FromArgb(
-                    255, 16, 124, 65)),
-        "error" =>
-            new SolidColorBrush(
-                Color.FromArgb(
-                    255, 196, 43, 28)),
-        "warning" =>
-            new SolidColorBrush(
-                Color.FromArgb(
-                    255, 202, 116, 0)),
-        "syncing" =>
-            new SolidColorBrush(
-                Color.FromArgb(
-                    255, 0, 120, 212)),
-        _ =>
-            new SolidColorBrush(
-                Color.FromArgb(
-                    255, 202, 116, 0)),
-    };
+        if (_useDarkSemanticColors == enabled)
+        {
+            return;
+        }
+
+        _useDarkSemanticColors = enabled;
+        OnPropertyChanged(nameof(StatusBrush));
+        OnPropertyChanged(nameof(TitleForeground));
+        OnPropertyChanged(nameof(SecondaryForeground));
+    }
 
     // Diagnostic colors are meaningful; ordinary rows retain the
     // native WinUI text-fill brushes, including the dim subtitle.

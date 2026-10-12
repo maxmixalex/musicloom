@@ -155,6 +155,8 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        AppRoot.ActualThemeChanged += (_, _) =>
+            RefreshLibraryStatusColors();
         InitializePlayer();
         InstallLyricScrollSuppression(LyricsList);
         InstallLyricScrollSuppression(ImmersiveView.LyricsList);
@@ -1857,6 +1859,7 @@ public sealed partial class MainWindow : Window
         AppearanceManager.Apply(
             this,
             settings.Ui);
+        RefreshLibraryStatusColors();
 
         if (AppearanceManager.TryParseColor(
                 settings.Ui.AccentColor,
@@ -3763,6 +3766,8 @@ public sealed partial class MainWindow : Window
 
             displayItem.ApplyLongTextMode(
                 CurrentLongTextMode);
+            displayItem.SetDarkTheme(
+                AppRoot.ActualTheme == ElementTheme.Dark);
 
             if (playingSource is not null
                 && string.Equals(
