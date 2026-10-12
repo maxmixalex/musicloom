@@ -87,6 +87,35 @@ internal static class LyricsWriterRegression
             Equal(1, CountTxxx(overwrittenFrames, "LYRICS"));
             AssertKeepFrame(overwrittenFrames);
 
+            bool stripped = await writer.RemoveAsync(path);
+            if (!stripped)
+            {
+                throw new InvalidOperationException(
+                    "Sidecar mode did not clear destination embedded lyrics.");
+            }
+
+            IReadOnlyList<Id3Frame> cleanedFrames = ReadId3Frames(path, extension);
+            Equal(0, cleanedFrames.Count(static frame =>
+                frame.Id is "SYLT" or "USLT"));
+            Equal(0, CountTxxx(cleanedFrames, "LYRICS"));
+            AssertKeepFrame(cleanedFrames);
+
+            byte[] stable = await IOFile.ReadAllBytesAsync(path);
+            if (await writer.RemoveAsync(path))
+            {
+                throw new InvalidOperationException(
+                    "Repeated embedded lyric cleanup should be a no-op.");
+            }
+            if (!stable.AsSpan().SequenceEqual(
+                    await IOFile.ReadAllBytesAsync(path)))
+            {
+                throw new InvalidOperationException(
+                    "Repeated cleanup modified an already clean file.");
+            }
+
+            // Lyrics round-trip still works when switching back to embedded.
+            await writer.WriteAsync(path, replacement, overrideExisting: true);
+
             string expectedReplacement = replacement.ToString();
             Equal(
                 expectedReplacement,

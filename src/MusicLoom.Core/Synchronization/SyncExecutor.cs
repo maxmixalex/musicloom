@@ -63,6 +63,7 @@ public sealed class SyncExecutor
     private readonly ITrackLyricsWriter _lyricsWriter;
     private readonly ITrackLyricsCache? _lyricsCache;
     private readonly ILibraryLyricsCache? _libraryLyricsCache;
+    private readonly IEmbeddedLyricsCleaner? _embeddedLyricsCleaner;
     private readonly int _checkpointInterval;
 
     public SyncExecutor(
@@ -72,7 +73,8 @@ public sealed class SyncExecutor
         ITrackLyricsWriter lyricsWriter,
         int checkpointInterval = 25,
         ITrackLyricsCache? lyricsCache = null,
-        ILibraryLyricsCache? libraryLyricsCache = null)
+        ILibraryLyricsCache? libraryLyricsCache = null,
+        IEmbeddedLyricsCleaner? embeddedLyricsCleaner = null)
     {
         if (checkpointInterval <= 0)
         {
@@ -87,6 +89,7 @@ public sealed class SyncExecutor
         _lyricsWriter = lyricsWriter;
         _lyricsCache = lyricsCache;
         _libraryLyricsCache = libraryLyricsCache;
+        _embeddedLyricsCleaner = embeddedLyricsCleaner;
         _checkpointInterval = checkpointInterval;
     }
 
@@ -271,6 +274,23 @@ public sealed class SyncExecutor
             try
             {
                 string expectedRecipe = SyncRecipe.For(settings);
+
+                // Sidecar mode owns the destination's lyrics exclusively.
+                // Strip stale embedded lyrics regardless of whether any local
+                // or remote lyrics are cached or available. This must happen
+                // before every early-completion branch below, including a
+                // negative cache hit and an unchanged local sidecar.
+                if (settings.Organizer.Lyrics.Enabled
+                    && LyricsStorageModes.Normalize(
+                        settings.Organizer.Lyrics.StorageMode)
+                        == LyricsStorageModes.Sidecar
+                    && _embeddedLyricsCleaner is not null)
+                {
+                    stage = "remove-embedded-lyrics";
+                    await _embeddedLyricsCleaner.RemoveAsync(
+                        entry.DestinationPath,
+                        cancellationToken);
+                }
 
                 if (!settings.Organizer.Lyrics.Enabled)
                 {
