@@ -338,6 +338,14 @@ public static partial class TimedLyricsCodec
         {
             return null;
         }
+        // Keep raw attribute newlines. Standard XML processing normalizes
+        // literal line breaks in attributes to spaces, which destroys QRC's
+        // [start,duration] rows. The raw match matches the QQ wire format.
+        Match match = QrcAttributeRegex().Match(xml);
+        if (match.Success)
+        {
+            return WebUtility.HtmlDecode(match.Groups["content"].Value);
+        }
         try
         {
             XDocument parsed = XDocument.Parse(xml);
@@ -346,11 +354,7 @@ public static partial class TimedLyricsCodec
         }
         catch (System.Xml.XmlException)
         {
-            // Some QQ responses contain standalone partial XML fragments.
-            Match fallback = QrcAttributeRegex().Match(xml);
-            return fallback.Success
-                ? WebUtility.HtmlDecode(fallback.Groups["content"].Value)
-                : null;
+            return null;
         }
     }
 
