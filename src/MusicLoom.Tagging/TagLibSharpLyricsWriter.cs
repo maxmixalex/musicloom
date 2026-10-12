@@ -368,17 +368,26 @@ public sealed class TagLibSharpLyricsWriter :
         Span<byte> timestamp = stackalloc byte[4];
         foreach (LrcLine line in lines)
         {
-            long milliseconds = (long)line.Timestamp.TotalMilliseconds;
-            if (milliseconds < 0 || milliseconds > uint.MaxValue)
+            // SYLT stores a time per syllable. Preserve precise QRC/KRC
+            // word timings when available; plain LRC stays line-timed.
+            IEnumerable<(TimeSpan Time, string Text)> segments =
+                line.Words is { Count: > 0 }
+                    ? line.Words.Select(static word => (word.Start, word.Text))
+                    : [(line.Timestamp, line.Text)];
+            foreach ((TimeSpan time, string text) in segments)
             {
-                throw new InvalidDataException(
-                    $"Lyric timestamp {line.Timestamp} cannot be represented by ID3 SYLT.");
-            }
+                long milliseconds = (long)time.TotalMilliseconds;
+                if (milliseconds < 0 || milliseconds > uint.MaxValue)
+                {
+                    throw new InvalidDataException(
+                        $"Lyric timestamp {time} cannot be represented by ID3 SYLT.");
+                }
 
-            stream.Write(Encoding.UTF8.GetBytes(line.Text));
-            stream.WriteByte(0);
-            BinaryPrimitives.WriteUInt32BigEndian(timestamp, (uint)milliseconds);
-            stream.Write(timestamp);
+                stream.Write(Encoding.UTF8.GetBytes(text));
+                stream.WriteByte(0);
+                BinaryPrimitives.WriteUInt32BigEndian(timestamp, (uint)milliseconds);
+                stream.Write(timestamp);
+            }
         }
 
         return stream.ToArray();

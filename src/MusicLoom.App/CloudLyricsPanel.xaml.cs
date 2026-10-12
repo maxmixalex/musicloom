@@ -35,7 +35,22 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     private LrcDocument? _previewDocument;
     private bool _busy;
 
-    public CloudLyricsSource Source { get; set; }
+    private CloudLyricsSource _source;
+    public CloudLyricsSource Source
+    {
+        get => _source;
+        set
+        {
+            _source = value;
+            AudioRecognizeButton.Visibility =
+                value == CloudLyricsSource.KugouMusic
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            AudioRecognizeButton.IsEnabled =
+                value == CloudLyricsSource.KugouMusic
+                && _sourcePath is not null;
+        }
+    }
     public event EventHandler<CloudLyricsAcceptedEventArgs>? LyricsAccepted;
 
     public CloudLyricsPanel()
@@ -49,6 +64,9 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         ArtistBox.PlaceholderText = L("Artist", "艺术家");
         TitleBox.PlaceholderText = L("Title", "歌曲名");
         SearchButton.Content = L("Search", "搜索");
+        AudioRecognizeButton.Content = L(
+            "Audio recognize (experimental)",
+            "音频识别（实验性）");
         UseLyricsButton.Content = L("Use selected lyrics", "采用所选歌词");
         if (CandidatesList.ItemsSource is null)
         {
@@ -78,6 +96,8 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             ? L("Select a track.", "请选择一首歌曲。")
             : L("Search by artist and title.", "按艺术家和歌名搜索。");
         UseLyricsButton.IsEnabled = false;
+        AudioRecognizeButton.IsEnabled = path is not null
+            && Source == CloudLyricsSource.KugouMusic;
     }
 
     private string L(string english, string chinese) =>
@@ -139,8 +159,10 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         catch (OperationCanceledException)
         {
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            AppDiagnostics.LogException(
+                "Could not search QQ/KuGou lyrics.", error);
             ProviderStatus.Text = L(
                 "Search failed. The provider may be unavailable; try again later.",
                 "搜索失败，歌词源可能暂时不可用，请稍后重试。");
@@ -187,18 +209,38 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             }
 
             _previewDocument = doc;
-            LyricsPreview.Text = doc.ToString();
+            // Preview readable text, not QRC/KRC inline timing markup.
+            // The canonical document still retains all word timestamps
+            // when the user adopts the selected lyrics.
+            LyricsPreview.Text = FormatPreview(doc);
             UseLyricsButton.IsEnabled = true;
         }
         catch (OperationCanceledException)
         {
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            AppDiagnostics.LogException(
+                "Could not decode QQ/KuGou lyrics.", error);
             LyricsPreview.Text = L(
                 "Could not load lyrics from this provider.",
                 "无法从此歌词源获取歌词。");
         }
+    }
+
+    private static string FormatPreview(LrcDocument document)
+    {
+        return string.Join(Environment.NewLine,
+            LrcPresentation.Project(document).Select(line =>
+            {
+                string prefix = line.Timestamp is TimeSpan time
+                    ? FormattableString.Invariant(
+                        $"[{(int)time.TotalMinutes:00}:{time.Seconds:00}] ")
+                    : "";
+                return prefix + line.Original
+                    + (string.IsNullOrWhiteSpace(line.Translation)
+                        ? "" : Environment.NewLine + line.Translation);
+            }));
     }
 
     private void UseLyricsButton_Click(object sender, RoutedEventArgs e)
@@ -217,5 +259,6 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     {
         CancelRequest();
         _client.Dispose();
+        DisposeAudioRecognition();
     }
 }

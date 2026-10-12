@@ -45,6 +45,8 @@ public sealed partial class LrcDocument
             }
 
             string lyricText = TimestampRegex().Replace(line, string.Empty).Trim();
+            (string plainText, IReadOnlyList<LrcWord>? words) =
+                ParseEnhancedWords(lyricText);
             foreach (Match timestamp in timestamps)
             {
                 int minutes = int.Parse(timestamp.Groups[1].Value, CultureInfo.InvariantCulture);
@@ -58,7 +60,7 @@ public sealed partial class LrcDocument
                     TimeSpan.FromMinutes(minutes)
                     + TimeSpan.FromSeconds(seconds)
                     + TimeSpan.FromMilliseconds(milliseconds),
-                    lyricText));
+                    plainText, words));
             }
         }
 
@@ -101,6 +103,13 @@ public sealed partial class LrcDocument
             result.Lines.Add(line with
             {
                 Timestamp = timestamp < TimeSpan.Zero ? TimeSpan.Zero : timestamp,
+                Words = line.Words?.Select(word => word with
+                {
+                    Start = word.Start + shift < TimeSpan.Zero
+                        ? TimeSpan.Zero : word.Start + shift,
+                    End = word.End + shift < TimeSpan.Zero
+                        ? TimeSpan.Zero : word.End + shift,
+                }).ToArray(),
             });
         }
         return result;
@@ -385,21 +394,106 @@ public sealed partial class LrcDocument
         return builder.ToString().TrimEnd('\n');
     }
 
-    [GeneratedRegex(@"\[(\d{2}):(\d{2})\.(\d{2,3})\]", RegexOptions.CultureInvariant)]
+    private static (string Text, IReadOnlyList<LrcWord>? Words)
+        ParseEnhancedWords(string content)
+    {
+        MatchCollection marks = EnhancedTimestampRegex().Matches(content);
+        if (marks.Count == 0)
+        {
+            return (content, null);
+        }
+
+        List<LrcWord> words = [];
+        // A closing time marker has no following text. The marker's
+        // absolute time still supplies the preceding word's end time.
+        for (int i = 0; i < marks.Count; i++)
+        {
+            Match current = marks[i];
+            int contentStart = current.Index + current.Length;
+            int contentEnd = i + 1 < marks.Count
+                ? marks[i + 1].Index : content.Length;
+            string text = content[contentStart..contentEnd];
+            if (i == 0 && current.Index > 0)
+            {
+                text = content[..current.Index] + text;
+            }
+            if (text.Length == 0)
+            {
+                continue;
+            }
+
+            TimeSpan start = ParseClock(current);
+            TimeSpan end = i + 1 < marks.Count
+                ? ParseClock(marks[i + 1]) : start;
+            words.Add(new LrcWord(start, end < start ? start : end, text));
+        }
+
+        return words.Count > 0
+            ? (string.Concat(words.Select(static word => word.Text)),
+                words.ToArray())
+            : (EnhancedTimestampRegex().Replace(content, ""), null);
+    }
+
+    private static TimeSpan ParseClock(Match time)
+    {
+        int minutes = int.Parse(time.Groups[1].Value,
+            CultureInfo.InvariantCulture);
+        int seconds = int.Parse(time.Groups[2].Value,
+            CultureInfo.InvariantCulture);
+        string fraction = time.Groups[3].Value;
+        int millis = int.Parse(fraction, CultureInfo.InvariantCulture)
+            * (fraction.Length == 2 ? 10 : 1);
+        return TimeSpan.FromMinutes(minutes)
+            + TimeSpan.FromSeconds(seconds)
+            + TimeSpan.FromMilliseconds(millis);
+    }
+
+    [GeneratedRegex(@"\[(\d{2,}):(\d{2})\.(\d{2,3})\]", RegexOptions.CultureInvariant)]
     private static partial Regex TimestampRegex();
+
+    [GeneratedRegex(@"<(\d{2,}):(\d{2})\.(\d{2,3})>", RegexOptions.CultureInvariant)]
+    private static partial Regex EnhancedTimestampRegex();
 
     [GeneratedRegex(@"\[(ti|ar|al|by|offset):(.*?)\]", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex MetadataRegex();
 }
 
-public sealed record LrcLine(TimeSpan Timestamp, string Text)
+/// <summary>
+/// Word timing is optional; the canonical plain line remains in Text.
+/// Enhanced LRC serializes each word's absolute start and a final end tag.
+/// </summary>
+public sealed record LrcWord(TimeSpan Start, TimeSpan End, string Text);
+
+public sealed record LrcLine(
+    TimeSpan Timestamp,
+    string Text,
+    IReadOnlyList<LrcWord>? Words = null)
 {
     public override string ToString()
     {
-        long totalMilliseconds = (long)Timestamp.TotalMilliseconds;
-        long minutes = totalMilliseconds / 60_000;
-        long seconds = totalMilliseconds / 1_000 % 60;
-        long milliseconds = totalMilliseconds % 1_000;
-        return FormattableString.Invariant($"[{minutes:00}:{seconds:00}.{milliseconds:000}]{Text}");
+        string prefix = FormatTag(Timestamp, '[', ']');
+        if (Words is not { Count: > 0 })
+        {
+            return prefix + Text;
+        }
+
+        StringBuilder enhanced = new(prefix);
+        foreach (LrcWord word in Words)
+        {
+            enhanced.Append(FormatTag(word.Start, '<', '>'));
+            enhanced.Append(word.Text);
+        }
+        enhanced.Append(FormatTag(Words[^1].End, '<', '>'));
+        return enhanced.ToString();
+    }
+
+    private static string FormatTag(TimeSpan time, char left, char right)
+    {
+        long value = Math.Max(0, (long)time.TotalMilliseconds);
+        long minutes = value / 60_000;
+        long seconds = value / 1_000 % 60;
+        long milliseconds = value % 1_000;
+        return FormattableString.Invariant(
+            $"{left}{minutes:00}:{seconds:00}.{milliseconds:000}{right}");
     }
 }

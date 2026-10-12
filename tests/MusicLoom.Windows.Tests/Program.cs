@@ -138,6 +138,26 @@ try
             "Reactive spectrum interpolation produced invalid values.");
     }
 
+    // KuGou's noncommercial PCM recognition uses a longer 8-kHz
+    // signed-16-bit window than the existing NetEase peak fingerprint.
+    byte[]? kugouPcm = await new KugouPcmWindowDecoder()
+        .DecodeAsync(path);
+    if (kugouPcm is null || kugouPcm.Length < 8_000 * 2 * 2
+        || kugouPcm.Length > 8_000 * 2 * 10
+        || kugouPcm.Length % sizeof(short) != 0)
+    {
+        throw new InvalidOperationException(
+            "Could not decode 8 kHz mono PCM16 for KuGou recognition.");
+    }
+    byte[] quantized = KugouPcmWindowDecoder.ToPcm16(
+        [float.NaN, -1f, 0f, 1f]);
+    if (!quantized.AsSpan().SequenceEqual(
+        new byte[] { 0, 0, 0, 128, 0, 0, 255, 127 }))
+    {
+        throw new InvalidOperationException(
+            "PCM16 packing must clamp non-finite and peak samples.");
+    }
+
     FingerprintResult fingerprint = NeteaseFingerprint.Generate(samples);
     if (fingerprint.Peaks.Count == 0)
     {
