@@ -75,7 +75,7 @@ internal static class TimedLyricsRegression
     private static void VerifyKrcWordTiming()
     {
         string romanization = """
-        {"content":[{"type":0,"lyricContent":[["He","llo"],["World"]]},
+        {"content":[{"type":0,"lyricContent":[["He","rō"],["Wōrudo"]]},
                     {"type":1,"lyricContent":[["你好"],["世界"]]}]}
         """;
         string input = "[language:"
@@ -99,7 +99,7 @@ internal static class TimedLyricsRegression
             "KuGou word times must be relative to line start.");
         Assert(decoded.Lines.Any(line => line.Text == "你好"),
             "KRC line translation is missing.");
-        Assert(decoded.Lines.Any(line => line.Text == "Hello"
+        Assert(decoded.Lines.Any(line => line.Text == "Herō"
             && line.Words is null),
             "KRC aligned romanization is missing.");
         Assert(decoded.Metadata["ar"] == "Artist",
