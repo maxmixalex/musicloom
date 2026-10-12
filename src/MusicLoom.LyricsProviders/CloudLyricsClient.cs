@@ -469,10 +469,14 @@ public sealed partial class CloudLyricsClient : IDisposable
             text = base64;
         }
 
-        LrcDocument parsed = text.Contains("<0,", StringComparison.Ordinal)
-            || text.Contains("[language:", StringComparison.Ordinal)
-            ? TimedLyricsCodec.ParseKrc(text)
-            : LrcDocument.Parse(text);
+        // KRC words may start at any relative offset, not only <0,...>.
+        // The parser returns no timed lines for ordinary square-bracket
+        // LRC timestamps, so falling back is both safe and lossless.
+        LrcDocument parsed = TimedLyricsCodec.ParseKrc(text);
+        if (parsed.Lines.Count == 0)
+        {
+            parsed = LrcDocument.Parse(text);
+        }
         return parsed.Lines.Count > 0 ? parsed : null;
     }
 
