@@ -92,8 +92,10 @@ public sealed partial class CloudLyricsPanel
         catch (OperationCanceledException)
         {
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            AppDiagnostics.LogException(
+                "Experimental KuGou audio recognition request failed.", error);
             ProviderStatus.Text = L(
                 "The experimental KuGou recognition endpoint is unavailable. You can still search by title and artist.",
                 "实验性酷狗识曲接口目前不可用；仍可按歌名和艺术家搜索歌词。");
