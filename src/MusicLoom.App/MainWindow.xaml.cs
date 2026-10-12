@@ -2407,7 +2407,8 @@ public sealed partial class MainWindow : Window
                     lyricsWriter,
                     lyricsCache: lyricStore,
                     libraryLyricsCache: lyricStore,
-                    embeddedLyricsCleaner: new TagLibSharpLyricsWriter());
+                    embeddedLyricsCleaner: new TagLibSharpLyricsWriter(),
+                    lyricsOffsetStore: lyricStore);
 
             SyncProgressTracker progressTracker = new();
 
@@ -7870,7 +7871,8 @@ public sealed partial class MainWindow : Window
                     writer,
                     lyricsCache: lyricsCache,
                     libraryLyricsCache: lyricsCache,
-                    embeddedLyricsCleaner: new TagLibSharpLyricsWriter());
+                    embeddedLyricsCleaner: new TagLibSharpLyricsWriter(),
+                    lyricsOffsetStore: lyricsCache);
 
                 SyncProgressTracker tracker = new();
                 Progress<SyncExecutionProgress> progress =

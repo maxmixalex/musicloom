@@ -72,6 +72,27 @@ public sealed partial class LrcDocument
         return document;
     }
 
+    /// <summary>Shift generated output without modifying source lyrics.</summary>
+    public static LrcDocument Shift(LrcDocument source, int offsetMilliseconds)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        LrcDocument result = new();
+        foreach ((string key, string value) in source.Metadata)
+        {
+            result.Metadata[key] = value;
+        }
+        TimeSpan shift = TimeSpan.FromMilliseconds(offsetMilliseconds);
+        foreach (LrcLine line in source.Lines)
+        {
+            TimeSpan timestamp = line.Timestamp + shift;
+            result.Lines.Add(line with
+            {
+                Timestamp = timestamp < TimeSpan.Zero ? TimeSpan.Zero : timestamp,
+            });
+        }
+        return result;
+    }
+
     public static LrcDocument Merge(
         LrcDocument original,
         LrcDocument translated)

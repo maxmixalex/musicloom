@@ -64,6 +64,7 @@ public sealed class SyncExecutor
     private readonly ITrackLyricsCache? _lyricsCache;
     private readonly ILibraryLyricsCache? _libraryLyricsCache;
     private readonly IEmbeddedLyricsCleaner? _embeddedLyricsCleaner;
+    private readonly ILyricsOffsetStore? _lyricsOffsetStore;
     private readonly int _checkpointInterval;
 
     public SyncExecutor(
@@ -74,7 +75,8 @@ public sealed class SyncExecutor
         int checkpointInterval = 25,
         ITrackLyricsCache? lyricsCache = null,
         ILibraryLyricsCache? libraryLyricsCache = null,
-        IEmbeddedLyricsCleaner? embeddedLyricsCleaner = null)
+        IEmbeddedLyricsCleaner? embeddedLyricsCleaner = null,
+        ILyricsOffsetStore? lyricsOffsetStore = null)
     {
         if (checkpointInterval <= 0)
         {
@@ -90,6 +92,7 @@ public sealed class SyncExecutor
         _lyricsCache = lyricsCache;
         _libraryLyricsCache = libraryLyricsCache;
         _embeddedLyricsCleaner = embeddedLyricsCleaner;
+        _lyricsOffsetStore = lyricsOffsetStore;
         _checkpointInterval = checkpointInterval;
     }
 
@@ -309,14 +312,97 @@ public sealed class SyncExecutor
                             entry.SourcePath,
                             cancellationToken);
 
+                    if (canonical?.Origin == LibraryLyricsOrigin.ManualEmpty)
+                    {
+                        // User explicitly deleted all lyrics, including replicas.
+                        // Never touch the source audio or source sidecar.
+                        stage = "clear-lyrics";
+                        if (_embeddedLyricsCleaner is not null)
+                        {
+                            await _embeddedLyricsCleaner.RemoveAsync(
+                                entry.DestinationPath, cancellationToken);
+                        }
+                        string sidecar = SidecarLrcLyricsWriter.GetSidecarPath(
+                            entry.DestinationPath);
+                        if (File.Exists(sidecar)) File.Delete(sidecar);
+                        partial = partial with
+                        {
+                            Lyrics = LyricsState.NoLyrics,
+                            LyricsCheckedAt = DateTimeOffset.UtcNow,
+                            LyricsFingerprint = null,
+                        };
+                        await CompleteAsync(entry, partial, expectedRecipe, index + 1);
+                        continue;
+                    }
+
+                    if (canonical is
+                        {
+                            Origin: LibraryLyricsOrigin.ManualEdited,
+                            HasLyrics: true,
+                        } && canonical.Text is string editedText)
+                    {
+                        stage = "write-edited-lyrics";
+                        LrcDocument edited = LrcDocument.Parse(editedText);
+                        int offset = _lyricsOffsetStore is null ? 0 :
+                            await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
+                                entry.SourcePath, cancellationToken);
+                        LyricsWriteResult output = await _lyricsWriter.WriteAsync(
+                            entry.DestinationPath,
+                            LrcDocument.Shift(edited, offset),
+                            overrideExisting: true,
+                            cancellationToken);
+                        partial = partial with
+                        {
+                            Lyrics = output.Status == LyricsWriteStatus.Written
+                                ? LyricsState.Written
+                                : output.Status == LyricsWriteStatus.SkippedExisting
+                                    ? LyricsState.Existing : LyricsState.Unsupported,
+                            LyricsCheckedAt = DateTimeOffset.UtcNow,
+                            LyricsFingerprint = ComputeLyricsFingerprint(edited),
+                        };
+                        if (output.Status == LyricsWriteStatus.Written) writtenLyrics++;
+                        else if (output.Status == LyricsWriteStatus.SkippedExisting) existingLyrics++;
+                        else unsupportedLyrics++;
+                        await CompleteAsync(entry, partial, expectedRecipe, index + 1);
+                        continue;
+                    }
+
                     if (canonical is
                         {
                             Origin: LibraryLyricsOrigin.Embedded,
                             HasLyrics: true,
                         })
                     {
-                        // Copying the source already preserves its embedded
-                        // lyrics; a NetEase fetch must never replace them.
+                        // Sidecar output requires writing canonical source
+                        // lyrics after stripping the target's embedded tags.
+                        if (_lyricsWriter is SidecarLrcLyricsWriter
+                            && canonical.Text is string embeddedText)
+                        {
+                            LrcDocument document = LrcDocument.Parse(embeddedText);
+                            int offset = _lyricsOffsetStore is null ? 0 :
+                                await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
+                                    entry.SourcePath, cancellationToken);
+                            LyricsWriteResult result = await _lyricsWriter.WriteAsync(
+                                entry.DestinationPath,
+                                LrcDocument.Shift(document, offset),
+                                settings.Organizer.Lyrics.OverrideExisting,
+                                cancellationToken);
+                            partial = partial with
+                            {
+                                Lyrics = result.Status == LyricsWriteStatus.Written
+                                    ? LyricsState.Written
+                                    : result.Status == LyricsWriteStatus.SkippedExisting
+                                        ? LyricsState.Existing : LyricsState.Unsupported,
+                                LyricsCheckedAt = DateTimeOffset.UtcNow,
+                            };
+                            if (result.Status == LyricsWriteStatus.Written) writtenLyrics++;
+                            else if (result.Status == LyricsWriteStatus.SkippedExisting) existingLyrics++;
+                            else unsupportedLyrics++;
+                            await CompleteAsync(entry, partial, expectedRecipe, index + 1);
+                            continue;
+                        }
+
+                        // Embedded mode: copying the source preserves local lyrics.
                         partial = partial with
                         {
                             Lyrics = LyricsState.Existing,
@@ -397,10 +483,13 @@ public sealed class SyncExecutor
                         progress?.Report(new SyncExecutionProgress(
                             index, work.Length, entry.SourcePath, stage));
 
+                        int localOffset = _lyricsOffsetStore is null ? 0 :
+                            await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
+                                entry.SourcePath, cancellationToken);
                         LyricsWriteResult localWrite =
                             await _lyricsWriter.WriteAsync(
                                 entry.DestinationPath,
-                                localDocument,
+                                LrcDocument.Shift(localDocument, localOffset),
                                 settings.Organizer.Lyrics.OverrideExisting,
                                 cancellationToken);
 
@@ -709,9 +798,12 @@ public sealed class SyncExecutor
                     entry.SourcePath,
                     stage));
 
+                int outputOffset = _lyricsOffsetStore is null ? 0 :
+                    await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
+                        entry.SourcePath, cancellationToken);
                 LyricsWriteResult write = await _lyricsWriter.WriteAsync(
                     entry.DestinationPath,
-                    lookup.Lyrics,
+                    LrcDocument.Shift(lookup.Lyrics, outputOffset),
                     settings.Organizer.Lyrics.OverrideExisting,
                     cancellationToken);
 
