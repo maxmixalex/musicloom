@@ -169,6 +169,9 @@ internal static class TomlSettingsStore
                             : LongTextModes.Normalize(
                                 longTextMode,
                                 autoScroll),
+                    LyricsEditorPath =
+                        ReadString(values, "ui.lyrics_editor_path",
+                            defaults.Ui.LyricsEditorPath),
                     LyricsDisplayMode =
                         LyricsDisplayModes.Normalize(
                             ReadString(
@@ -294,6 +297,8 @@ internal static class TomlSettingsStore
             "lyrics_display_mode",
             LyricsDisplayModes.Normalize(
                 settings.Ui.LyricsDisplayMode));
+        AppendString(builder, "lyrics_editor_path",
+            settings.Ui.LyricsEditorPath);
 
         string temporaryPath =
             path

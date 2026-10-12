@@ -9,7 +9,7 @@ namespace MusicLoom.App;
 /// full rewrite of sync_tracks and keeps lyrics when the destination is absent.
 /// </summary>
 internal sealed class SqliteLyricsCache :
-    ITrackLyricsCache, ILibraryLyricsCache
+    ITrackLyricsCache, ILibraryLyricsCache, ILyricsOffsetStore
 {
     private readonly string _databasePath;
 
@@ -150,7 +150,7 @@ internal sealed class SqliteLyricsCache :
                         updated_at = excluded.updated_at
                     WHERE $explicit = 1
                        OR library_lyrics.origin NOT IN (
-                           $embedded, $sidecar, $manual);
+                           $embedded, $sidecar, $manual, $edited, $empty);
                     """;
                 canonical.Parameters.AddWithValue("$source", sourcePath);
                 canonical.Parameters.AddWithValue(
@@ -172,6 +172,10 @@ internal sealed class SqliteLyricsCache :
                 canonical.Parameters.AddWithValue(
                     "$manual", (int)LibraryLyricsOrigin.ManualNetease);
                 canonical.Parameters.AddWithValue(
+                    "$edited", (int)LibraryLyricsOrigin.ManualEdited);
+                canonical.Parameters.AddWithValue(
+                    "$empty", (int)LibraryLyricsOrigin.ManualEmpty);
+                canonical.Parameters.AddWithValue(
                     "$explicit", explicitSelection ? 1 : 0);
                 await canonical.ExecuteNonQueryAsync(cancellationToken);
             }
@@ -183,6 +187,34 @@ internal sealed class SqliteLyricsCache :
             transaction.Rollback();
             throw;
         }
+    }
+
+    public async Task<int?> GetOffsetMillisecondsAsync(
+        string sourcePath, CancellationToken cancellationToken = default)
+    {
+        await using SqliteConnection db = await OpenAsync(cancellationToken);
+        await using SqliteCommand command = db.CreateCommand();
+        command.CommandText =
+            "SELECT offset_ms FROM lyrics_adjustments WHERE source_path = $source;";
+        command.Parameters.AddWithValue("$source", sourcePath);
+        object? scalar = await command.ExecuteScalarAsync(cancellationToken);
+        return scalar is long amount ? checked((int)amount) : null;
+    }
+
+    public async Task SetOffsetMillisecondsAsync(
+        string sourcePath, int offsetMilliseconds,
+        CancellationToken cancellationToken = default)
+    {
+        await using SqliteConnection db = await OpenAsync(cancellationToken);
+        await using SqliteCommand command = db.CreateCommand();
+        command.CommandText = """
+            INSERT INTO lyrics_adjustments(source_path, offset_ms)
+            VALUES ($source, $amount)
+            ON CONFLICT(source_path) DO UPDATE SET offset_ms = excluded.offset_ms;
+            """;
+        command.Parameters.AddWithValue("$source", sourcePath);
+        command.Parameters.AddWithValue("$amount", offsetMilliseconds);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<LibraryLyricsRecord?> GetLibraryAsync(
@@ -442,6 +474,10 @@ internal sealed class SqliteLyricsCache :
                     song_id INTEGER NULL,
                     source_signature TEXT NOT NULL,
                     updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS lyrics_adjustments (
+                    source_path TEXT PRIMARY KEY COLLATE NOCASE,
+                    offset_ms INTEGER NOT NULL DEFAULT 0
                 );
 
                 """;

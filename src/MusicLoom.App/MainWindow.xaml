@@ -10,7 +10,14 @@
     mc:Ignorable="d"
     Title="MusicLoom">
 
-  <NavigationView
+  <Grid x:Name="AppRoot">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+    <TitleBar x:Name="AppTitleBar" Grid.Row="0" Title="MusicLoom" />
+    <NavigationView
+      Grid.Row="1"
       x:Name="Navigation"
       IsBackButtonVisible="Collapsed"
       IsSettingsVisible="False"
@@ -331,13 +338,13 @@
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
                           <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                     Foreground="{Binding TitleForeground}"
+                                     Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
                                      ToolTipService.ToolTip="{Binding TitleToolTip}" />
                           <TextBlock Text="{Binding ArtistAlbum}" FontSize="12"
-                                     Foreground="{Binding SecondaryForeground}"
+                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
@@ -382,6 +389,7 @@
                 HorizontalAlignment="Stretch"
                 ResizeDirection="Columns"
                 ResizeBehavior="PreviousAndNext"
+                DragIncrement="3"
                 Visibility="Collapsed" />
 
             <Border
@@ -513,9 +521,11 @@
                     </StackPanel>
                   </StackPanel>
 
+                  <StackPanel Grid.Column="2" Spacing="7"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center">
                   <Button
                       x:Name="DetailPlayButton"
-                      Grid.Column="2"
                       Width="48"
                       Height="48"
                       Padding="0"
@@ -525,6 +535,10 @@
                       ToolTipService.ToolTip="Play track">
                     <SymbolIcon x:Name="DetailPlayIcon" Symbol="Play" />
                   </Button>
+                  <TextBlock x:Name="DetailDurationText" Text="—"
+                             HorizontalAlignment="Center" FontSize="12"
+                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                  </StackPanel>
 
                   <Button
                       x:Name="CloseDetailButton"
@@ -557,10 +571,10 @@
                         <RowDefinition Height="*" />
                       </Grid.RowDefinitions>
 
-                      <Grid Margin="2,0,2,10" ColumnSpacing="8">
+                      <Grid Margin="2,0,2,10" ColumnSpacing="6">
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="*" />
-                          <ColumnDefinition Width="170" />
+                          <ColumnDefinition Width="126" />
                           <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <ScrollViewer
@@ -586,13 +600,38 @@
                         <ComboBox
                             x:Name="LyricsModeBox"
                             Grid.Column="1"
-                            HorizontalAlignment="Stretch"
+                            Width="126"
+                            HorizontalAlignment="Left"
                             SelectionChanged="LyricsModeBox_SelectionChanged">
                           <ComboBoxItem x:Name="LyricsOriginalOnlyItem" Content="Original only" Tag="originalOnly" />
                           <ComboBoxItem x:Name="LyricsPreferTranslationItem" Content="Prefer translation" Tag="preferTranslation" />
                           <ComboBoxItem x:Name="LyricsPreferOriginalItem" Content="Prefer original" Tag="preferOriginal" />
                         </ComboBox>
-                        <DropDownButton
+                        <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                    HorizontalAlignment="Right" Spacing="4">
+                          <Button x:Name="ClearLyricsButton" Padding="7,5"
+                                  Click="ClearLyricsButton_Click"
+                                  ToolTipService.ToolTip="Clear lyrics">
+                            <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                          </Button>
+                          <DropDownButton x:Name="AdjustLyricsButton" Padding="7,5"
+                                          ToolTipService.ToolTip="Adjust timing">
+                            <FontIcon Glyph="&#xE823;" FontSize="14" />
+                            <DropDownButton.Flyout>
+                              <MenuFlyout>
+                                <MenuFlyoutItem x:Name="AdvanceLyricsItem"
+                                                Text="Move earlier…" Click="AdvanceLyricsItem_Click" />
+                                <MenuFlyoutItem x:Name="DelayLyricsItem"
+                                                Text="Move later…" Click="DelayLyricsItem_Click" />
+                              </MenuFlyout>
+                            </DropDownButton.Flyout>
+                          </DropDownButton>
+                          <Button x:Name="EditLyricsButton" Padding="7,5"
+                                  Click="EditLyricsButton_Click"
+                                  ToolTipService.ToolTip="Edit lyrics">
+                            <FontIcon Glyph="&#xE70F;" FontSize="14" />
+                          </Button>
+                          <DropDownButton
                             x:Name="CopyAllLyricsButton"
                             Grid.Column="2"
                             ToolTipService.ToolTip="Copy full lyrics">
@@ -612,7 +651,8 @@
                                   Click="CopyAllLyricsLrcItem_Click" />
                             </MenuFlyout>
                           </DropDownButton.Flyout>
-                        </DropDownButton>
+                          </DropDownButton>
+                        </StackPanel>
                       </Grid>
 
                       <ListView
@@ -693,12 +733,14 @@
                                   VerticalAlignment="Top" />
                               <StackPanel Grid.Column="1" Spacing="3">
                                 <TextBlock
+                                    x:Name="PrimaryLyricText"
                                     Text="{Binding PrimaryText}"
                                     FontSize="{Binding PrimaryFontSize}"
                                     LineHeight="23"
                                     TextWrapping="WrapWholeWords"
                                     IsTextSelectionEnabled="False" />
                                 <TextBlock
+                                    x:Name="SecondaryLyricText"
                                     Text="{Binding SecondaryText}"
                                     Visibility="{Binding SecondaryVisibility}"
                                     FontSize="{Binding SecondaryFontSize}"
@@ -714,6 +756,14 @@
                     </Grid>
                   </TabViewItem>
 
+                  <TabViewItem x:Name="QqLyricsTab"
+                               Header="QQ Music" IsClosable="False">
+                    <local:CloudLyricsPanel x:Name="QqCloudLyricsPanel" />
+                  </TabViewItem>
+                  <TabViewItem x:Name="KugouLyricsTab"
+                               Header="KuGou Music" IsClosable="False">
+                    <local:CloudLyricsPanel x:Name="KugouCloudLyricsPanel" />
+                  </TabViewItem>
                   <TabViewItem x:Name="MatchTab" Header="NetEase match" IsClosable="False">
                     <StackPanel Padding="4,14" Spacing="12">
                       <Border
@@ -1224,13 +1274,13 @@
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
                           <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                     Foreground="{Binding TitleForeground}"
+                                     Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
                                      ToolTipService.ToolTip="{Binding TitleToolTip}" />
                           <TextBlock Text="{Binding ArtistAlbum}" FontSize="12"
-                                     Foreground="{Binding SecondaryForeground}"
+                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                      TextWrapping="{Binding RowTextWrapping}"
                                      TextTrimming="{Binding RowTextTrimming}"
                                      MaxLines="{Binding RowMaxLines}"
@@ -1436,6 +1486,36 @@
                         LargeChange="3600"
                         SpinButtonPlacementMode="Compact"
                         ValueChanged="LyricsRefreshHoursBox_ValueChanged" />
+                  </Grid>
+                </Border>
+                <Border Padding="18" CornerRadius="10"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="280" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2">
+                      <TextBlock x:Name="LyricsEditorSettingTitle"
+                                 Text="Lyrics editor" FontWeight="SemiBold" />
+                      <TextBlock x:Name="LyricsEditorSettingDescription"
+                                 Text="Use default editor or choose an application."
+                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <Grid Grid.Column="1" ColumnSpacing="5">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBox x:Name="LyricsEditorPathBox" Grid.Column="0"
+                               PlaceholderText="System default"
+                               TextChanged="SettingsControl_Changed" />
+                      <Button x:Name="BrowseLyricsEditorButton" Grid.Column="1"
+                              Content="Browse…" Click="BrowseLyricsEditorButton_Click" />
+                      <Button x:Name="ResetLyricsEditorButton" Grid.Column="2"
+                              Content="Reset" Click="ResetLyricsEditorButton_Click" />
+                    </Grid>
                   </Grid>
                 </Border>
               </StackPanel>
@@ -1703,7 +1783,7 @@
             <ColumnDefinition Width="72" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="142" />
+            <ColumnDefinition Width="190" />
           </Grid.ColumnDefinitions>
 
           <Button
@@ -1843,10 +1923,11 @@
 
           </Grid>
 
-          <Grid Grid.Column="3" VerticalAlignment="Center" ColumnSpacing="12">
+          <Grid Grid.Column="3" VerticalAlignment="Center" ColumnSpacing="10">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="108" />
+              <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <FontIcon
                 x:Name="PlayerVolumeIcon"
@@ -1866,9 +1947,22 @@
                 <local:PercentageSliderValueConverter />
               </Slider.ThumbToolTipValueConverter>
             </Slider>
+            <Button x:Name="ImmersiveOpenButton" Grid.Column="2"
+                    Width="34" Height="34" Padding="0"
+                    Click="ImmersiveOpenButton_Click"
+                    ToolTipService.ToolTip="Fullscreen immersive player">
+              <FontIcon Glyph="&#xE740;" FontSize="16" />
+            </Button>
           </Grid>
         </Grid>
       </Border>
     </Grid>
-  </NavigationView>
+    </NavigationView>
+    <Grid x:Name="ImmersiveHost" Grid.RowSpan="2"
+          Visibility="Collapsed">
+      <local:ImmersivePlayer x:Name="ImmersiveView"
+                             HorizontalAlignment="Stretch"
+                             VerticalAlignment="Stretch" />
+    </Grid>
+  </Grid>
 </Window>

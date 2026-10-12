@@ -51,6 +51,8 @@ public enum LibraryLyricsOrigin
     // Explicit user-selected provider lyrics. This intent is durable and
     // takes priority over an embedded or sidecar lyric on future scans.
     ManualNetease,
+    ManualEdited,
+    ManualEmpty,
 }
 
 public sealed record LibraryLyricsRecord(
@@ -72,5 +74,16 @@ public interface ILibraryLyricsCache
 
     Task SaveLibraryAsync(
         LibraryLyricsRecord record,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Persistent user timing adjustment, applied only to generated output.
+/// </summary>
+public interface ILyricsOffsetStore
+{
+    Task<int?> GetOffsetMillisecondsAsync(string sourcePath,
+        CancellationToken cancellationToken = default);
+    Task SetOffsetMillisecondsAsync(string sourcePath, int offsetMilliseconds,
         CancellationToken cancellationToken = default);
 }

@@ -8,7 +8,8 @@ using TagLib.Ogg;
 
 namespace MusicLoom.Tagging;
 
-public sealed class TagLibSharpLyricsWriter : ITrackLyricsWriter
+public sealed class TagLibSharpLyricsWriter :
+    ITrackLyricsWriter, IEmbeddedLyricsCleaner
 {
     private static readonly ReadOnlyByteVector SyltId = "SYLT";
     private static readonly ReadOnlyByteVector UsltId = "USLT";
@@ -103,6 +104,98 @@ public sealed class TagLibSharpLyricsWriter : ITrackLyricsWriter
         }
 
         return ValueTask.FromResult(result);
+    }
+
+    /// <summary>
+    /// In sidecar mode, clean only the destination audio's old lyric tags;
+    /// unrelated tags and the user's source audio remain unchanged.
+    /// Idempotent, including when there is no available lyric document.
+    /// </summary>
+    public ValueTask<bool> RemoveAsync(
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        string extension = Path.GetExtension(destinationPath);
+
+        if (IsId3(extension))
+        {
+            using TagLib.File file = OpenId3File(destinationPath, extension);
+            TagLib.Id3v2.Tag? id3 =
+                file.GetTag(TagTypes.Id3v2, create: false)
+                    as TagLib.Id3v2.Tag;
+            if (id3 is null)
+            {
+                return ValueTask.FromResult(false);
+            }
+
+            bool hasLyrics = id3.GetFrames(SyltId).Any()
+                || id3.GetFrames(UsltId).Any();
+            UserTextInformationFrame[] lyricFrames = id3
+                .GetFrames<UserTextInformationFrame>(TxxxId)
+                .Where(static frame => string.Equals(
+                    frame.Description, "LYRICS",
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (!hasLyrics && lyricFrames.Length == 0)
+            {
+                return ValueTask.FromResult(false);
+            }
+
+            id3.RemoveFrames(SyltId);
+            id3.RemoveFrames(UsltId);
+            foreach (UserTextInformationFrame frame in lyricFrames)
+            {
+                id3.RemoveFrame(frame);
+            }
+            file.Save();
+            return ValueTask.FromResult(true);
+        }
+
+        if (IsXiph(extension))
+        {
+            using TagLib.File file = OpenXiphFile(destinationPath, extension);
+            XiphComment? tag =
+                file.GetTag(TagTypes.Xiph, create: false) as XiphComment;
+            if (tag is null)
+            {
+                return ValueTask.FromResult(false);
+            }
+
+            string[] fields = ["LYRICS", "LYRICSENG"];
+            if (!fields.Any(field => tag.GetField(field).Length > 0))
+            {
+                return ValueTask.FromResult(false);
+            }
+
+            foreach (string field in fields)
+            {
+                tag.RemoveField(field);
+            }
+            file.Save();
+            return ValueTask.FromResult(true);
+        }
+
+        if (extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+        {
+            TagLib.File.IFileAbstraction abstraction =
+                new TagLib.File.LocalFileAbstraction(destinationPath);
+            using TagLib.Mpeg4.File file =
+                new(abstraction, ReadStyle.None);
+            AppleTag? tag =
+                file.GetTag(TagTypes.Apple, create: false) as AppleTag;
+            if (string.IsNullOrEmpty(tag?.Lyrics))
+            {
+                return ValueTask.FromResult(false);
+            }
+
+            tag.Lyrics = string.Empty;
+            file.Save();
+            return ValueTask.FromResult(true);
+        }
+
+        // Unknown formats must not be destructively rewritten.
+        return ValueTask.FromResult(false);
     }
 
     private static LyricsWriteResult WriteId3(

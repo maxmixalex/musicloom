@@ -117,6 +117,14 @@ internal sealed class LibraryLyricsIndexer
             entry.SourcePath,
             out LibraryLyricsRecord? current);
 
+        // Explicitly edited or cleared lyrics override every subsequent
+        // rescan; neither a source tag nor a provider can undo this decision.
+        if (current?.Origin is LibraryLyricsOrigin.ManualEdited
+            or LibraryLyricsOrigin.ManualEmpty)
+        {
+            return;
+        }
+
         // Recover the user's prior manual confirmation when upgrading
         // from builds that had no explicit lyric-provenance mode. Ordinary
         // automatic matches still follow local-first precedence.

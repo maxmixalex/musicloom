@@ -15,6 +15,8 @@ List<(string Name, Action Test)> tests =
     ("AFP zero vector matches original WASM", FingerprintZeroVector),
     ("AFP fixed PCM peak positions match original WASM", FingerprintFixedPcm),
     ("LRC parser preserves repeated timestamps", LrcRepeatedTimestamps),
+    ("LRC timing offsets do not modify canonical lyrics", LyricsOffsetRegression.Run),
+    ("Cloud lyric providers parse search and lyric payloads", CloudLyricsProviderRegression.Run),
     ("LRC merge aligns translations within 200 ms", LrcMerge),
     ("LRC merge keeps translations with nearest originals", LrcMergeNearestNeighbor),
     ("LRC merge ignores credits and blank alignment markers", LrcMergeIgnoresCreditsAndBlanks),

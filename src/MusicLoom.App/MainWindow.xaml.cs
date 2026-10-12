@@ -116,6 +116,8 @@ public sealed partial class MainWindow : Window
     private bool _updatingPlayerProgress;
     private bool _suppressPlaybackLyricFollow;
     private LyricDisplayLine? _activePlaybackLyric;
+    private LyricDisplayLine? _lastAutoScrolledLyric;
+    private DateTimeOffset _lyricFollowBlockedUntil = DateTimeOffset.MinValue;
     private readonly HashSet<LyricDisplayLine>
         _matchDialogLyricLines = [];
     private NeteaseMatchCandidate?
@@ -129,6 +131,7 @@ public sealed partial class MainWindow : Window
     private byte[]? _currentArtworkBytes;
     private string _lyricsDisplayMode =
         LyricsDisplayModes.PreferOriginal;
+    private bool _lyricsEditInProgress;
 
     public MainWindow()
     {
@@ -150,7 +153,15 @@ public sealed partial class MainWindow : Window
         StartupTrace.Mark(
             "MainWindow.InitializeComponent.after");
 
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+        AppRoot.ActualThemeChanged += (_, _) =>
+            RefreshLibraryStatusColors();
         InitializePlayer();
+        InstallLyricScrollSuppression(LyricsList);
+        InstallLyricScrollSuppression(ImmersiveView.LyricsList);
+        InitializeImmersivePlayer();
+        InitializeCloudLyricsPanels();
         Closed += MainWindow_Closed;
         ApplyWindowIcon();
 
@@ -341,6 +352,8 @@ public sealed partial class MainWindow : Window
         _waveformCancellation?.Cancel();
         _waveformCancellation?.Dispose();
         CloseMatchOverlay();
+        QqCloudLyricsPanel.Dispose();
+        KugouCloudLyricsPanel.Dispose();
         _mediaPlayer.Dispose();
     }
 
@@ -421,6 +434,13 @@ public sealed partial class MainWindow : Window
                     ? Visibility.Visible
                     : Visibility.Collapsed;
             ConfigureAuxiliaryLongText();
+
+            if (_immersiveActive)
+            {
+                // Album inspection / database loading must not postpone
+                // starting audio when the fullscreen view is open.
+                _ = UpdateImmersiveTrackAsync(item);
+            }
 
             if (startPosition
                 is TimeSpan initialPosition)
@@ -942,6 +962,13 @@ public sealed partial class MainWindow : Window
 
         PlayerTimeText.Text =
             $"{FormatPlayerTime(position)} / {FormatPlayerTime(duration)}";
+        if (_immersiveActive)
+        {
+            ImmersiveView.SetProgress(
+                positionSeconds,
+                durationSeconds,
+                PlayerTimeText.Text);
+        }
     }
 
     private void UpdatePlayerVisualState()
@@ -955,6 +982,10 @@ public sealed partial class MainWindow : Window
             playing
                 ? Symbol.Pause
                 : Symbol.Play;
+        if (_immersiveActive)
+        {
+            ImmersiveView.SetPlaying(playing);
+        }
 
         ToolTipService.SetToolTip(
             PlayerPlayPauseButton,
@@ -1022,7 +1053,15 @@ public sealed partial class MainWindow : Window
         IEnumerable<LyricDisplayLine> source;
         ListView targetList;
 
-        if (_playingPreviewCandidate is not null
+        if (_immersiveActive
+            && _playingLibraryItem is not null
+            && ImmersiveView.LyricsList.ItemsSource
+                is IEnumerable<LyricDisplayLine> immersiveLines)
+        {
+            source = immersiveLines;
+            targetList = ImmersiveView.LyricsList;
+        }
+        else if (_playingPreviewCandidate is not null
             && _activeMatchDialogCandidate
                 is NeteaseMatchCandidate match
             && match.TrackId
@@ -1071,28 +1110,34 @@ public sealed partial class MainWindow : Window
                         line.Timestamp
                         <= position);
 
-        if (active is null
-            || ReferenceEquals(
-                active,
-                _activePlaybackLyric))
+        if (active is null)
         {
             return;
         }
 
-        if (_activePlaybackLyric
-            is not null)
+        if (!ReferenceEquals(active, _activePlaybackLyric))
         {
-            _activePlaybackLyric.IsActive =
-                false;
+            if (_activePlaybackLyric is LyricDisplayLine previous)
+            {
+                previous.IsActive = false;
+                AnimateLyricFont(targetList, previous, expand: false);
+            }
+
+            _activePlaybackLyric = active;
+            active.IsActive = true;
+            AnimateLyricFont(targetList, active, expand: true);
         }
 
-        _activePlaybackLyric = active;
-        active.IsActive = true;
-        targetList.SelectedItem =
-            active;
-        targetList.ScrollIntoView(
-            active,
-            ScrollIntoViewAlignment.Leading);
+        // Track the active lyric without hijacking reader selection.
+        // Respect a six-second cooldown after any manual scroll or tap.
+        if (DateTimeOffset.UtcNow >= _lyricFollowBlockedUntil
+            && !ReferenceEquals(active, _lastAutoScrolledLyric))
+        {
+            if (ScrollLyricIntoViewSmoothly(targetList, active))
+            {
+                _lastAutoScrolledLyric = active;
+            }
+        }
     }
 
     private void PlayerPlayPauseButton_Click(
@@ -1803,7 +1848,7 @@ public sealed partial class MainWindow : Window
     private void ApplyAppearance(
         MusicLoomSettings settings)
     {
-        Navigation.RequestedTheme =
+        AppRoot.RequestedTheme =
             UiThemeModes.Normalize(
                 settings.Ui.Theme) switch
             {
@@ -1813,10 +1858,12 @@ public sealed partial class MainWindow : Window
                     ElementTheme.Dark,
                 _ => ElementTheme.Default,
             };
+        Navigation.RequestedTheme = AppRoot.RequestedTheme;
 
         AppearanceManager.Apply(
             this,
             settings.Ui);
+        RefreshLibraryStatusColors();
 
         if (AppearanceManager.TryParseColor(
                 settings.Ui.AccentColor,
@@ -2396,7 +2443,9 @@ public sealed partial class MainWindow : Window
                     provider,
                     lyricsWriter,
                     lyricsCache: lyricStore,
-                    libraryLyricsCache: lyricStore);
+                    libraryLyricsCache: lyricStore,
+                    embeddedLyricsCleaner: new TagLibSharpLyricsWriter(),
+                    lyricsOffsetStore: lyricStore);
 
             SyncProgressTracker progressTracker = new();
 
@@ -3721,6 +3770,8 @@ public sealed partial class MainWindow : Window
 
             displayItem.ApplyLongTextMode(
                 CurrentLongTextMode);
+            displayItem.SetDarkTheme(
+                AppRoot.ActualTheme == ElementTheme.Dark);
 
             if (playingSource is not null
                 && string.Equals(
@@ -4293,9 +4344,12 @@ public sealed partial class MainWindow : Window
         _currentLyricsRaw = null;
         _currentArtworkBytes = null;
 
+        QqCloudLyricsPanel.SetTrack(null);
+        KugouCloudLyricsPanel.SetTrack(null);
         TrackTitleText.Text = string.Empty;
         TrackArtistText.Text = string.Empty;
         TrackAlbumText.Text = string.Empty;
+        DetailDurationText.Text = "—";
         TrackStatusText.Text = string.Empty;
         TrackStatusIcon.Glyph = "\uE823";
         TrackStatusIcon.Foreground =
@@ -4714,6 +4768,11 @@ public sealed partial class MainWindow : Window
         int requestId =
             ++_detailRequestId;
 
+        QqCloudLyricsPanel.SetTrack(
+            item.Entry.SourcePath, item.Artist, item.Title);
+        KugouCloudLyricsPanel.SetTrack(
+            item.Entry.SourcePath, item.Artist, item.Title);
+
         TrackTitleText.Text =
             item.Title;
         TrackArtistText.Text =
@@ -4825,6 +4884,7 @@ public sealed partial class MainWindow : Window
                 payload.Format;
             TrackDurationText.Text =
                 payload.Duration;
+            DetailDurationText.Text = payload.Duration;
             TrackBitrateText.Text =
                 payload.Bitrate;
             TrackSampleRateText.Text =
@@ -4996,8 +5056,10 @@ public sealed partial class MainWindow : Window
                 : Visibility.Collapsed;
         LyricsModeBox.IsEnabled =
             hasLyrics && hasTranslation;
-        CopyAllLyricsButton.IsEnabled =
-            hasLyrics;
+        CopyAllLyricsButton.IsEnabled = hasLyrics;
+        ClearLyricsButton.IsEnabled = hasLyrics && !_lyricsEditInProgress;
+        AdjustLyricsButton.IsEnabled = hasLyrics && !_lyricsEditInProgress;
+        EditLyricsButton.IsEnabled = hasLyrics && !_lyricsEditInProgress;
 
         LyricDisplayLine[] lines =
             hasLyrics
@@ -5006,6 +5068,7 @@ public sealed partial class MainWindow : Window
                     _lyricsDisplayMode)
                 : [];
 
+        _lastAutoScrolledLyric = null;
         LyricsList.ItemsSource =
             lines.Length == 0
                 ? new[]
@@ -6393,6 +6456,7 @@ public sealed partial class MainWindow : Window
             ItemTemplate =
                 LyricsList.ItemTemplate,
         };
+        InstallLyricScrollSuppression(lyricsPreview);
         _matchLyricsPreviewList =
             lyricsPreview;
 
@@ -7854,7 +7918,9 @@ public sealed partial class MainWindow : Window
                     provider,
                     writer,
                     lyricsCache: lyricsCache,
-                    libraryLyricsCache: lyricsCache);
+                    libraryLyricsCache: lyricsCache,
+                    embeddedLyricsCleaner: new TagLibSharpLyricsWriter(),
+                    lyricsOffsetStore: lyricsCache);
 
                 SyncProgressTracker tracker = new();
                 Progress<SyncExecutionProgress> progress =
@@ -9476,6 +9542,7 @@ public sealed partial class MainWindow : Window
                 LyricsDisplayMode =
                     LyricsDisplayModes.Normalize(
                         _lyricsDisplayMode),
+                LyricsEditorPath = LyricsEditorPathBox.Text.Trim(),
             },
         };
     }
@@ -9563,6 +9630,7 @@ public sealed partial class MainWindow : Window
             _lyricsDisplayMode =
                 LyricsDisplayModes.Normalize(
                     settings.Ui.LyricsDisplayMode);
+            LyricsEditorPathBox.Text = settings.Ui.LyricsEditorPath;
 
             _accentColor =
                 string.IsNullOrWhiteSpace(
@@ -10783,10 +10851,30 @@ public sealed partial class MainWindow : Window
             L(
                 "Prefer original",
                 "优先原文");
-        CopyAllLyricsButtonText.Text =
-            L(
-                "Copy all",
-                "复制完整歌词");
+        CopyAllLyricsButtonText.Text = L("Copy", "复制");
+        ToolTipService.SetToolTip(
+            ImmersiveOpenButton,
+            L("Open immersive player", "打开沉浸式播放器"));
+        ImmersiveView.Localize(L);
+        QqLyricsTab.Header = L("QQ Music lyrics", "QQ 音乐歌词");
+        KugouLyricsTab.Header = L("KuGou Music lyrics", "酷狗音乐歌词");
+        QqCloudLyricsPanel.Localize(L);
+        KugouCloudLyricsPanel.Localize(L);
+        ToolTipService.SetToolTip(ClearLyricsButton,
+            L("Clear all lyrics", "清空全部歌词"));
+        ToolTipService.SetToolTip(AdjustLyricsButton,
+            L("Adjust lyric timing", "调整歌词时间"));
+        ToolTipService.SetToolTip(EditLyricsButton,
+            L("Edit lyrics", "编辑歌词"));
+        AdvanceLyricsItem.Text = L("Move earlier…", "前移……");
+        DelayLyricsItem.Text = L("Move later…", "后移……");
+        LyricsEditorSettingTitle.Text = L("Lyrics editor", "歌词编辑器");
+        LyricsEditorSettingDescription.Text = L(
+            "Use default editor or choose an application.",
+            "使用系统默认编辑器或指定程序。");
+        LyricsEditorPathBox.PlaceholderText = L("System default", "系统默认");
+        BrowseLyricsEditorButton.Content = L("Browse…", "浏览……");
+        ResetLyricsEditorButton.Content = L("Reset", "重置");
         CopyAllLyricsTextItem.Text =
             L(
                 "Copy as text",
@@ -10798,8 +10886,8 @@ public sealed partial class MainWindow : Window
         ToolTipService.SetToolTip(
             CopyAllLyricsButton,
             L(
-                "Copy full lyrics",
-                "复制完整歌词"));
+                "Copy lyrics",
+                "复制歌词"));
 
         AcrylicSettingTitle.Text =
             L(

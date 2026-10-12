@@ -34,3 +34,14 @@ public interface ITrackLyricsWriter
         bool overrideExisting,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Removes *only* embedded lyrics from generated destination audio when
+/// separate sidecar lyrics have been selected. Source audio is never passed.
+/// </summary>
+public interface IEmbeddedLyricsCleaner
+{
+    ValueTask<bool> RemoveAsync(
+        string destinationPath,
+        CancellationToken cancellationToken = default);
+}
