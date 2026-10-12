@@ -29,6 +29,48 @@ internal static class LyricsWriterRegression
     {
         await VerifyFormatAsync(".wav", static path => TestWaveFactory.WritePcm16(path));
         await VerifyFormatAsync(".mp3", WriteMinimalMp3);
+        await VerifyEnhancedWordTimingAsync();
+    }
+
+    private static async Task VerifyEnhancedWordTimingAsync()
+    {
+        string path = Path.Combine(Path.GetTempPath(),
+            $"musicloom-word-sylt-{Guid.NewGuid():N}.wav");
+        try
+        {
+            TestWaveFactory.WritePcm16(path);
+            // This matches the enhanced-LRC format persisted in SQLite.
+            LrcDocument wordTimed = LrcDocument.Parse(
+                "[00:00.500]<00:00.500>Hel<00:00.900>lo<00:01.400>");
+            if (wordTimed.Lines[0].Words is not { Count: 2 })
+            {
+                throw new InvalidOperationException(
+                    "Enhanced source document did not parse two words.");
+            }
+
+            TagLibSharpLyricsWriter writer = new();
+            LyricsWriteResult result =
+                await writer.WriteAsync(path, wordTimed, true);
+            Equal(LyricsWriteStatus.Written, result.Status);
+            IReadOnlyList<Id3Frame> frames = ReadId3Frames(path, ".wav");
+            string payload = Convert.ToHexString(frames.Single(
+                static frame => frame.Id == "SYLT").Data);
+            if (!payload.Contains("48656C00000001F4",
+                    StringComparison.Ordinal)
+                || !payload.Contains("6C6F0000000384",
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "MP3/WAV SYLT did not preserve absolute word times.");
+            }
+
+            Equal(wordTimed.ToString(), DecodeUslt(frames.Single(
+                static frame => frame.Id == "USLT")));
+        }
+        finally
+        {
+            IOFile.Delete(path);
+        }
     }
 
     private static async Task VerifyFormatAsync(
