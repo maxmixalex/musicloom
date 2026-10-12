@@ -15,6 +15,7 @@
         <ColumnDefinition Width="*" />
         <ColumnDefinition Width="*" />
         <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
       </Grid.ColumnDefinitions>
       <TextBox x:Name="ArtistBox" Grid.Column="0"
                PlaceholderText="Artist" />
@@ -23,6 +24,10 @@
       <Button x:Name="SearchButton" Grid.Column="2"
               Content="Search" Click="SearchButton_Click"
               Padding="14,7" />
+      <Button x:Name="AudioRecognizeButton" Grid.Column="3"
+              Content="Audio recognize (experimental)"
+              Click="AudioRecognizeButton_Click"
+              Visibility="Collapsed" Padding="10,7" />
     </Grid>
     <TextBlock x:Name="ProviderStatus" Grid.Row="1"
                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
