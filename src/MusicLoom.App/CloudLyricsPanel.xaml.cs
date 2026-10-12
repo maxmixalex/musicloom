@@ -207,7 +207,10 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             }
 
             _previewDocument = doc;
-            LyricsPreview.Text = doc.ToString();
+            // Preview readable text, not QRC/KRC inline timing markup.
+            // The canonical document still retains all word timestamps
+            // when the user adopts the selected lyrics.
+            LyricsPreview.Text = FormatPreview(doc);
             UseLyricsButton.IsEnabled = true;
         }
         catch (OperationCanceledException)
@@ -219,6 +222,21 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
                 "Could not load lyrics from this provider.",
                 "无法从此歌词源获取歌词。");
         }
+    }
+
+    private static string FormatPreview(LrcDocument document)
+    {
+        return string.Join(Environment.NewLine,
+            LrcPresentation.Project(document).Select(line =>
+            {
+                string prefix = line.Timestamp is TimeSpan time
+                    ? FormattableString.Invariant(
+                        $"[{(int)time.TotalMinutes:00}:{time.Seconds:00}] ")
+                    : "";
+                return prefix + line.Original
+                    + (string.IsNullOrWhiteSpace(line.Translation)
+                        ? "" : Environment.NewLine + line.Translation);
+            }));
     }
 
     private void UseLyricsButton_Click(object sender, RoutedEventArgs e)
