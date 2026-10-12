@@ -45,7 +45,7 @@ public sealed partial class LrcDocument
             }
 
             string lyricText = TimestampRegex().Replace(line, string.Empty).Trim();
-            (string text, IReadOnlyList<LrcWord>? words) =
+            (string plainText, IReadOnlyList<LrcWord>? words) =
                 ParseEnhancedWords(lyricText);
             foreach (Match timestamp in timestamps)
             {
@@ -60,7 +60,7 @@ public sealed partial class LrcDocument
                     TimeSpan.FromMinutes(minutes)
                     + TimeSpan.FromSeconds(seconds)
                     + TimeSpan.FromMilliseconds(milliseconds),
-                    text, words));
+                    plainText, words));
             }
         }
 
