@@ -707,12 +707,14 @@
                                   VerticalAlignment="Top" />
                               <StackPanel Grid.Column="1" Spacing="3">
                                 <TextBlock
+                                    x:Name="PrimaryLyricText"
                                     Text="{Binding PrimaryText}"
                                     FontSize="{Binding PrimaryFontSize}"
                                     LineHeight="23"
                                     TextWrapping="WrapWholeWords"
                                     IsTextSelectionEnabled="False" />
                                 <TextBlock
+                                    x:Name="SecondaryLyricText"
                                     Text="{Binding SecondaryText}"
                                     Visibility="{Binding SecondaryVisibility}"
                                     FontSize="{Binding SecondaryFontSize}"

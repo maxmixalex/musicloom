@@ -116,6 +116,8 @@ public sealed partial class MainWindow : Window
     private bool _updatingPlayerProgress;
     private bool _suppressPlaybackLyricFollow;
     private LyricDisplayLine? _activePlaybackLyric;
+    private LyricDisplayLine? _lastAutoScrolledLyric;
+    private DateTimeOffset _lyricFollowBlockedUntil = DateTimeOffset.MinValue;
     private readonly HashSet<LyricDisplayLine>
         _matchDialogLyricLines = [];
     private NeteaseMatchCandidate?
@@ -153,6 +155,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         InitializePlayer();
+        InstallLyricScrollSuppression(LyricsList);
         Closed += MainWindow_Closed;
         ApplyWindowIcon();
 
@@ -1073,28 +1076,32 @@ public sealed partial class MainWindow : Window
                         line.Timestamp
                         <= position);
 
-        if (active is null
-            || ReferenceEquals(
-                active,
-                _activePlaybackLyric))
+        if (active is null)
         {
             return;
         }
 
-        if (_activePlaybackLyric
-            is not null)
+        if (!ReferenceEquals(active, _activePlaybackLyric))
         {
-            _activePlaybackLyric.IsActive =
-                false;
+            if (_activePlaybackLyric is LyricDisplayLine previous)
+            {
+                previous.IsActive = false;
+                AnimateLyricFont(targetList, previous, expand: false);
+            }
+
+            _activePlaybackLyric = active;
+            active.IsActive = true;
+            AnimateLyricFont(targetList, active, expand: true);
         }
 
-        _activePlaybackLyric = active;
-        active.IsActive = true;
-        targetList.SelectedItem =
-            active;
-        targetList.ScrollIntoView(
-            active,
-            ScrollIntoViewAlignment.Leading);
+        // Track the active lyric without hijacking reader selection.
+        // Respect a six-second cooldown after any manual scroll or tap.
+        if (DateTimeOffset.UtcNow >= _lyricFollowBlockedUntil
+            && !ReferenceEquals(active, _lastAutoScrolledLyric))
+        {
+            ScrollLyricIntoViewSmoothly(targetList, active);
+            _lastAutoScrolledLyric = active;
+        }
     }
 
     private void PlayerPlayPauseButton_Click(
@@ -5012,6 +5019,7 @@ public sealed partial class MainWindow : Window
                     _lyricsDisplayMode)
                 : [];
 
+        _lastAutoScrolledLyric = null;
         LyricsList.ItemsSource =
             lines.Length == 0
                 ? new[]
@@ -6399,6 +6407,7 @@ public sealed partial class MainWindow : Window
             ItemTemplate =
                 LyricsList.ItemTemplate,
         };
+        InstallLyricScrollSuppression(lyricsPreview);
         _matchLyricsPreviewList =
             lyricsPreview;
 
