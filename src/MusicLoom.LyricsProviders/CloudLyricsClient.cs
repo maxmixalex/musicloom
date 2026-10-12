@@ -80,9 +80,12 @@ public sealed partial class CloudLyricsClient : IDisposable
             Random.Shared.NextInt64(1, 20) * 18014398509481984L
             + Random.Shared.NextInt64(0, 4_194_304) * 4294967296L
             + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 86_400_000;
-        string parameters = $$"""
-            {"search_id":{{J(searchId.ToString(CultureInfo.InvariantCulture))}},"remoteplace":"search.android.keyboard","query":{{J(text.Trim())}},"search_type":0,"num_per_page":20,"page_num":1,"highlight":0,"nqc_flag":0,"page_id":1,"grp":1}
-            """;
+        string parameters = "{\"search_id\":"
+            + J(searchId.ToString(CultureInfo.InvariantCulture))
+            + ",\"remoteplace\":\"search.android.keyboard\",\"query\":"
+            + J(text.Trim())
+            + ",\"search_type\":0,\"num_per_page\":20,\"page_num\":1,"
+            + "\"highlight\":0,\"nqc_flag\":0,\"page_id\":1,\"grp\":1}";
         string json = await QqRequestAsync(
             "DoSearchForQQMusicLite",
             "music.search.SearchCgiService",
