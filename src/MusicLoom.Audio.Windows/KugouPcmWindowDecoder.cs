@@ -79,7 +79,7 @@ public sealed class KugouPcmWindowDecoder
         while (written < result.Length)
         {
             ct.ThrowIfCancellationRequested();
-            int bytes = converter.Read(buffer, 0, buffer.Length);
+            int bytes = converter.Read(buffer.AsSpan());
             if (bytes == 0)
             {
                 break;
