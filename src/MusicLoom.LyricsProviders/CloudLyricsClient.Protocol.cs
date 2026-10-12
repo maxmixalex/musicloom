@@ -92,9 +92,16 @@ public sealed partial class CloudLyricsClient
     {
         // Compact literal envelope avoids reflection-based serializer
         // dependencies in the NativeAOT regression harness.
-        return $$"""
-            {"comm":{"ct":11,"cv":"1003006","v":"1003006","os_ver":"15","phonetype":"24122RKC7C","rom":"Android15","tmeAppID":"qqmusiclight","nettype":"NETWORK_WIFI","udid":"0","uid":{{J(uid)}},"sid":{{J(sid)}},"userip":{{J(userIp)}}},"request":{"method":{{J(method)}},"module":{{J(module)}},"param":{{param}}}}
-            """;
+        return "{\"comm\":{\"ct\":11,\"cv\":\"1003006\","
+            + "\"v\":\"1003006\",\"os_ver\":\"15\","
+            + "\"phonetype\":\"24122RKC7C\",\"rom\":\"Android15\","
+            + "\"tmeAppID\":\"qqmusiclight\",\"nettype\":\"NETWORK_WIFI\","
+            + "\"udid\":\"0\",\"uid\":" + J(uid)
+            + ",\"sid\":" + J(sid)
+            + ",\"userip\":" + J(userIp)
+            + "},\"request\":{\"method\":" + J(method)
+            + ",\"module\":" + J(module)
+            + ",\"param\":" + param + "}}";
     }
 
     private static string J(string value) =>
