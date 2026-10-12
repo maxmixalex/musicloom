@@ -159,8 +159,10 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         catch (OperationCanceledException)
         {
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            AppDiagnostics.LogException(
+                "Could not search QQ/KuGou lyrics.", error);
             ProviderStatus.Text = L(
                 "Search failed. The provider may be unavailable; try again later.",
                 "搜索失败，歌词源可能暂时不可用，请稍后重试。");
@@ -216,8 +218,10 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         catch (OperationCanceledException)
         {
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            AppDiagnostics.LogException(
+                "Could not decode QQ/KuGou lyrics.", error);
             LyricsPreview.Text = L(
                 "Could not load lyrics from this provider.",
                 "无法从此歌词源获取歌词。");
