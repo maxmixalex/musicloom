@@ -86,11 +86,42 @@ public sealed partial class CloudLyricsClient : IDisposable
             + J(text.Trim())
             + ",\"search_type\":0,\"num_per_page\":20,\"page_num\":1,"
             + "\"highlight\":0,\"nqc_flag\":0,\"page_id\":1,\"grp\":1}";
-        string json = await QqRequestAsync(
-            "DoSearchForQQMusicLite",
-            "music.search.SearchCgiService",
-            parameters, ct);
-        return ParseQqSearch(json);
+        try
+        {
+            string json = await QqRequestAsync(
+                "DoSearchForQQMusicLite",
+                "music.search.SearchCgiService",
+                parameters, ct);
+            return ParseQqSearch(json);
+        }
+        catch (HttpRequestException)
+        {
+            // Read-only, anonymous QQ Web fallback; not a paid OpenAPI.
+            return await SearchQqWebAsync(text, ct);
+        }
+        catch (InvalidDataException)
+        {
+            return await SearchQqWebAsync(text, ct);
+        }
+    }
+
+    private async Task<IReadOnlyList<CloudLyricsCandidate>> SearchQqWebAsync(
+        string text, CancellationToken ct)
+    {
+        // Desktop Web search remains the guest fallback when the lightweight
+        // Android session handshake changes. Use this exact module key,
+        // without an unrelated comm object, as expected by the Web gateway.
+        string body = "{\"music.search.SearchCgiService\":{"
+            + "\"module\":\"music.search.SearchCgiService\","
+            + "\"method\":\"DoSearchForQQMusicDesktop\",\"param\":{"
+            + "\"search_type\":0,\"query\":" + J(text.Trim())
+            + ",\"page_num\":1,\"num_per_page\":20}}}";
+        using HttpRequestMessage req = new(HttpMethod.Post, QqApi)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+        req.Headers.Referrer = new Uri("https://y.qq.com/");
+        return ParseQqSearch(await GetBodyAsync(req, ct));
     }
 
     private async Task<IReadOnlyList<CloudLyricsCandidate>> SearchKugouAsync(
@@ -144,18 +175,8 @@ public sealed partial class CloudLyricsClient : IDisposable
         if (!long.TryParse(track.Id, NumberStyles.None,
                 CultureInfo.InvariantCulture, out long songId))
         {
-            // Some legacy search results expose only MID. Preserve a
-            // best-effort LRC fallback without treating MID as a song ID.
-            string mid = track.SongMid ?? track.Id;
-            string uri =
-                "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg"
-                + "?format=json&nobase64=0&songmid="
-                + Uri.EscapeDataString(mid)
-                + "&g_tk=5381&loginUin=0&hostUin=0&inCharset=utf8"
-                + "&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0";
-            using HttpRequestMessage legacy = new(HttpMethod.Get, uri);
-            legacy.Headers.Referrer = new Uri("https://y.qq.com/");
-            return ParseQqLyrics(await GetBodyAsync(legacy, ct));
+            // Some results expose only MID. Do not treat MID as songID.
+            return await GetQqLegacyLyricsAsync(track, ct);
         }
 
         string title = Convert.ToBase64String(Encoding.UTF8.GetBytes(track.Title));
@@ -164,11 +185,41 @@ public sealed partial class CloudLyricsClient : IDisposable
         string parameters = $$"""
             {"albumName":{{J(album)}},"crypt":1,"ct":19,"cv":2111,"interval":{{Math.Max(0,track.DurationMilliseconds/1000)}},"lrc_t":0,"qrc":1,"qrc_t":0,"roma":1,"roma_t":0,"singerName":{{J(artist)}},"songID":{{songId}},"songName":{{J(title)}},"trans":1,"trans_t":0,"type":0}
             """;
-        string response = await QqRequestAsync(
-            "GetPlayLyricInfo",
-            "music.musichallSong.PlayLyricInfo",
-            parameters, ct);
-        return ParseQqLyrics(response);
+        try
+        {
+            string response = await QqRequestAsync(
+                "GetPlayLyricInfo",
+                "music.musichallSong.PlayLyricInfo",
+                parameters, ct);
+            return ParseQqLyrics(response);
+        }
+        catch (HttpRequestException)
+        {
+            return await GetQqLegacyLyricsAsync(track, ct);
+        }
+        catch (InvalidDataException)
+        {
+            return await GetQqLegacyLyricsAsync(track, ct);
+        }
+    }
+
+    private async Task<LrcDocument?> GetQqLegacyLyricsAsync(
+        CloudLyricsCandidate track, CancellationToken ct)
+    {
+        string mid = track.SongMid ?? track.Id;
+        if (string.IsNullOrWhiteSpace(mid))
+        {
+            return null;
+        }
+        string uri =
+            "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg"
+            + "?format=json&nobase64=0&songmid="
+            + Uri.EscapeDataString(mid)
+            + "&g_tk=5381&loginUin=0&hostUin=0&inCharset=utf8"
+            + "&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0";
+        using HttpRequestMessage legacy = new(HttpMethod.Get, uri);
+        legacy.Headers.Referrer = new Uri("https://y.qq.com/");
+        return ParseQqLyrics(await GetBodyAsync(legacy, ct));
     }
 
     private async Task<LrcDocument?> GetKugouLyricsAsync(
