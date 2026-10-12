@@ -77,11 +77,24 @@ public sealed partial class LrcDocument
     {
         ArgumentNullException.ThrowIfNull(source);
         LrcDocument result = new();
+        long inheritedOffset = 0;
         foreach ((string key, string value) in source.Metadata)
         {
+            if (string.Equals(key, "offset",
+                    StringComparison.OrdinalIgnoreCase)
+                && long.TryParse(value, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out long parsedOffset))
+            {
+                // Normalize an existing LRC offset into timestamps exactly
+                // once, rather than double-applying it in the output player.
+                inheritedOffset = parsedOffset;
+                continue;
+            }
             result.Metadata[key] = value;
         }
-        TimeSpan shift = TimeSpan.FromMilliseconds(offsetMilliseconds);
+        TimeSpan shift = TimeSpan.FromMilliseconds(
+            (double)offsetMilliseconds + inheritedOffset);
         foreach (LrcLine line in source.Lines)
         {
             TimeSpan timestamp = line.Timestamp + shift;

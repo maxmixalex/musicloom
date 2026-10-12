@@ -345,7 +345,7 @@ public sealed class SyncExecutor
                         LrcDocument edited = LrcDocument.Parse(editedText);
                         int offset = _lyricsOffsetStore is null ? 0 :
                             await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
-                                entry.SourcePath, cancellationToken);
+                                entry.SourcePath, cancellationToken) ?? 0;
                         LyricsWriteResult output = await _lyricsWriter.WriteAsync(
                             entry.DestinationPath,
                             LrcDocument.Shift(edited, offset),
@@ -373,19 +373,24 @@ public sealed class SyncExecutor
                             HasLyrics: true,
                         })
                     {
-                        // Sidecar output requires writing canonical source
-                        // lyrics after stripping the target's embedded tags.
-                        if (_lyricsWriter is SidecarLrcLyricsWriter
+                        // Source-embedded lyrics must become an LRC in sidecar
+                        // mode. An explicit offset also rewrites the generated
+                        // audio tag in embedded mode, leaving source untouched.
+                        int? storedOffset = _lyricsOffsetStore is null ? null :
+                            await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
+                                entry.SourcePath, cancellationToken);
+                        if ((_lyricsWriter is SidecarLrcLyricsWriter
+                                || storedOffset.HasValue)
                             && canonical.Text is string embeddedText)
                         {
-                            LrcDocument document = LrcDocument.Parse(embeddedText);
-                            int offset = _lyricsOffsetStore is null ? 0 :
-                                await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
-                                    entry.SourcePath, cancellationToken);
+                            LrcDocument shifted = LrcDocument.Shift(
+                                LrcDocument.Parse(embeddedText),
+                                storedOffset ?? 0);
                             LyricsWriteResult result = await _lyricsWriter.WriteAsync(
                                 entry.DestinationPath,
-                                LrcDocument.Shift(document, offset),
-                                settings.Organizer.Lyrics.OverrideExisting,
+                                shifted,
+                                storedOffset.HasValue
+                                    || settings.Organizer.Lyrics.OverrideExisting,
                                 cancellationToken);
                             partial = partial with
                             {
@@ -394,6 +399,10 @@ public sealed class SyncExecutor
                                     : result.Status == LyricsWriteStatus.SkippedExisting
                                         ? LyricsState.Existing : LyricsState.Unsupported,
                                 LyricsCheckedAt = DateTimeOffset.UtcNow,
+                                LyricsFingerprint =
+                                    result.Status == LyricsWriteStatus.Written
+                                        ? ComputeLyricsFingerprint(shifted)
+                                        : partial.LyricsFingerprint,
                             };
                             if (result.Status == LyricsWriteStatus.Written) writtenLyrics++;
                             else if (result.Status == LyricsWriteStatus.SkippedExisting) existingLyrics++;
@@ -455,6 +464,11 @@ public sealed class SyncExecutor
                             continue;
                         }
 
+                        int? localOffset = _lyricsOffsetStore is null ? null :
+                            await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
+                                entry.SourcePath, cancellationToken);
+                        LrcDocument shiftedLocal = LrcDocument.Shift(
+                            localDocument, localOffset ?? 0);
                         if (_lyricsWriter is SidecarLrcLyricsWriter)
                         {
                             string outputPath =
@@ -464,7 +478,7 @@ public sealed class SyncExecutor
                                 && string.Equals(
                                     LrcDocument.Parse(
                                         File.ReadAllText(outputPath)).ToString(),
-                                    localDocument.ToString(),
+                                    shiftedLocal.ToString(),
                                     StringComparison.Ordinal))
                             {
                                 partial = partial with
@@ -483,14 +497,12 @@ public sealed class SyncExecutor
                         progress?.Report(new SyncExecutionProgress(
                             index, work.Length, entry.SourcePath, stage));
 
-                        int localOffset = _lyricsOffsetStore is null ? 0 :
-                            await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
-                                entry.SourcePath, cancellationToken);
                         LyricsWriteResult localWrite =
                             await _lyricsWriter.WriteAsync(
                                 entry.DestinationPath,
-                                LrcDocument.Shift(localDocument, localOffset),
-                                settings.Organizer.Lyrics.OverrideExisting,
+                                shiftedLocal,
+                                localOffset.HasValue
+                                    || settings.Organizer.Lyrics.OverrideExisting,
                                 cancellationToken);
 
                         partial = partial with
@@ -506,7 +518,7 @@ public sealed class SyncExecutor
                             LyricsCheckedAt = DateTimeOffset.UtcNow,
                             LyricsFingerprint =
                                 localWrite.Status == LyricsWriteStatus.Written
-                                    ? ComputeLyricsFingerprint(localDocument)
+                                    ? ComputeLyricsFingerprint(shiftedLocal)
                                     : partial.LyricsFingerprint,
                         };
 
@@ -798,13 +810,16 @@ public sealed class SyncExecutor
                     entry.SourcePath,
                     stage));
 
-                int outputOffset = _lyricsOffsetStore is null ? 0 :
+                int? outputOffset = _lyricsOffsetStore is null ? null :
                     await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
                         entry.SourcePath, cancellationToken);
+                LrcDocument shiftedRemote = LrcDocument.Shift(
+                    lookup.Lyrics, outputOffset ?? 0);
                 LyricsWriteResult write = await _lyricsWriter.WriteAsync(
                     entry.DestinationPath,
-                    LrcDocument.Shift(lookup.Lyrics, outputOffset),
-                    settings.Organizer.Lyrics.OverrideExisting,
+                    shiftedRemote,
+                    outputOffset.HasValue
+                        || settings.Organizer.Lyrics.OverrideExisting,
                     cancellationToken);
 
                 LyricsState lyricsState = write.Status switch
@@ -834,7 +849,7 @@ public sealed class SyncExecutor
                     Lyrics = lyricsState,
                     LyricsCheckedAt = DateTimeOffset.UtcNow,
                     LyricsFingerprint = lyricsState == LyricsState.Written
-                        ? ComputeLyricsFingerprint(lookup.Lyrics)
+                        ? ComputeLyricsFingerprint(shiftedRemote)
                         : partial.LyricsFingerprint,
                 };
 

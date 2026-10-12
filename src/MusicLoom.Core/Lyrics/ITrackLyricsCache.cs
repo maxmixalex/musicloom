@@ -82,7 +82,7 @@ public interface ILibraryLyricsCache
 /// </summary>
 public interface ILyricsOffsetStore
 {
-    Task<int> GetOffsetMillisecondsAsync(string sourcePath,
+    Task<int?> GetOffsetMillisecondsAsync(string sourcePath,
         CancellationToken cancellationToken = default);
     Task SetOffsetMillisecondsAsync(string sourcePath, int offsetMilliseconds,
         CancellationToken cancellationToken = default);

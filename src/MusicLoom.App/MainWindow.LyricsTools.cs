@@ -99,7 +99,7 @@ public sealed partial class MainWindow
         {
             SqliteLyricsCache store = new(DatabasePath);
             int previous = await store.GetOffsetMillisecondsAsync(
-                item.Entry.SourcePath);
+                item.Entry.SourcePath) ?? 0;
 
             NumberBox amount = new()
             {

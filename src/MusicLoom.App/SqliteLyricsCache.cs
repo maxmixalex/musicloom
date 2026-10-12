@@ -189,7 +189,7 @@ internal sealed class SqliteLyricsCache :
         }
     }
 
-    public async Task<int> GetOffsetMillisecondsAsync(
+    public async Task<int?> GetOffsetMillisecondsAsync(
         string sourcePath, CancellationToken cancellationToken = default)
     {
         await using SqliteConnection db = await OpenAsync(cancellationToken);
@@ -198,7 +198,7 @@ internal sealed class SqliteLyricsCache :
             "SELECT offset_ms FROM lyrics_adjustments WHERE source_path = $source;";
         command.Parameters.AddWithValue("$source", sourcePath);
         object? scalar = await command.ExecuteScalarAsync(cancellationToken);
-        return scalar is long amount ? checked((int)amount) : 0;
+        return scalar is long amount ? checked((int)amount) : null;
     }
 
     public async Task SetOffsetMillisecondsAsync(
