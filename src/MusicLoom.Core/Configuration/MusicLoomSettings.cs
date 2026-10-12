@@ -98,6 +98,9 @@ public sealed record UiSettings
     [JsonPropertyName("lyricsDisplayMode")]
     public string LyricsDisplayMode { get; init; } =
         LyricsDisplayModes.PreferOriginal;
+
+    [JsonPropertyName("lyricsEditorPath")]
+    public string LyricsEditorPath { get; init; } = string.Empty;
 }
 
 

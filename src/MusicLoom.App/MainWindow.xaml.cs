@@ -131,6 +131,7 @@ public sealed partial class MainWindow : Window
     private byte[]? _currentArtworkBytes;
     private string _lyricsDisplayMode =
         LyricsDisplayModes.PreferOriginal;
+    private bool _lyricsEditInProgress;
 
     public MainWindow()
     {
@@ -5010,8 +5011,10 @@ public sealed partial class MainWindow : Window
                 : Visibility.Collapsed;
         LyricsModeBox.IsEnabled =
             hasLyrics && hasTranslation;
-        CopyAllLyricsButton.IsEnabled =
-            hasLyrics;
+        CopyAllLyricsButton.IsEnabled = hasLyrics;
+        ClearLyricsButton.IsEnabled = hasLyrics && !_lyricsEditInProgress;
+        AdjustLyricsButton.IsEnabled = hasLyrics && !_lyricsEditInProgress;
+        EditLyricsButton.IsEnabled = hasLyrics && !_lyricsEditInProgress;
 
         LyricDisplayLine[] lines =
             hasLyrics
@@ -9494,6 +9497,7 @@ public sealed partial class MainWindow : Window
                 LyricsDisplayMode =
                     LyricsDisplayModes.Normalize(
                         _lyricsDisplayMode),
+                LyricsEditorPath = LyricsEditorPathBox.Text.Trim(),
             },
         };
     }
@@ -9581,6 +9585,7 @@ public sealed partial class MainWindow : Window
             _lyricsDisplayMode =
                 LyricsDisplayModes.Normalize(
                     settings.Ui.LyricsDisplayMode);
+            LyricsEditorPathBox.Text = settings.Ui.LyricsEditorPath;
 
             _accentColor =
                 string.IsNullOrWhiteSpace(
@@ -10801,10 +10806,22 @@ public sealed partial class MainWindow : Window
             L(
                 "Prefer original",
                 "优先原文");
-        CopyAllLyricsButtonText.Text =
-            L(
-                "Copy all",
-                "复制完整歌词");
+        CopyAllLyricsButtonText.Text = L("Copy", "复制");
+        ToolTipService.SetToolTip(ClearLyricsButton,
+            L("Clear all lyrics", "清空全部歌词"));
+        ToolTipService.SetToolTip(AdjustLyricsButton,
+            L("Adjust lyric timing", "调整歌词时间"));
+        ToolTipService.SetToolTip(EditLyricsButton,
+            L("Edit lyrics", "编辑歌词"));
+        AdvanceLyricsItem.Text = L("Move earlier…", "前移……");
+        DelayLyricsItem.Text = L("Move later…", "后移……");
+        LyricsEditorSettingTitle.Text = L("Lyrics editor", "歌词编辑器");
+        LyricsEditorSettingDescription.Text = L(
+            "Use default editor or choose an application.",
+            "使用系统默认编辑器或指定程序。");
+        LyricsEditorPathBox.PlaceholderText = L("System default", "系统默认");
+        BrowseLyricsEditorButton.Content = L("Browse…", "浏览……");
+        ResetLyricsEditorButton.Content = L("Reset", "重置");
         CopyAllLyricsTextItem.Text =
             L(
                 "Copy as text",
@@ -10816,8 +10833,8 @@ public sealed partial class MainWindow : Window
         ToolTipService.SetToolTip(
             CopyAllLyricsButton,
             L(
-                "Copy full lyrics",
-                "复制完整歌词"));
+                "Copy lyrics",
+                "复制歌词"));
 
         AcrylicSettingTitle.Text =
             L(
