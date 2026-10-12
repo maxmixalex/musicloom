@@ -8,7 +8,8 @@ namespace MusicLoom.Core.Lyrics;
 public sealed record LrcPresentationLine(
     TimeSpan? Timestamp,
     string Original,
-    string? Translation);
+    string? Translation,
+    IReadOnlyList<LrcWord>? OriginalWords = null);
 
 public static class LrcPresentation
 {
@@ -47,6 +48,20 @@ public static class LrcPresentation
             (string original, string? translation) =
                 SplitInline(lyrics[0]);
 
+            // The canonical QRC/KRC words belong to the original line,
+            // not an adjacent translation or romaji row sharing its time.
+            // Preserve them only when their concatenated text really
+            // equals what the lyric viewer will display.
+            IReadOnlyList<LrcWord>? originalWords = group
+                .Where(line => string.Equals(
+                    line.Text.Trim(), lyrics[0], StringComparison.Ordinal))
+                .Select(static line => line.Words)
+                .FirstOrDefault(words => words is { Count: > 0 }
+                    && string.Equals(
+                        string.Concat(words.Select(static w => w.Text)),
+                        original,
+                        StringComparison.Ordinal));
+
             if (lyrics.Length > 1)
             {
                 string[] additional = lyrics.Skip(1)
@@ -62,7 +77,8 @@ public static class LrcPresentation
             result.Add(new LrcPresentationLine(
                 group.Key,
                 original,
-                translation));
+                translation,
+                originalWords));
         }
 
         return result;

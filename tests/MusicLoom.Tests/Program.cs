@@ -24,6 +24,7 @@ List<(string Name, Action Test)> tests =
     ("LRC merge ignores credits and blank alignment markers", LrcMergeIgnoresCreditsAndBlanks),
     ("LRC merge removes duplicated untranslated phrases", LrcMergeDeduplicatesOriginal),
     ("LRC projection preserves original/translation order", LrcPresentationOrder),
+    ("Karaoke timing survives projection, translation and seeking", KaraokeTimingRegression.Run),
     ("LRC slash delimiter only splits explicit bilingual text", LrcSlashPresentation),
     ("Scanning resolves canonical embedded/local/NetEase lyrics", LibraryLyricsIndexerRegression.Run),
     ("NetEase candidate ranking balances duration and metadata", NeteaseCandidateRanking),
