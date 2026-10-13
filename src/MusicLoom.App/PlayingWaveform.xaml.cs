@@ -21,6 +21,10 @@ public sealed partial class PlayingWaveform : UserControl
     private bool _isVisible;
     private Storyboard? _opacityStoryboard;
 
+    // Detail-pane resizing is a layout operation. Do not regenerate the
+    // waveform's hundreds of polygon vertices inside each drag frame.
+    internal static bool SuspendDuringLibrarySplit { get; set; }
+
     public event EventHandler? Rendered;
 
     public static readonly DependencyProperty IsActiveProperty =
@@ -128,7 +132,7 @@ public sealed partial class PlayingWaveform : UserControl
 
     private void RenderWaveform()
     {
-        if (_renderFailed || _rendering)
+        if (_renderFailed || _rendering || SuspendDuringLibrarySplit)
         {
             return;
         }
