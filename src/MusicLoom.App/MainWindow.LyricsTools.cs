@@ -4,9 +4,6 @@ using System.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using MusicLoom.Core.Lyrics;
-using MusicLoom.Core.Synchronization;
-using MusicLoom.Tagging;
-using Windows.Storage;
 using Windows.Storage.Pickers;
 
 namespace MusicLoom.App;
@@ -27,8 +24,8 @@ public sealed partial class MainWindow
         confirm.Content = new TextBlock
         {
             Text = L(
-                "Remove the lyrics from MusicLoom and the generated phone copy. Source audio and source-side LRC files will not be modified.",
-                "删除 MusicLoom 中的歌词和同步目标中的歌词。源音频与源目录的 LRC 不会被修改。"),
+                "Clear the stored lyrics. The destination will only be changed during the next sync; source files remain untouched.",
+                "清空歌词数据库中的歌词。目标文件仅在下次同步时修改，源文件保持不变。"),
             TextWrapping = TextWrapping.Wrap,
         };
         confirm.PrimaryButtonText = L("Clear", "清空");
@@ -53,29 +50,49 @@ public sealed partial class MainWindow
             _currentLyricsRaw = null;
             RenderLyrics();
 
-            if (_settings is not null
-                && item.Entry.DestinationPath is string path
-                && File.Exists(path)
-                && IsPathInside(path, _settings.Path.DestinationDirectory))
-            {
-                await new TagLibSharpLyricsWriter().RemoveAsync(path);
-                string sidecar = SidecarLrcLyricsWriter.GetSidecarPath(path);
-                if (File.Exists(sidecar))
-                {
-                    File.Delete(sidecar);
-                }
-            }
-
+            // Only the SQLite canonical lyric changes here. The sync
+            // executor owns ALL target filesystem mutations, including
+            // removing embedded tags and orphaned sidecar LRC files.
             ShowInfo(InfoBarSeverity.Success,
                 L("Lyrics cleared", "歌词已清空"),
-                L("Generated lyrics removed. The source library is unchanged.",
-                  "已删除同步目标歌词，源音乐库未修改。"));
+                L("Lyrics cleared in MusicLoom; synchronize to update destination files. The source library is unchanged.",
+                  "已清空 Musicloom 中的歌词；同步后才修改目标文件。源音乐库未修改。"));
         }
         catch (Exception error)
         {
             HandleUiException(
                 L("Could not clear lyrics.", "无法清空歌词。"),
                 error);
+        }
+    }
+
+    private async void AdjustLyricsFlyout_Opening(object sender, object e)
+    {
+        CurrentLyricsOffsetItem.Text =
+            L("Current offset: loading…", "当前偏移：读取中……");
+        if (_selectedLibraryItem is not LibraryDisplayItem item)
+        {
+            CurrentLyricsOffsetItem.Text = L(
+                "Current offset: 0 ms", "当前偏移：0 毫秒");
+            return;
+        }
+
+        try
+        {
+            int offset = await new SqliteLyricsCache(DatabasePath)
+                .GetOffsetMillisecondsAsync(item.Entry.SourcePath) ?? 0;
+            if (ReferenceEquals(item, _selectedLibraryItem))
+            {
+                CurrentLyricsOffsetItem.Text = L(
+                    $"Current offset: {offset:+#;-#;0} ms",
+                    $"当前偏移：{offset:+#;-#;0} 毫秒");
+            }
+        }
+        catch (Exception error)
+        {
+            AppDiagnostics.LogException("Could not retrieve lyric offset.", error);
+            CurrentLyricsOffsetItem.Text = L(
+                "Current offset unavailable", "无法读取当前偏移量");
         }
     }
 
@@ -141,6 +158,9 @@ public sealed partial class MainWindow
             int total = checked(previous + (moveEarlier ? -shift : shift));
             await store.SetOffsetMillisecondsAsync(
                 item.Entry.SourcePath, total);
+            CurrentLyricsOffsetItem.Text = L(
+                $"Current offset: {total:+#;-#;0} ms",
+                $"当前偏移：{total:+#;-#;0} 毫秒");
             await QueueLyricOutputSyncAsync(item);
             ShowInfo(InfoBarSeverity.Success,
                 L("Lyric timing adjusted", "歌词时间已调整"),

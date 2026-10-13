@@ -571,14 +571,19 @@
                         <RowDefinition Height="*" />
                       </Grid.RowDefinitions>
 
-                      <Grid Margin="2,0,2,10" ColumnSpacing="6">
+                      <Grid Margin="2,0,2,10" RowSpacing="8">
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                          <ColumnDefinition Width="*" />
-                          <ColumnDefinition Width="126" />
                           <ColumnDefinition Width="Auto" />
+                          <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <ScrollViewer
                             x:Name="LyricsSourceViewport"
+                            Grid.Column="1"
+                            HorizontalAlignment="Right"
                             Visibility="Collapsed"
                             HorizontalContentAlignment="Stretch"
                             HorizontalScrollBarVisibility="Hidden"
@@ -599,26 +604,37 @@
                         </ScrollViewer>
                         <ComboBox
                             x:Name="LyricsModeBox"
-                            Grid.Column="1"
-                            Width="126"
+                            Grid.Column="0"
+                            Width="130"
                             HorizontalAlignment="Left"
                             SelectionChanged="LyricsModeBox_SelectionChanged">
                           <ComboBoxItem x:Name="LyricsOriginalOnlyItem" Content="Original only" Tag="originalOnly" />
                           <ComboBoxItem x:Name="LyricsPreferTranslationItem" Content="Prefer translation" Tag="preferTranslation" />
                           <ComboBoxItem x:Name="LyricsPreferOriginalItem" Content="Prefer original" Tag="preferOriginal" />
                         </ComboBox>
-                        <StackPanel Grid.Column="2" Orientation="Horizontal"
-                                    HorizontalAlignment="Right" Spacing="4">
-                          <Button x:Name="ClearLyricsButton" Padding="7,5"
+                        <StackPanel Grid.Row="1" Grid.ColumnSpan="2"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Left" Spacing="6">
+                          <Button x:Name="ClearLyricsButton" Padding="10,5"
                                   Click="ClearLyricsButton_Click"
                                   ToolTipService.ToolTip="Clear lyrics">
-                            <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                              <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                              <TextBlock x:Name="ClearLyricsButtonText" Text="Clear" />
+                            </StackPanel>
                           </Button>
-                          <DropDownButton x:Name="AdjustLyricsButton" Padding="7,5"
+                          <DropDownButton x:Name="AdjustLyricsButton" Padding="10,5"
                                           ToolTipService.ToolTip="Adjust timing">
-                            <FontIcon Glyph="&#xE823;" FontSize="14" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                              <FontIcon Glyph="&#xE823;" FontSize="14" />
+                              <TextBlock x:Name="AdjustLyricsButtonText" Text="Adjust" />
+                            </StackPanel>
                             <DropDownButton.Flyout>
-                              <MenuFlyout>
+                              <MenuFlyout Opening="AdjustLyricsFlyout_Opening">
+                                <MenuFlyoutItem x:Name="CurrentLyricsOffsetItem"
+                                                Text="Current offset: 0 ms"
+                                                IsEnabled="False" />
+                                <MenuFlyoutSeparator />
                                 <MenuFlyoutItem x:Name="AdvanceLyricsItem"
                                                 Text="Move earlier…" Click="AdvanceLyricsItem_Click" />
                                 <MenuFlyoutItem x:Name="DelayLyricsItem"
@@ -626,14 +642,16 @@
                               </MenuFlyout>
                             </DropDownButton.Flyout>
                           </DropDownButton>
-                          <Button x:Name="EditLyricsButton" Padding="7,5"
+                          <Button x:Name="EditLyricsButton" Padding="10,5"
                                   Click="EditLyricsButton_Click"
                                   ToolTipService.ToolTip="Edit lyrics">
-                            <FontIcon Glyph="&#xE70F;" FontSize="14" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                              <FontIcon Glyph="&#xE70F;" FontSize="14" />
+                              <TextBlock x:Name="EditLyricsButtonText" Text="Edit" />
+                            </StackPanel>
                           </Button>
                           <DropDownButton
                             x:Name="CopyAllLyricsButton"
-                            Grid.Column="2"
                             ToolTipService.ToolTip="Copy full lyrics">
                           <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE8C8;" FontSize="14" />
@@ -1494,30 +1512,25 @@
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                   <Grid ColumnSpacing="14">
                     <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="190" />
                       <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="280" />
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Spacing="2">
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
                       <TextBlock x:Name="LyricsEditorSettingTitle"
                                  Text="Lyrics editor" FontWeight="SemiBold" />
                       <TextBlock x:Name="LyricsEditorSettingDescription"
                                  Text="Use default editor or choose an application."
-                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                 Visibility="Collapsed" />
                     </StackPanel>
-                    <Grid Grid.Column="1" ColumnSpacing="5">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <TextBox x:Name="LyricsEditorPathBox" Grid.Column="0"
-                               PlaceholderText="System default"
-                               TextChanged="SettingsControl_Changed" />
-                      <Button x:Name="BrowseLyricsEditorButton" Grid.Column="1"
-                              Content="Browse…" Click="BrowseLyricsEditorButton_Click" />
-                      <Button x:Name="ResetLyricsEditorButton" Grid.Column="2"
-                              Content="Reset" Click="ResetLyricsEditorButton_Click" />
-                    </Grid>
+                    <TextBox x:Name="LyricsEditorPathBox" Grid.Column="1"
+                             PlaceholderText="System default"
+                             TextChanged="SettingsControl_Changed" />
+                    <Button x:Name="BrowseLyricsEditorButton" Grid.Column="2"
+                            Content="Browse…" Click="BrowseLyricsEditorButton_Click" />
+                    <Button x:Name="ResetLyricsEditorButton" Grid.Column="3"
+                            Content="Reset" Click="ResetLyricsEditorButton_Click" />
                   </Grid>
                 </Border>
               </StackPanel>
