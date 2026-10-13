@@ -1,4 +1,3 @@
-using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using MusicLoom.Core.Configuration;
 using MusicLoom.Core.Lyrics;
@@ -13,10 +12,7 @@ public sealed partial class MainWindow
 {
     private bool _immersiveActive;
     private int _immersiveLoadVersion;
-    private AppWindowPresenterKind _previousPresenterKind =
-        AppWindowPresenterKind.Overlapped;
-
-    private void InitializeImmersivePlayer()
+     private void InitializeImmersivePlayer()
     {
         ImmersiveView.CloseRequested += (_, _) => CloseImmersivePlayer();
         ImmersiveView.PreviousRequested += async (_, _) =>
@@ -34,6 +30,18 @@ public sealed partial class MainWindow
             }
             _mediaPlayer.PlaybackSession.Position =
                 TimeSpan.FromSeconds(seconds);
+            UpdatePlaybackLyrics();
+        };
+        ImmersiveView.LyricSeekRequested += seconds =>
+        {
+            if (_mediaPlayer.Source is null
+                || !double.IsFinite(seconds) || seconds < 0)
+            {
+                return;
+            }
+            _mediaPlayer.PlaybackSession.Position =
+                TimeSpan.FromSeconds(seconds);
+            _mediaPlayer.Play();
             UpdatePlaybackLyrics();
         };
         ImmersiveView.ModeChanged += async mode =>
@@ -58,8 +66,8 @@ public sealed partial class MainWindow
 
         try
         {
-            _previousPresenterKind = AppWindow.Presenter.Kind;
-            AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+            // Cover the existing window's client area, including our
+            // custom TitleBar. Do not resize the window or alter AppWindow.
             _immersiveActive = true;
             ImmersiveHost.Visibility = Visibility.Visible;
             ImmersiveView.SetMode(_lyricsDisplayMode);
@@ -104,16 +112,8 @@ public sealed partial class MainWindow
         _lastAutoScrolledLyric = null;
         _lyricFollowBlockedUntil = DateTimeOffset.MinValue;
 
-        try
-        {
-            AppWindow.SetPresenter(_previousPresenterKind);
-        }
-        catch (Exception error)
-        {
-            AppDiagnostics.LogException(
-                "Could not restore window presenter after immersive mode.",
-                error);
-        }
+        // Restore ordinary navigation in place; the OS window retains
+        // its original size, maximization and taskbar state throughout.
     }
 
     private async Task UpdateImmersiveTrackAsync(
@@ -125,6 +125,12 @@ public sealed partial class MainWindow
             : item.Artist + " - " + item.Title;
         ImmersiveView.SetTrack(label, item.Album, item.Artwork, []);
         ImmersiveView.SetMode(_lyricsDisplayMode);
+        if (updatePalette)
+        {
+            // Clear the previous song's gradient immediately while artwork
+            // is fetched; late decodes cannot overwrite newer songs.
+            _ = ImmersiveView.ApplyArtworkColorsAsync(null);
+        }
 
         try
         {
@@ -149,15 +155,13 @@ public sealed partial class MainWindow
                 return;
             }
 
-            byte[]? imageBytes =
-                ReferenceEquals(item, _selectedLibraryItem)
-                    ? _currentArtworkBytes
-                    : null;
-            if (imageBytes is null && _settings is MusicLoomSettings settings)
+            byte[]? imageBytes = await Task.Run(() =>
             {
-                imageBytes = await Task.Run(
-                    () => LoadTrackDetail(settings, item.Entry).Artwork);
-            }
+                if (_settings is not MusicLoomSettings settings)
+                    return null;
+                return TryReadEmbeddedArtwork(item.Entry)
+                    ?? TryReadExternalArtwork(settings, item.Entry);
+            });
             if (_immersiveActive && version == _immersiveLoadVersion)
             {
                 await ImmersiveView.ApplyArtworkColorsAsync(imageBytes);

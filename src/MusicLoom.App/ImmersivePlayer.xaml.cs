@@ -26,6 +26,7 @@ public sealed partial class ImmersivePlayer : UserControl
     public event EventHandler? NextRequested;
     public event EventHandler? PlayPauseRequested;
     public event Action<double>? SeekRequested;
+    public event Action<double>? LyricSeekRequested;
     public event Action<string>? ModeChanged;
 
     internal ListView LyricsList => ImmersiveLyricsList;
@@ -74,7 +75,11 @@ public sealed partial class ImmersivePlayer : UserControl
         TrackHeading.Text = title;
         AlbumHeading.Text = album;
         AlbumCover.Source = cover;
-        ImmersiveLyricsList.ItemsSource = lines.ToArray();
+        LyricDisplayLine[] display = lines.ToArray();
+        ImmersiveLyricsList.ItemsSource = display;
+        LyricModeBox.Visibility = display.Any(
+            static line => !string.IsNullOrWhiteSpace(line.Translation))
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 
     internal void SetProgress(
@@ -170,6 +175,31 @@ public sealed partial class ImmersivePlayer : UserControl
         }
     }
 
+    private void LeftPanel_SizeChanged(
+        object sender, SizeChangedEventArgs args)
+    {
+        // Both columns share the exact visual vertical span at every
+        // window size, rather than anchoring lyrics higher than the cover.
+        if (args.NewSize.Height > 0
+            && Math.Abs(RightPanel.Height - args.NewSize.Height) > 0.5)
+        {
+            RightPanel.Height = args.NewSize.Height;
+        }
+    }
+
+    private void ImmersiveLyricsList_DoubleTapped(
+        object sender, DoubleTappedRoutedEventArgs args)
+    {
+        LyricDisplayLine? line =
+            (args.OriginalSource as FrameworkElement)
+                ?.DataContext as LyricDisplayLine;
+        if (line?.Timestamp is TimeSpan position)
+        {
+            args.Handled = true;
+            LyricSeekRequested?.Invoke(position.TotalSeconds);
+        }
+    }
+
     private void SetPalette(Color color)
     {
         Color Shade(double factor, double lift = 0) =>
@@ -181,6 +211,10 @@ public sealed partial class ImmersivePlayer : UserControl
         ArtworkGradient.GradientStops[0].Color = Shade(0.68, 20);
         ArtworkGradient.GradientStops[1].Color = Shade(0.48, 13);
         ArtworkGradient.GradientStops[2].Color = Shade(0.27, 9);
+        Color fadeBase = Shade(0.34, 12);
+        LyricsFadeGradient.GradientStops[0].Color =
+            Color.FromArgb(0, fadeBase.R, fadeBase.G, fadeBase.B);
+        LyricsFadeGradient.GradientStops[1].Color = fadeBase;
     }
 
     private void ProgressSlider_ValueChanged(
