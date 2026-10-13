@@ -1,5 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media.Imaging;
+using MusicLoom.Core.Configuration;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.LyricsProviders;
 
@@ -8,8 +11,7 @@ namespace MusicLoom.App;
 public sealed class CloudLyricsAcceptedEventArgs : EventArgs
 {
     public CloudLyricsAcceptedEventArgs(
-        string sourcePath, CloudLyricsCandidate candidate,
-        LrcDocument document)
+        string sourcePath, CloudLyricsCandidate candidate, LrcDocument document)
     {
         SourcePath = sourcePath;
         Candidate = candidate;
@@ -22,20 +24,65 @@ public sealed class CloudLyricsAcceptedEventArgs : EventArgs
 }
 
 /// <summary>
-/// Shared searchable lyrics panel for QQ Music and KuGou.
-/// Network state is per-tab; accepted lyrics are committed by MainWindow.
-///</summary>
+/// Presentation-only candidate wrapper: source results retain their provider
+/// IDs and times, while WinUI gets an actual ImageSource and readable duration.
+/// </summary>
+internal sealed class CloudCandidateRow
+{
+    public CloudCandidateRow(CloudLyricsCandidate candidate)
+    {
+        Candidate = candidate;
+        if (candidate.CoverUrl is string artwork
+            && Uri.TryCreate(artwork, UriKind.Absolute, out Uri? uri)
+            && uri.Scheme == Uri.UriSchemeHttps)
+        {
+            Artwork = new BitmapImage
+            {
+                DecodePixelWidth = 100,
+                UriSource = uri,
+            };
+        }
+    }
+
+    public CloudLyricsCandidate Candidate { get; }
+    public string Title => Candidate.Title;
+    public string Artist => Candidate.Artist;
+    public string Album => Candidate.Album;
+    public string Duration
+    {
+        get
+        {
+            TimeSpan time = TimeSpan.FromMilliseconds(
+                Math.Max(0, Candidate.DurationMilliseconds));
+            return time.TotalMinutes < 1 && Candidate.DurationMilliseconds == 0
+                ? "—"
+                : $"{(int)time.TotalMinutes}:{time.Seconds:00}";
+        }
+    }
+    public BitmapImage? Artwork { get; }
+}
+
+/// <summary>
+/// Shared NetEase-style three-column lyric matching dialog for QQ and KuGou.
+/// The document is adopted into canonical SQLite only after explicit selection.
+/// Recognition uploads PCM only after an additional privacy confirmation.
+/// </summary>
 public sealed partial class CloudLyricsPanel : UserControl, IDisposable
 {
     private readonly CloudLyricsClient _client = new();
-    private Func<string, string, string> _translate = (en, _) => en;
+    private Func<string, string, string> _translate = (english, _) => english;
     private CancellationTokenSource? _activeRequest;
     private string? _sourcePath;
     private CloudLyricsCandidate? _previewCandidate;
     private LrcDocument? _previewDocument;
+    private string _trackArtist = "";
+    private string _trackTitle = "";
+    private string _trackAlbum = "";
+    private double? _trackDurationMs;
     private bool _busy;
-
+    private bool _disposed;
     private CloudLyricsSource _source;
+
     public CloudLyricsSource Source
     {
         get => _source;
@@ -44,14 +91,15 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             _source = value;
             AudioRecognizeButton.Visibility =
                 value == CloudLyricsSource.KugouMusic
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
+                    ? Visibility.Visible : Visibility.Collapsed;
             AudioRecognizeButton.IsEnabled =
                 value == CloudLyricsSource.KugouMusic
                 && _sourcePath is not null;
         }
     }
+
     public event EventHandler<CloudLyricsAcceptedEventArgs>? LyricsAccepted;
+    public event Action<TimeSpan>? LyricSeekRequested;
 
     public CloudLyricsPanel()
     {
@@ -61,22 +109,33 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     public void Localize(Func<string, string, string> translate)
     {
         _translate = translate;
-        ArtistBox.PlaceholderText = L("Artist", "艺术家");
-        TitleBox.PlaceholderText = L("Title", "歌曲名");
-        SearchButton.Content = L("Search", "搜索");
+        SearchHeading.Text = L("Search", "搜索信息");
+        CandidatesHeading.Text = L("Candidates", "候选项");
+        LyricsHeading.Text = L("Lyrics", "歌词");
+        ArtistBox.Header = L("Artist", "艺术家");
+        TitleBox.Header = L("Title", "歌曲名");
+        AlbumBox.Header = L("Album", "专辑");
+        SearchButton.Content = L("Search by metadata", "按元数据搜索");
         AudioRecognizeButton.Content = L(
-            "Audio recognize (experimental)",
-            "音频识别（实验性）");
-        UseLyricsButton.Content = L("Use selected lyrics", "采用所选歌词");
+            "Recognize from audio (experimental)", "通过音频识别（实验性）");
+        UseLyricsButton.Content = L("Use selected", "使用所选");
         if (CandidatesList.ItemsSource is null)
         {
             ProviderStatus.Text = L(
-                "Search this source independently of NetEase matching.",
-                "在此歌词源中独立搜索，不影响网易云匹配记录。");
+                "Search this provider; your NetEase match remains unchanged.",
+                "从此歌词源搜索，不会改变已有网易云匹配记录。");
+        }
+        if (LyricsPreview.ItemsSource is null)
+        {
+            ShowPreviewMessage(
+                L("Select a result to preview lyrics.",
+                  "选择结果后可预览歌词。"));
         }
     }
 
-    public void SetTrack(string? path, string artist = "", string title = "")
+    public void SetTrack(
+        string? path, string artist = "", string title = "",
+        string album = "", double? durationMilliseconds = null)
     {
         if (string.Equals(path, _sourcePath,
                 StringComparison.OrdinalIgnoreCase))
@@ -85,16 +144,23 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         }
 
         _sourcePath = path;
+        _trackArtist = artist;
+        _trackTitle = title;
+        _trackAlbum = album;
+        _trackDurationMs = durationMilliseconds;
         CancelRequest();
         ArtistBox.Text = artist;
         TitleBox.Text = title;
+        AlbumBox.Text = album;
         CandidatesList.ItemsSource = null;
         _previewCandidate = null;
         _previewDocument = null;
-        LyricsPreview.Text = string.Empty;
+        ShowPreviewMessage(L("Select a result to preview lyrics.",
+            "选择结果后可预览歌词。"));
         ProviderStatus.Text = path is null
             ? L("Select a track.", "请选择一首歌曲。")
-            : L("Search by artist and title.", "按艺术家和歌名搜索。");
+            : L("Use audio recognition or search by artist and title.",
+                "可通过音频识别，或按艺术家与歌名搜索。");
         UseLyricsButton.IsEnabled = false;
         AudioRecognizeButton.IsEnabled = path is not null
             && Source == CloudLyricsSource.KugouMusic;
@@ -117,9 +183,48 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         _activeRequest = null;
     }
 
+    private static string Key(string input) =>
+        new string(input.Normalize(System.Text.NormalizationForm.FormKC)
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToLowerInvariant)
+            .ToArray());
+
+    private double CandidateScore(CloudLyricsCandidate candidate)
+    {
+        string title = Key(TitleBox.Text);
+        string artist = Key(ArtistBox.Text);
+        string album = Key(AlbumBox.Text);
+        string candidateTitle = Key(candidate.Title);
+        string candidateArtist = Key(candidate.Artist);
+        double score = 0;
+        if (title.Length > 0)
+        {
+            if (title == candidateTitle) score += 70;
+            else if (candidateTitle.Contains(title, StringComparison.Ordinal)
+                || title.Contains(candidateTitle, StringComparison.Ordinal))
+                score += 30;
+        }
+        if (artist.Length > 0)
+        {
+            if (artist == candidateArtist) score += 45;
+            else if (candidateArtist.Contains(artist, StringComparison.Ordinal)
+                || artist.Contains(candidateArtist, StringComparison.Ordinal))
+                score += 16;
+        }
+        if (album.Length > 0 && album == Key(candidate.Album))
+            score += 15;
+        if (_trackDurationMs is double duration
+            && duration > 0 && candidate.DurationMilliseconds > 0)
+        {
+            double diff = Math.Abs(duration - candidate.DurationMilliseconds);
+            score += 25 * Math.Max(0, 1 - diff / 6_000);
+        }
+        return score;
+    }
+
     private async void SearchButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_sourcePath is null || _busy)
+        if (_disposed || _sourcePath is null || _busy)
         {
             return;
         }
@@ -128,6 +233,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         {
             ArtistBox.Text.Trim(), TitleBox.Text.Trim(),
         }.Where(static part => part.Length != 0));
+
         if (query.Length == 0)
         {
             ProviderStatus.Text = L(
@@ -135,26 +241,39 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             return;
         }
 
-        CancellationToken cancellation = NewRequest();
+        CancellationToken ct = NewRequest();
         _busy = true;
         SearchButton.IsEnabled = false;
+        AudioRecognizeButton.IsEnabled = false;
         UseLyricsButton.IsEnabled = false;
         _previewCandidate = null;
         _previewDocument = null;
         CandidatesList.ItemsSource = null;
-        LyricsPreview.Text = string.Empty;
+        ShowPreviewMessage(L("Select a result to preview lyrics.",
+            "选择结果后可预览歌词。"));
         ProviderStatus.Text = L("Searching…", "正在搜索……");
+
         try
         {
-            IReadOnlyList<CloudLyricsCandidate> results =
-                await _client.SearchAsync(Source, query, cancellation);
-            cancellation.ThrowIfCancellationRequested();
-            CandidatesList.ItemsSource = results;
-            ProviderStatus.Text = results.Count == 0
-                ? L("No matching songs found.", "未找到匹配歌曲。")
+            IReadOnlyList<CloudLyricsCandidate> found =
+                await _client.SearchAsync(Source, query, ct);
+            ct.ThrowIfCancellationRequested();
+            if (_disposed) return;
+
+            CloudCandidateRow[] ranked = found
+                .OrderByDescending(CandidateScore)
+                .Select(static candidate => new CloudCandidateRow(candidate))
+                .ToArray();
+            CandidatesList.ItemsSource = ranked;
+            ProviderStatus.Text = ranked.Length == 0
+                ? L("No matches found.", "没有找到匹配。")
                 : L(
-                    $"{results.Count} result(s). Select a song to preview lyrics.",
-                    $"共 {results.Count} 条结果，选择歌曲后预览歌词。");
+                    $"{ranked.Length} results · best metadata/duration matches first.",
+                    $"找到 {ranked.Length} 个候选 · 已优先按元数据和时长排序。");
+            if (ranked.Length > 0)
+            {
+                CandidatesList.SelectedIndex = 0;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -164,55 +283,66 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             AppDiagnostics.LogException(
                 "Could not search QQ/KuGou lyrics.", error);
             ProviderStatus.Text = L(
-                "Search failed. The provider may be unavailable; try again later.",
-                "搜索失败，歌词源可能暂时不可用，请稍后重试。");
+                "Provider search failed; see Diagnostics for details.",
+                "歌词源搜索失败，详情请查看诊断日志。");
         }
         finally
         {
             _busy = false;
-            SearchButton.IsEnabled = _sourcePath is not null;
+            SearchButton.IsEnabled = !_disposed && _sourcePath is not null;
+            AudioRecognizeButton.IsEnabled = !_disposed
+                && _sourcePath is not null
+                && Source == CloudLyricsSource.KugouMusic;
         }
     }
+
+    private void ShowPreviewMessage(string message) =>
+        LyricsPreview.ItemsSource = new[]
+        {
+            new LyricDisplayLine(message, null, LyricsDisplayModes.OriginalOnly),
+        };
 
     private async void CandidatesList_SelectionChanged(
         object sender, SelectionChangedEventArgs e)
     {
-        CloudLyricsCandidate? chosen =
-            CandidatesList.SelectedItem as CloudLyricsCandidate;
-        _previewCandidate = chosen;
+        CloudLyricsCandidate? candidate =
+            (CandidatesList.SelectedItem as CloudCandidateRow)?.Candidate;
+        _previewCandidate = candidate;
         _previewDocument = null;
         UseLyricsButton.IsEnabled = false;
-        if (chosen is null)
+        if (candidate is null)
         {
-            LyricsPreview.Text = string.Empty;
+            ShowPreviewMessage(L(
+                "Select a result to preview lyrics.",
+                "选择结果后可预览歌词。"));
             return;
         }
 
-        CancellationToken cancellation = NewRequest();
-        LyricsPreview.Text = L("Loading lyrics…", "正在加载歌词……");
+        CancellationToken ct = NewRequest();
+        ShowPreviewMessage(L("Loading lyrics…", "正在加载歌词……"));
         try
         {
-            LrcDocument? doc =
-                await _client.GetLyricsAsync(chosen, cancellation);
-            cancellation.ThrowIfCancellationRequested();
-            if (!ReferenceEquals(_previewCandidate, chosen))
-            {
+            LrcDocument? document =
+                await _client.GetLyricsAsync(candidate, ct);
+            ct.ThrowIfCancellationRequested();
+            if (_disposed || !ReferenceEquals(_previewCandidate, candidate))
                 return;
-            }
 
-            if (doc is not { Lines.Count: > 0 })
+            if (document is not { Lines.Count: > 0 })
             {
-                LyricsPreview.Text = L(
+                ShowPreviewMessage(L(
                     "No timed lyrics are available for this candidate.",
-                    "所选歌曲没有可用的带时间戳歌词。");
+                    "所选歌曲没有可用的带时间戳歌词。"));
                 return;
             }
 
-            _previewDocument = doc;
-            // Preview readable text, not QRC/KRC inline timing markup.
-            // The canonical document still retains all word timestamps
-            // when the user adopts the selected lyrics.
-            LyricsPreview.Text = FormatPreview(doc);
+            _previewDocument = document;
+            LyricsPreview.ItemsSource = LrcPresentation.Project(document)
+                .Select(line => new LyricDisplayLine(
+                    line.Original, line.Translation,
+                    LyricsDisplayModes.PreferOriginal,
+                    line.Timestamp, line.OriginalWords, line.TranslationWords))
+                .ToArray();
             UseLyricsButton.IsEnabled = true;
         }
         catch (OperationCanceledException)
@@ -222,41 +352,40 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         {
             AppDiagnostics.LogException(
                 "Could not decode QQ/KuGou lyrics.", error);
-            LyricsPreview.Text = L(
+            ShowPreviewMessage(L(
                 "Could not load lyrics from this provider.",
-                "无法从此歌词源获取歌词。");
+                "无法从此歌词源获取歌词。"));
         }
     }
 
-    private static string FormatPreview(LrcDocument document)
+    private void LyricsPreview_DoubleTapped(
+        object sender, DoubleTappedRoutedEventArgs e)
     {
-        return string.Join(Environment.NewLine,
-            LrcPresentation.Project(document).Select(line =>
-            {
-                string prefix = line.Timestamp is TimeSpan time
-                    ? FormattableString.Invariant(
-                        $"[{(int)time.TotalMinutes:00}:{time.Seconds:00}] ")
-                    : "";
-                return prefix + line.Original
-                    + (string.IsNullOrWhiteSpace(line.Translation)
-                        ? "" : Environment.NewLine + line.Translation);
-            }));
+        LyricDisplayLine? line =
+            (e.OriginalSource as FrameworkElement)?.DataContext
+                as LyricDisplayLine;
+        if (line?.Timestamp is TimeSpan time)
+        {
+            e.Handled = true;
+            LyricSeekRequested?.Invoke(time);
+        }
     }
 
     private void UseLyricsButton_Click(object sender, RoutedEventArgs e)
     {
         if (_sourcePath is string path
             && _previewCandidate is CloudLyricsCandidate candidate
-            && _previewDocument is LrcDocument lyrics)
+            && _previewDocument is LrcDocument document)
         {
             UseLyricsButton.IsEnabled = false;
             LyricsAccepted?.Invoke(this,
-                new CloudLyricsAcceptedEventArgs(path, candidate, lyrics));
+                new CloudLyricsAcceptedEventArgs(path, candidate, document));
         }
     }
 
     public void Dispose()
     {
+        _disposed = true;
         CancelRequest();
         _client.Dispose();
         DisposeAudioRecognition();
