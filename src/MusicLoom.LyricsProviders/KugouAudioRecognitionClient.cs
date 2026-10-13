@@ -161,8 +161,8 @@ public sealed class KugouAudioRecognitionClient : IDisposable
         {
             if (results.TryGetProperty("list", out JsonElement list))
                 results = list;
-            else if (results.TryGetProperty("songs", out JsonElement songs))
-                results = songs;
+            else if (results.TryGetProperty("songs", out JsonElement nestedSongs))
+                results = nestedSongs;
         }
         if (results.ValueKind != JsonValueKind.Array)
         {
