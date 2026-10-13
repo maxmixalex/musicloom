@@ -211,11 +211,13 @@ jobs:
             $safeLabel = $Label -replace '[^A-Za-z0-9_.-]', '-'
             $marker = Join-Path $PWD "artifacts/$safeLabel.launch-ok"
             $waveMarker = Join-Path $PWD "artifacts/$safeLabel.waveform-ok"
+            $karaokeMarker = Join-Path $PWD "artifacts/$safeLabel.karaoke-ok"
             $trace = Join-Path $PWD "artifacts/$safeLabel.startup.log"
-            Remove-Item $marker, $waveMarker, $trace -Force -ErrorAction SilentlyContinue
+            Remove-Item $marker, $waveMarker, $karaokeMarker, $trace -Force -ErrorAction SilentlyContinue
 
             $env:MUSICLOOM_SMOKE_MARKER = $marker
             $env:MUSICLOOM_WAVEFORM_SMOKE_MARKER = $waveMarker
+            $env:MUSICLOOM_KARAOKE_SMOKE_MARKER = $karaokeMarker
             $env:MUSICLOOM_STARTUP_TRACE = $trace
             $startedAt = Get-Date
             $process = Start-Process -FilePath $Exe -PassThru
@@ -224,7 +226,9 @@ jobs:
             try {
               $deadline = (Get-Date).AddSeconds(30)
               while ((Get-Date) -lt $deadline -and
-                     (-not (Test-Path $marker) -or -not (Test-Path $waveMarker))) {
+                     (-not (Test-Path $marker) -or
+                      -not (Test-Path $waveMarker) -or
+                      -not (Test-Path $karaokeMarker))) {
                 if ($process.HasExited) {
                   $failure = "$Label exited before its main window activated. Exit code: $($process.ExitCode)"
                   break
@@ -237,6 +241,9 @@ jobs:
               }
               if (-not $failure -and -not (Test-Path $waveMarker)) {
                 $failure = "$Label failed its native waveform render/resize smoke test."
+              }
+              if (-not $failure -and -not (Test-Path $karaokeMarker)) {
+                $failure = "$Label failed karaoke render/seek smoke test."
               }
 
               if (Test-Path $trace) {
@@ -264,9 +271,10 @@ jobs:
                 return $false
               }
 
-              Write-Host "=== $Label activated and waveform rendered ==="
+              Write-Host "=== $Label activated and waveform / karaoke rendered ==="
               Get-Content $marker | ForEach-Object { Write-Host $_ }
               Get-Content $waveMarker | ForEach-Object { Write-Host $_ }
+              Get-Content $karaokeMarker | ForEach-Object { Write-Host $_ }
               return $true
             }
             finally {
@@ -275,6 +283,7 @@ jobs:
               }
               Remove-Item Env:MUSICLOOM_SMOKE_MARKER -ErrorAction SilentlyContinue
               Remove-Item Env:MUSICLOOM_WAVEFORM_SMOKE_MARKER -ErrorAction SilentlyContinue
+              Remove-Item Env:MUSICLOOM_KARAOKE_SMOKE_MARKER -ErrorAction SilentlyContinue
               Remove-Item Env:MUSICLOOM_STARTUP_TRACE -ErrorAction SilentlyContinue
             }
           }

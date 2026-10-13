@@ -187,6 +187,7 @@ public sealed partial class MainWindow : Window
         HideDetailPane();
         ResetTrackDetails();
         InstallWaveformSmokeIfRequested();
+        InstallKaraokeSmokeIfRequested();
 
         _ = InitializeSettingsAsync();
 
