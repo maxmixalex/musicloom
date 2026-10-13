@@ -85,6 +85,15 @@ public sealed partial class MainWindow
                             "The secondary original lyric lost timed words.");
                     }
 
+                    string exported = BuildLrcLyricText(lines);
+                    if (!exported.Contains(
+                            "<00:01.000>Hel<00:01.400>lo<00:02.000>",
+                            StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException(
+                            "Copy-as-LRC dropped the original's word timings.");
+                    }
+
                     current.PlaybackPosition =
                         TimeSpan.FromMilliseconds(1200);
                     current.IsActive = true;
