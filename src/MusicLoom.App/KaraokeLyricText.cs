@@ -116,6 +116,13 @@ public static class KaraokeLyricText
         {
             _played = null;
             _unplayed = null;
+            // Clear any old-theme inline foreground before rebuilding
+            // brushes; inactive lines should always inherit the new
+            // ThemeResource instead of retaining a stale highlighted run.
+            foreach (Run run in _runs)
+            {
+                run.Foreground = null;
+            }
             Array.Fill(_states, -1);
             Refresh();
         }
