@@ -46,6 +46,7 @@ public sealed partial class MainWindow
             VerticalAlignment = VerticalAlignment.Top,
         };
         Grid.SetRow(host, 1);
+        AppDiagnostics.Log("Karaoke smoke host created.");
 
         TextBlock translated = new()
         {
@@ -68,6 +69,7 @@ public sealed partial class MainWindow
         bool validated = false;
         host.Loaded += (_, _) =>
         {
+            AppDiagnostics.Log("Karaoke smoke host Loaded fired.");
             if (validated)
             {
                 return;
@@ -77,6 +79,11 @@ public sealed partial class MainWindow
             {
                 try
                 {
+                    AppDiagnostics.Log(
+                        $"Karaoke smoke check: translated='{translated.Text}', "
+                        + $"original runs={original.Inlines.Count}, "
+                        + $"timed words={current.SecondaryWords?.Count ?? 0}, "
+                        + $"primary loaded={translated.IsLoaded}, secondary loaded={original.IsLoaded}.");
                     if (translated.Text != "你好"
                         || original.Inlines.Count != 2
                         || current.SecondaryWords is not { Count: 2 })
@@ -97,6 +104,9 @@ public sealed partial class MainWindow
                     current.PlaybackPosition =
                         TimeSpan.FromMilliseconds(1200);
                     current.IsActive = true;
+                    AppDiagnostics.Log(
+                        $"Karaoke smoke after activation: first inline={original.Inlines[0]?.GetType().Name}, "
+                        + $"foreground={(original.Inlines[0] as Run)?.Foreground?.GetType().Name}.");
                     if (original.Inlines[0] is not Run first
                         || first.Foreground is not LinearGradientBrush partial
                         || partial.GradientStops.Count != 4
@@ -143,10 +153,25 @@ public sealed partial class MainWindow
                 {
                     AppDiagnostics.LogException(
                         "WinUI karaoke rendering smoke failed.", error);
+                    try
+                    {
+                        string? directory = Path.GetDirectoryName(marker);
+                        if (!string.IsNullOrWhiteSpace(directory))
+                        {
+                            Directory.CreateDirectory(directory);
+                        }
+                        File.WriteAllText(marker + ".failed", error.ToString());
+                    }
+                    catch (Exception markerError)
+                    {
+                        AppDiagnostics.LogException(
+                            "Could not write failed karaoke marker.", markerError);
+                    }
                 }
             });
         };
 
         root.Children.Add(host);
+        AppDiagnostics.Log("Karaoke smoke host added to live root.");
     }
 }

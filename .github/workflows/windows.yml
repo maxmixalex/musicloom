@@ -213,7 +213,8 @@ jobs:
             $waveMarker = Join-Path $PWD "artifacts/$safeLabel.waveform-ok"
             $karaokeMarker = Join-Path $PWD "artifacts/$safeLabel.karaoke-ok"
             $trace = Join-Path $PWD "artifacts/$safeLabel.startup.log"
-            Remove-Item $marker, $waveMarker, $karaokeMarker, $trace -Force -ErrorAction SilentlyContinue
+            $karaokeError = "$karaokeMarker.failed"
+            Remove-Item $marker, $waveMarker, $karaokeMarker, $karaokeError, $trace -Force -ErrorAction SilentlyContinue
 
             $env:MUSICLOOM_SMOKE_MARKER = $marker
             $env:MUSICLOOM_WAVEFORM_SMOKE_MARKER = $waveMarker
@@ -228,7 +229,8 @@ jobs:
               while ((Get-Date) -lt $deadline -and
                      (-not (Test-Path $marker) -or
                       -not (Test-Path $waveMarker) -or
-                      -not (Test-Path $karaokeMarker))) {
+                      -not (Test-Path $karaokeMarker)) -and
+                     -not (Test-Path $karaokeError)) {
                 if ($process.HasExited) {
                   $failure = "$Label exited before its main window activated. Exit code: $($process.ExitCode)"
                   break
@@ -242,6 +244,9 @@ jobs:
               if (-not $failure -and -not (Test-Path $waveMarker)) {
                 $failure = "$Label failed its native waveform render/resize smoke test."
               }
+              if (-not $failure -and (Test-Path $karaokeError)) {
+                $failure = "$Label karaoke smoke: $(Get-Content $karaokeError -Raw)"
+              }
               if (-not $failure -and -not (Test-Path $karaokeMarker)) {
                 $failure = "$Label failed karaoke render/seek smoke test."
               }
@@ -254,6 +259,11 @@ jobs:
               }
 
               if ($failure) {
+                $diagnostic = Join-Path $env:LOCALAPPDATA "MusicLoom/logs/musicloom.log"
+                if (Test-Path $diagnostic) {
+                  Write-Host "=== Recent MusicLoom diagnostics ==="
+                  Get-Content $diagnostic -Tail 80 | ForEach-Object { Write-Host $_ }
+                }
                 Write-Host "=== Windows Application events since launch ==="
                 Get-WinEvent -FilterHashtable @{
                   LogName = 'Application'
