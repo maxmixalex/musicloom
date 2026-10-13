@@ -17,13 +17,15 @@ internal sealed class LyricDisplayLine :
         string? translation,
         string displayMode,
         TimeSpan? timestamp = null,
-        IReadOnlyList<LrcWord>? originalWords = null)
+        IReadOnlyList<LrcWord>? originalWords = null,
+        IReadOnlyList<LrcWord>? translationWords = null)
     {
         Original = original;
         Translation = translation;
         DisplayMode = displayMode;
         Timestamp = timestamp;
         OriginalWords = originalWords;
+        TranslationWords = translationWords;
     }
 
     public string Original { get; }
@@ -32,22 +34,28 @@ internal sealed class LyricDisplayLine :
     public TimeSpan? Timestamp { get; }
 
     /// <summary>
-    /// Only original-language words carry verified timing. A translated
-    /// heading must never inherit the original's karaoke timing by accident.
+    /// Verified original and translated QRC word timelines are independent.
+    /// Switching the display language only swaps which one is primary.
     /// </summary>
     public IReadOnlyList<LrcWord>? OriginalWords { get; }
+    public IReadOnlyList<LrcWord>? TranslationWords { get; }
+
+    private bool HasTranslation => !string.IsNullOrWhiteSpace(Translation);
 
     public IReadOnlyList<LrcWord>? PrimaryWords =>
         LyricsDisplayModes.Normalize(DisplayMode)
-            == LyricsDisplayModes.PreferTranslation
-            && !string.IsNullOrWhiteSpace(Translation)
-                ? null : OriginalWords;
+            == LyricsDisplayModes.PreferTranslation && HasTranslation
+                ? TranslationWords : OriginalWords;
 
     public IReadOnlyList<LrcWord>? SecondaryWords =>
-        LyricsDisplayModes.Normalize(DisplayMode)
-            == LyricsDisplayModes.PreferTranslation
-            && !string.IsNullOrWhiteSpace(Translation)
-                ? OriginalWords : null;
+        LyricsDisplayModes.Normalize(DisplayMode) switch
+        {
+            LyricsDisplayModes.PreferTranslation when HasTranslation =>
+                OriginalWords,
+            LyricsDisplayModes.PreferOriginal when HasTranslation =>
+                TranslationWords,
+            _ => null,
+        };
 
     /// <summary>
     /// Position provided by the shared MediaPlayer tick (not a second

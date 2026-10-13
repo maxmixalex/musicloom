@@ -5572,7 +5572,8 @@ public sealed partial class MainWindow : Window
                 line.Translation,
                 mode,
                 line.Timestamp,
-                line.OriginalWords)).ToArray();
+                line.OriginalWords,
+                line.TranslationWords)).ToArray();
     }
 
     private async Task

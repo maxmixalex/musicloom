@@ -9,7 +9,8 @@ public sealed record LrcPresentationLine(
     TimeSpan? Timestamp,
     string Original,
     string? Translation,
-    IReadOnlyList<LrcWord>? OriginalWords = null);
+    IReadOnlyList<LrcWord>? OriginalWords = null,
+    IReadOnlyList<LrcWord>? TranslationWords = null);
 
 public static class LrcPresentation
 {
@@ -74,11 +75,31 @@ public static class LrcPresentation
                 }
             }
 
+            // QQ's translated QRC may have its own independently timed
+            // words. Preserve them when there is exactly one matching
+            // displayed translation; never assign timings to a composite
+            // "romaji + translation" string or fabricated inline split.
+            IReadOnlyList<LrcWord>? translationWords =
+                string.IsNullOrWhiteSpace(translation)
+                    ? null
+                    : group
+                        .Where(line => string.Equals(
+                            line.Text.Trim(),
+                            translation,
+                            StringComparison.Ordinal))
+                        .Select(static line => line.Words)
+                        .FirstOrDefault(words => words is { Count: > 0 }
+                            && string.Equals(
+                                string.Concat(words.Select(static w => w.Text)),
+                                translation,
+                                StringComparison.Ordinal));
+
             result.Add(new LrcPresentationLine(
                 group.Key,
                 original,
                 translation,
-                originalWords));
+                originalWords,
+                translationWords));
         }
 
         return result;

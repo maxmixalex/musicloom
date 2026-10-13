@@ -9,7 +9,8 @@ internal static class KaraokeTimingRegression
             + "[00:03.000]<00:03.000>世<00:03.300>界<00:03.800>\n";
         LrcDocument original = LrcDocument.Parse(lrc);
         LrcDocument translation = LrcDocument.Parse(
-            "[00:01.120]你好\n[00:03.100]world");
+            "[00:01.120]<00:01.120>你<00:01.420>好<00:01.820>\n"
+            + "[00:03.100]world");
         LrcDocument merged = LrcDocument.Merge(original, translation);
         IReadOnlyList<LrcPresentationLine> rendered =
             LrcPresentation.Project(merged);
@@ -18,13 +19,22 @@ internal static class KaraokeTimingRegression
             || rendered[0].Original != "Hello"
             || rendered[0].Translation != "你好"
             || rendered[0].OriginalWords is not { Count: 2 }
-            || rendered[1].OriginalWords is not { Count: 2 })
+            || rendered[0].TranslationWords is not { Count: 2 }
+            || rendered[1].OriginalWords is not { Count: 2 }
+            || rendered[1].TranslationWords is not null)
         {
             throw new InvalidOperationException(
                 "Translated LRC presentation discarded original QRC/KRC words.");
         }
 
         LrcWord first = rendered[0].OriginalWords![0];
+        LrcWord translated = rendered[0].TranslationWords![0];
+        AssertNear(0, LrcKaraokeTiming.Fraction(translated,
+            TimeSpan.FromMilliseconds(1000)));
+        AssertNear(0.5, LrcKaraokeTiming.Fraction(translated,
+            TimeSpan.FromMilliseconds(1270)));
+        AssertNear(1, LrcKaraokeTiming.Fraction(translated,
+            TimeSpan.FromMilliseconds(1420)));
         AssertNear(0, LrcKaraokeTiming.Fraction(first,
             TimeSpan.FromMilliseconds(1000)));
         AssertNear(0, LrcKaraokeTiming.Fraction(first,
@@ -72,7 +82,8 @@ internal static class KaraokeTimingRegression
             TimeSpan.FromSeconds(1), "Hello / 你好",
             [new LrcWord(TimeSpan.FromSeconds(1),
                 TimeSpan.FromSeconds(2), "Hello / 你好")]));
-        if (LrcPresentation.Project(mixed)[0].OriginalWords is not null)
+        if (LrcPresentation.Project(mixed)[0].OriginalWords is not null
+            || LrcPresentation.Project(mixed)[0].TranslationWords is not null)
         {
             throw new InvalidOperationException(
                 "Unsafe inline text split inherited incorrect word timings.");
