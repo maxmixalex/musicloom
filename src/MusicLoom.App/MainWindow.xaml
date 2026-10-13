@@ -1934,7 +1934,11 @@
                 Maximum="1"
                 Value="0"
                 Margin="0,6,0,0"
-                ValueChanged="PlayerProgressSlider_ValueChanged" />
+                ValueChanged="PlayerProgressSlider_ValueChanged">
+              <Slider.ThumbToolTipValueConverter>
+                <local:TimeSliderValueConverter />
+              </Slider.ThumbToolTipValueConverter>
+            </Slider>
 
           </Grid>
 
