@@ -10892,6 +10892,11 @@ public sealed partial class MainWindow : Window
                 "Prefer original",
                 "优先原文");
         CopyAllLyricsButtonText.Text = L("Copy", "复制");
+        ClearLyricsButtonText.Text = L("Clear", "清空");
+        AdjustLyricsButtonText.Text = L("Adjust", "调整");
+        EditLyricsButtonText.Text = L("Edit", "编辑");
+        CurrentLyricsOffsetItem.Text = L(
+            "Current offset: 0 ms", "当前偏移：0 毫秒");
         ToolTipService.SetToolTip(
             ImmersiveOpenButton,
             L("Open immersive player", "打开沉浸式播放器"));

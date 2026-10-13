@@ -190,6 +190,8 @@ public sealed partial class MainWindow
         EditLyricsButton.IsEnabled = false;
         ClearLyricsButton.IsEnabled = false;
         AdjustLyricsButton.IsEnabled = false;
+        bool preserveTemporaryFile = false;
+        string originalLyrics = _currentLyricsRaw;
         string tempPath = Path.Combine(
             Path.GetTempPath(),
             "MusicLoom",
@@ -198,63 +200,52 @@ public sealed partial class MainWindow
         {
             Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
             await File.WriteAllTextAsync(
-                tempPath, _currentLyricsRaw, new UTF8Encoding(false));
+                tempPath, originalLyrics, new UTF8Encoding(false));
 
             string? configured = _settings?.Ui.LyricsEditorPath;
-            if (!string.IsNullOrWhiteSpace(configured))
+            if (!string.IsNullOrWhiteSpace(configured)
+                && !File.Exists(configured))
             {
-                if (!File.Exists(configured))
-                {
-                    throw new FileNotFoundException(
-                        "Configured lyric editor was not found.", configured);
-                }
-
-                ProcessStartInfo info = new()
-                {
-                    FileName = configured,
-                    UseShellExecute = true,
-                };
-                info.ArgumentList.Add(tempPath);
-                Process.Start(info);
-            }
-            else
-            {
-                StorageFile temp = await StorageFile.GetFileFromPathAsync(tempPath);
-                bool opened = await Windows.System.Launcher.LaunchFileAsync(temp);
-                if (!opened)
-                {
-                    ProcessStartInfo fallback = new()
-                    {
-                        FileName = "notepad.exe",
-                        UseShellExecute = true,
-                    };
-                    fallback.ArgumentList.Add(tempPath);
-                    Process.Start(fallback);
-                }
+                throw new FileNotFoundException(
+                    L("Configured lyrics editor does not exist.",
+                      "指定的歌词编辑器不存在。"), configured);
             }
 
-            ContentDialog dialog = CreateLyricsDialog(
-                L("Editing lyrics", "正在编辑歌词"));
-            dialog.Content = new TextBlock
+            // Git commit-message semantics: block this editor session
+            // without blocking the UI; automatically import on exit.
+            // Notepad is the default text editor rather than the .lrc
+            // shell association, which could launch an audio player.
+            ProcessStartInfo info = new()
             {
-                Text = L(
-                    "Edit and save the temporary LRC file in your editor. Click Import once saved; Cancel leaves the library unchanged.",
-                    "请在编辑器中修改并保存临时 LRC 文件，完成后点击“导入”；取消则不修改音乐库。"),
-                TextWrapping = TextWrapping.Wrap,
+                FileName = string.IsNullOrWhiteSpace(configured)
+                    ? "notepad.exe" : configured,
+                UseShellExecute = false,
             };
-            dialog.PrimaryButtonText = L("Import changes", "导入修改");
-            dialog.CloseButtonText = L("Cancel", "取消");
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-            {
-                return;
-            }
+            info.ArgumentList.Add(tempPath);
+            using Process editor = Process.Start(info)
+                ?? throw new InvalidOperationException(
+                    L("The lyrics editor did not start.",
+                      "无法启动歌词编辑器。"));
+
+            ShowInfo(InfoBarSeverity.Informational,
+                L("Editing lyrics", "正在编辑歌词"),
+                L("Save the temporary LRC and close the editor to import changes.",
+                  "保存临时 LRC 并关闭编辑器，Musicloom 将自动导入修改。"));
+            await editor.WaitForExitAsync();
 
             string updated = await File.ReadAllTextAsync(tempPath);
+            if (string.Equals(originalLyrics, updated, StringComparison.Ordinal))
+            {
+                return; // Closing without edits must never dirty SQLite.
+            }
+
             LrcDocument doc = LrcDocument.Parse(updated);
             if (doc.Lines.Count == 0)
             {
+                preserveTemporaryFile = true;
                 throw new InvalidDataException(
-                    "Edited LRC has no valid timestamped lyric lines.");
+                    L($"Edited lyrics were not valid timed LRC. Your draft was preserved at: {tempPath}",
+                      $"编辑后的歌词不是有效的带时间戳 LRC，草稿已保留：{tempPath}"));
             }
 
             await SaveManualLyricsAsync(item, new LibraryLyricsRecord(
@@ -284,13 +275,16 @@ public sealed partial class MainWindow
         finally
         {
             _lyricsEditInProgress = false;
-            try
+            if (!preserveTemporaryFile)
             {
-                if (File.Exists(tempPath)) File.Delete(tempPath);
-            }
-            catch (IOException)
-            {
-                // External editor may still have an open handle.
+                try
+                {
+                    if (File.Exists(tempPath)) File.Delete(tempPath);
+                }
+                catch (IOException)
+                {
+                    // A file lock is nonfatal; do not replace the source.
+                }
             }
             RenderLyrics();
         }
