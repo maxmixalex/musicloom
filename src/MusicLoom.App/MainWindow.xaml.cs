@@ -355,6 +355,7 @@ public sealed partial class MainWindow : Window
         CloseMatchOverlay();
         QqCloudLyricsPanel.Dispose();
         KugouCloudLyricsPanel.Dispose();
+        StopKaraokeFrameRendering();
         _mediaPlayer.Dispose();
     }
 
@@ -987,6 +988,7 @@ public sealed partial class MainWindow : Window
         {
             ImmersiveView.SetPlaying(playing);
         }
+        RefreshKaraokeFrameRendering();
 
         ToolTipService.SetToolTip(
             PlayerPlayPauseButton,
@@ -1093,6 +1095,7 @@ public sealed partial class MainWindow : Window
         }
         else
         {
+            StopKaraokeFrameRendering();
             return;
         }
 
@@ -1122,6 +1125,7 @@ public sealed partial class MainWindow : Window
             }
             _activePlaybackLyric = null;
             _lastAutoScrolledLyric = null;
+            StopKaraokeFrameRendering();
             return;
         }
 
@@ -1138,6 +1142,7 @@ public sealed partial class MainWindow : Window
             active.IsActive = true;
             AnimateLyricFont(targetList, active, expand: true);
         }
+        RefreshKaraokeFrameRendering();
 
         // Track the active lyric without hijacking reader selection.
         // Respect a six-second cooldown after any manual scroll or tap.
