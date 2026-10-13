@@ -157,6 +157,10 @@ public static class KaraokeLyricText
 
         public void Rebuild()
         {
+            // WinUI creates an implicit empty Run when Text="" is assigned.
+            // Clear that native Run *after* clearing Text; otherwise karaoke
+            // rows have a phantom inline ahead of their timed word runs.
+            _text.Text = string.Empty;
             _text.Inlines.Clear();
             _runs = [];
             _words = [];
@@ -169,7 +173,6 @@ public static class KaraokeLyricText
 
             if (_line is null)
             {
-                _text.Text = string.Empty;
                 return;
             }
 
@@ -191,7 +194,7 @@ public static class KaraokeLyricText
                 return;
             }
 
-            _text.Text = string.Empty;
+            // Only real word Runs belong in the inline collection.
             _words = [.. words];
             _runs = new Run[_words.Length];
             _states = new int[_words.Length];
