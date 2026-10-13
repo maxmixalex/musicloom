@@ -1112,9 +1112,19 @@ public sealed partial class MainWindow : Window
 
         if (active is null)
         {
+            // A seek to the intro before the first lyric clears the
+            // previously highlighted line/word immediately.
+            if (_activePlaybackLyric is LyricDisplayLine previous)
+            {
+                previous.IsActive = false;
+                AnimateLyricFont(targetList, previous, expand: false);
+            }
+            _activePlaybackLyric = null;
+            _lastAutoScrolledLyric = null;
             return;
         }
 
+        active.PlaybackPosition = position;
         if (!ReferenceEquals(active, _activePlaybackLyric))
         {
             if (_activePlaybackLyric is LyricDisplayLine previous)
@@ -1209,6 +1219,7 @@ public sealed partial class MainWindow : Window
             .Position =
                 TimeSpan.FromSeconds(
                     seconds);
+        UpdatePlaybackLyrics();
     }
 
     private void PlayerVolumeSlider_ValueChanged(
@@ -5533,7 +5544,8 @@ public sealed partial class MainWindow : Window
                 line.Original,
                 line.Translation,
                 mode,
-                line.Timestamp)).ToArray();
+                line.Timestamp,
+                line.OriginalWords)).ToArray();
     }
 
     private async Task
