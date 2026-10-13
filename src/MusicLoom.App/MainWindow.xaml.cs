@@ -5344,7 +5344,9 @@ public sealed partial class MainWindow : Window
         }
 
         _activePlaybackLyric = line;
+        line.PlaybackPosition = _mediaPlayer.PlaybackSession.Position;
         line.IsActive = true;
+        UpdatePlaybackLyrics();
     }
 
     private async Task SeekPlayerWhenReadyAsync(
@@ -5462,7 +5464,9 @@ public sealed partial class MainWindow : Window
             AppendLrcText(
                 output,
                 tag,
-                line.PrimaryText);
+                line.PrimaryText,
+                line.Timestamp,
+                line.PrimaryWords);
 
             if (!string.IsNullOrWhiteSpace(
                     line.SecondaryText))
@@ -5470,7 +5474,9 @@ public sealed partial class MainWindow : Window
                 AppendLrcText(
                     output,
                     tag,
-                    line.SecondaryText!);
+                    line.SecondaryText!,
+                    line.Timestamp,
+                    line.SecondaryWords);
             }
         }
 
@@ -5482,8 +5488,23 @@ public sealed partial class MainWindow : Window
     private static void AppendLrcText(
         List<string> output,
         string timestampTag,
-        string text)
+        string text,
+        TimeSpan? timestamp,
+        IReadOnlyList<LrcWord>? words)
     {
+        if (timestamp is TimeSpan start
+            && words is { Count: > 0 }
+            && string.Equals(
+                string.Concat(words.Select(static word => word.Text)),
+                text, StringComparison.Ordinal))
+        {
+            // Copy-as-LRC must not throw away the word timings that the
+            // canonical database retained. This also handles "prefer
+            // translation" where the timed original appears second.
+            output.Add(new LrcLine(start, text, words).ToString());
+            return;
+        }
+
         foreach (string rawLine
             in text.Split(
                 ['\r', '\n'],
