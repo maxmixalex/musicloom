@@ -187,6 +187,7 @@ public sealed partial class MainWindow : Window
         HideDetailPane();
         ResetTrackDetails();
         InstallWaveformSmokeIfRequested();
+        InstallKaraokeSmokeIfRequested();
 
         _ = InitializeSettingsAsync();
 
@@ -354,6 +355,7 @@ public sealed partial class MainWindow : Window
         CloseMatchOverlay();
         QqCloudLyricsPanel.Dispose();
         KugouCloudLyricsPanel.Dispose();
+        StopKaraokeFrameRendering();
         _mediaPlayer.Dispose();
     }
 
@@ -986,6 +988,7 @@ public sealed partial class MainWindow : Window
         {
             ImmersiveView.SetPlaying(playing);
         }
+        RefreshKaraokeFrameRendering();
 
         ToolTipService.SetToolTip(
             PlayerPlayPauseButton,
@@ -1092,6 +1095,7 @@ public sealed partial class MainWindow : Window
         }
         else
         {
+            StopKaraokeFrameRendering();
             return;
         }
 
@@ -1112,9 +1116,20 @@ public sealed partial class MainWindow : Window
 
         if (active is null)
         {
+            // A seek to the intro before the first lyric clears the
+            // previously highlighted line/word immediately.
+            if (_activePlaybackLyric is LyricDisplayLine previous)
+            {
+                previous.IsActive = false;
+                AnimateLyricFont(targetList, previous, expand: false);
+            }
+            _activePlaybackLyric = null;
+            _lastAutoScrolledLyric = null;
+            StopKaraokeFrameRendering();
             return;
         }
 
+        active.PlaybackPosition = position;
         if (!ReferenceEquals(active, _activePlaybackLyric))
         {
             if (_activePlaybackLyric is LyricDisplayLine previous)
@@ -1127,6 +1142,7 @@ public sealed partial class MainWindow : Window
             active.IsActive = true;
             AnimateLyricFont(targetList, active, expand: true);
         }
+        RefreshKaraokeFrameRendering();
 
         // Track the active lyric without hijacking reader selection.
         // Respect a six-second cooldown after any manual scroll or tap.
@@ -1209,6 +1225,7 @@ public sealed partial class MainWindow : Window
             .Position =
                 TimeSpan.FromSeconds(
                     seconds);
+        UpdatePlaybackLyrics();
     }
 
     private void PlayerVolumeSlider_ValueChanged(
@@ -5332,7 +5349,9 @@ public sealed partial class MainWindow : Window
         }
 
         _activePlaybackLyric = line;
+        line.PlaybackPosition = _mediaPlayer.PlaybackSession.Position;
         line.IsActive = true;
+        UpdatePlaybackLyrics();
     }
 
     private async Task SeekPlayerWhenReadyAsync(
@@ -5450,7 +5469,9 @@ public sealed partial class MainWindow : Window
             AppendLrcText(
                 output,
                 tag,
-                line.PrimaryText);
+                line.PrimaryText,
+                line.Timestamp,
+                line.PrimaryWords);
 
             if (!string.IsNullOrWhiteSpace(
                     line.SecondaryText))
@@ -5458,7 +5479,9 @@ public sealed partial class MainWindow : Window
                 AppendLrcText(
                     output,
                     tag,
-                    line.SecondaryText!);
+                    line.SecondaryText!,
+                    line.Timestamp,
+                    line.SecondaryWords);
             }
         }
 
@@ -5470,8 +5493,23 @@ public sealed partial class MainWindow : Window
     private static void AppendLrcText(
         List<string> output,
         string timestampTag,
-        string text)
+        string text,
+        TimeSpan? timestamp,
+        IReadOnlyList<LrcWord>? words)
     {
+        if (timestamp is TimeSpan start
+            && words is { Count: > 0 }
+            && string.Equals(
+                string.Concat(words.Select(static word => word.Text)),
+                text, StringComparison.Ordinal))
+        {
+            // Copy-as-LRC must not throw away the word timings that the
+            // canonical database retained. This also handles "prefer
+            // translation" where the timed original appears second.
+            output.Add(new LrcLine(start, text, words).ToString());
+            return;
+        }
+
         foreach (string rawLine
             in text.Split(
                 ['\r', '\n'],
@@ -5533,7 +5571,9 @@ public sealed partial class MainWindow : Window
                 line.Original,
                 line.Translation,
                 mode,
-                line.Timestamp)).ToArray();
+                line.Timestamp,
+                line.OriginalWords,
+                line.TranslationWords)).ToArray();
     }
 
     private async Task

@@ -8,7 +8,9 @@ namespace MusicLoom.Core.Lyrics;
 public sealed record LrcPresentationLine(
     TimeSpan? Timestamp,
     string Original,
-    string? Translation);
+    string? Translation,
+    IReadOnlyList<LrcWord>? OriginalWords = null,
+    IReadOnlyList<LrcWord>? TranslationWords = null);
 
 public static class LrcPresentation
 {
@@ -47,6 +49,20 @@ public static class LrcPresentation
             (string original, string? translation) =
                 SplitInline(lyrics[0]);
 
+            // The canonical QRC/KRC words belong to the original line,
+            // not an adjacent translation or romaji row sharing its time.
+            // Preserve them only when their concatenated text really
+            // equals what the lyric viewer will display.
+            IReadOnlyList<LrcWord>? originalWords = group
+                .Where(line => string.Equals(
+                    line.Text.Trim(), lyrics[0], StringComparison.Ordinal))
+                .Select(static line => line.Words)
+                .FirstOrDefault(words => words is { Count: > 0 }
+                    && string.Equals(
+                        string.Concat(words.Select(static w => w.Text)),
+                        original,
+                        StringComparison.Ordinal));
+
             if (lyrics.Length > 1)
             {
                 string[] additional = lyrics.Skip(1)
@@ -59,10 +75,31 @@ public static class LrcPresentation
                 }
             }
 
+            // QQ's translated QRC may have its own independently timed
+            // words. Preserve them when there is exactly one matching
+            // displayed translation; never assign timings to a composite
+            // "romaji + translation" string or fabricated inline split.
+            IReadOnlyList<LrcWord>? translationWords =
+                string.IsNullOrWhiteSpace(translation)
+                    ? null
+                    : group
+                        .Where(line => string.Equals(
+                            line.Text.Trim(),
+                            translation,
+                            StringComparison.Ordinal))
+                        .Select(static line => line.Words)
+                        .FirstOrDefault(words => words is { Count: > 0 }
+                            && string.Equals(
+                                string.Concat(words.Select(static w => w.Text)),
+                                translation,
+                                StringComparison.Ordinal));
+
             result.Add(new LrcPresentationLine(
                 group.Key,
                 original,
-                translation));
+                translation,
+                originalWords,
+                translationWords));
         }
 
         return result;

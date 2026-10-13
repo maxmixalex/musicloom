@@ -734,14 +734,16 @@
                               <StackPanel Grid.Column="1" Spacing="3">
                                 <TextBlock
                                     x:Name="PrimaryLyricText"
-                                    Text="{Binding PrimaryText}"
+                                    local:KaraokeLyricText.Line="{Binding}"
                                     FontSize="{Binding PrimaryFontSize}"
+                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                     LineHeight="23"
                                     TextWrapping="WrapWholeWords"
                                     IsTextSelectionEnabled="False" />
                                 <TextBlock
                                     x:Name="SecondaryLyricText"
-                                    Text="{Binding SecondaryText}"
+                                    local:KaraokeLyricText.Line="{Binding}"
+                                    local:KaraokeLyricText.IsSecondary="True"
                                     Visibility="{Binding SecondaryVisibility}"
                                     FontSize="{Binding SecondaryFontSize}"
                                     LineHeight="20"

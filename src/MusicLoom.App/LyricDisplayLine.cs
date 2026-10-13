@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Microsoft.UI.Xaml;
 using MusicLoom.Core.Configuration;
+using MusicLoom.Core.Lyrics;
 
 namespace MusicLoom.App;
 
@@ -9,23 +10,75 @@ internal sealed class LyricDisplayLine :
     INotifyPropertyChanged
 {
     private bool _isActive;
+    private TimeSpan _playbackPosition;
 
     public LyricDisplayLine(
         string original,
         string? translation,
         string displayMode,
-        TimeSpan? timestamp = null)
+        TimeSpan? timestamp = null,
+        IReadOnlyList<LrcWord>? originalWords = null,
+        IReadOnlyList<LrcWord>? translationWords = null)
     {
         Original = original;
         Translation = translation;
         DisplayMode = displayMode;
         Timestamp = timestamp;
+        OriginalWords = originalWords;
+        TranslationWords = translationWords;
     }
 
     public string Original { get; }
     public string? Translation { get; }
     public string DisplayMode { get; }
     public TimeSpan? Timestamp { get; }
+
+    /// <summary>
+    /// Verified original and translated QRC word timelines are independent.
+    /// Switching the display language only swaps which one is primary.
+    /// </summary>
+    public IReadOnlyList<LrcWord>? OriginalWords { get; }
+    public IReadOnlyList<LrcWord>? TranslationWords { get; }
+
+    private bool HasTranslation => !string.IsNullOrWhiteSpace(Translation);
+
+    public IReadOnlyList<LrcWord>? PrimaryWords =>
+        LyricsDisplayModes.Normalize(DisplayMode)
+            == LyricsDisplayModes.PreferTranslation && HasTranslation
+                ? TranslationWords : OriginalWords;
+
+    public IReadOnlyList<LrcWord>? SecondaryWords =>
+        LyricsDisplayModes.Normalize(DisplayMode) switch
+        {
+            LyricsDisplayModes.PreferTranslation when HasTranslation =>
+                OriginalWords,
+            LyricsDisplayModes.PreferOriginal when HasTranslation =>
+                TranslationWords,
+            _ => null,
+        };
+
+    /// <summary>
+    /// Position provided by the shared MediaPlayer tick (not a second
+    /// clock). Seeking backward immediately resets every word fraction.
+    /// </summary>
+    public TimeSpan PlaybackPosition
+    {
+        get => _playbackPosition;
+        set
+        {
+            if (_playbackPosition == value)
+            {
+                return;
+            }
+            _playbackPosition = value;
+            if (IsActive
+                && (PrimaryWords is { Count: > 0 }
+                    || SecondaryWords is { Count: > 0 }))
+            {
+                OnPropertyChanged();
+            }
+        }
+    }
 
     public bool IsActive
     {
