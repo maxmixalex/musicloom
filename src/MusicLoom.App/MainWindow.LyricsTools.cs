@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using MusicLoom.Core.Lyrics;
+using Windows.Storage;
 using Windows.Storage.Pickers;
 
 namespace MusicLoom.App;
