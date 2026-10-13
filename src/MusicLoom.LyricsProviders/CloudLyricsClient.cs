@@ -25,7 +25,8 @@ public sealed record CloudLyricsCandidate(
     string Album,
     int DurationMilliseconds,
     string? Hash = null,
-    string? SongMid = null);
+    string? SongMid = null,
+    string? CoverUrl = null);
 
 public sealed partial class CloudLyricsClient : IDisposable
 {
@@ -329,9 +330,17 @@ public sealed partial class CloudLyricsClient : IDisposable
             {
                 continue;
             }
+            string coverPmid = Find(song, "album", out JsonElement coverAlbum)
+                ? Str(coverAlbum, "pmid", "mid") : "";
+            string? cover = coverPmid.Length > 0
+                && coverPmid.All(char.IsLetterOrDigit)
+                    ? "https://y.gtimg.cn/music/photo_new/T002R300x300M000"
+                        + coverPmid + ".jpg"
+                    : null;
             entries.Add(new CloudLyricsCandidate(
                 CloudLyricsSource.QqMusic, id, title, artist,
-                album, checked(seconds * 1000), SongMid: mid));
+                album, checked(seconds * 1000), SongMid: mid,
+                CoverUrl: cover));
         }
         return entries;
     }
@@ -375,11 +384,18 @@ public sealed partial class CloudLyricsClient : IDisposable
                 artist = SingerNames(song, "Singers");
             }
 
+            string artwork = Str(song,
+                "album_img", "album_image", "img", "Image", "album_pic");
+            string? cover = Uri.TryCreate(
+                artwork.Replace("{size}", "150", StringComparison.OrdinalIgnoreCase),
+                UriKind.Absolute, out Uri? coverUri)
+                && coverUri.Scheme == Uri.UriSchemeHttps
+                    ? coverUri.ToString() : null;
             entries.Add(new CloudLyricsCandidate(
                 CloudLyricsSource.KugouMusic, id, title, artist,
                 Str(song, "album_name", "AlbumName"),
                 checked(Int(song, "duration", "Duration") * 1000),
-                Hash: hash));
+                Hash: hash, CoverUrl: cover));
         }
         return entries;
     }
