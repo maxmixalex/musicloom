@@ -161,7 +161,6 @@ public sealed partial class MainWindow : Window
         InstallLyricScrollSuppression(LyricsList);
         InstallLyricScrollSuppression(ImmersiveView.LyricsList);
         InitializeImmersivePlayer();
-        InitializeCloudLyricsPanels();
         Closed += MainWindow_Closed;
         ApplyWindowIcon();
 
@@ -353,9 +352,7 @@ public sealed partial class MainWindow : Window
         _waveformCancellation?.Cancel();
         _waveformCancellation?.Dispose();
         CloseMatchOverlay();
-        QqCloudLyricsPanel.Dispose();
-        KugouCloudLyricsPanel.Dispose();
-        StopKaraokeFrameRendering();
+         StopKaraokeFrameRendering();
         _mediaPlayer.Dispose();
     }
 
@@ -4361,9 +4358,7 @@ public sealed partial class MainWindow : Window
         _currentLyricsRaw = null;
         _currentArtworkBytes = null;
 
-        QqCloudLyricsPanel.SetTrack(null);
-        KugouCloudLyricsPanel.SetTrack(null);
-        TrackTitleText.Text = string.Empty;
+         TrackTitleText.Text = string.Empty;
         TrackArtistText.Text = string.Empty;
         TrackAlbumText.Text = string.Empty;
         DetailDurationText.Text = "—";
@@ -4785,12 +4780,7 @@ public sealed partial class MainWindow : Window
         int requestId =
             ++_detailRequestId;
 
-        QqCloudLyricsPanel.SetTrack(
-            item.Entry.SourcePath, item.Artist, item.Title);
-        KugouCloudLyricsPanel.SetTrack(
-            item.Entry.SourcePath, item.Artist, item.Title);
-
-        TrackTitleText.Text =
+         TrackTitleText.Text =
             item.Title;
         TrackArtistText.Text =
             item.Artist;
@@ -10511,10 +10501,14 @@ public sealed partial class MainWindow : Window
             L(
                 "Refresh library",
                 "刷新音乐库");
-        AutoMatchButtonText.Text =
-            L(
-                "Auto-match NetEase",
-                "自动匹配网易云");
+        AutoMatchButtonText.Text = L("Auto-match", "自动匹配");
+        AutoMatchNeteaseItem.Text = L(
+            "NetEase Music (audio fingerprint)",
+            "网易云音乐（音频指纹）");
+        AutoMatchQqItem.Text = L(
+            "QQ Music (metadata search)", "QQ 音乐（元数据搜索）");
+        AutoMatchKugouItem.Text = L(
+            "KuGou Music (metadata search)", "酷狗音乐（元数据搜索）");
         SyncButtonText.Text =
             L(
                 "Sync pending",
@@ -10639,9 +10633,13 @@ public sealed partial class MainWindow : Window
                 "Use fingerprint recognition or search by artist and title.",
                 "可以使用音频指纹识别，或按艺术家和歌曲名搜索。");
         OpenMatchDialogButtonText.Text =
-            L(
-                "Find or change match…",
-                "查找或更改匹配……");
+            L("Find or change match…", "查找或更改匹配……");
+        FindNeteaseMatchItem.Text = L(
+            "NetEase Music…", "网易云音乐……");
+        FindQqMatchItem.Text = L(
+            "QQ Music lyrics…", "QQ 音乐歌词……");
+        FindKugouMatchItem.Text = L(
+            "KuGou Music lyrics…", "酷狗音乐歌词……");
         ConfirmMatchButtonText.Text =
             L(
                 "Confirm match",
@@ -10901,11 +10899,7 @@ public sealed partial class MainWindow : Window
             ImmersiveOpenButton,
             L("Open immersive player", "打开沉浸式播放器"));
         ImmersiveView.Localize(L);
-        QqLyricsTab.Header = L("QQ Music lyrics", "QQ 音乐歌词");
-        KugouLyricsTab.Header = L("KuGou Music lyrics", "酷狗音乐歌词");
-        QqCloudLyricsPanel.Localize(L);
-        KugouCloudLyricsPanel.Localize(L);
-        ToolTipService.SetToolTip(ClearLyricsButton,
+         ToolTipService.SetToolTip(ClearLyricsButton,
             L("Clear all lyrics", "清空全部歌词"));
         ToolTipService.SetToolTip(AdjustLyricsButton,
             L("Adjust lyric timing", "调整歌词时间"));

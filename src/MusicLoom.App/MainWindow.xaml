@@ -83,12 +83,26 @@
                   <TextBlock x:Name="ScanButtonText" Text="Refresh library" />
                 </StackPanel>
               </Button>
-              <Button x:Name="AutoMatchButton" Padding="10,5" Click="AutoMatchButton_Click" IsEnabled="False">
+              <DropDownButton x:Name="AutoMatchButton" Padding="10,5"
+                              IsEnabled="False">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <FontIcon Glyph="&#xE721;" FontSize="14" />
-                  <TextBlock x:Name="AutoMatchButtonText" Text="Auto-match NetEase" />
+                  <TextBlock x:Name="AutoMatchButtonText" Text="Auto-match" />
                 </StackPanel>
-              </Button>
+                <DropDownButton.Flyout>
+                  <MenuFlyout>
+                    <MenuFlyoutItem x:Name="AutoMatchNeteaseItem"
+                                    Text="NetEase Music (audio fingerprint)"
+                                    Click="AutoMatchNeteaseItem_Click" />
+                    <MenuFlyoutItem x:Name="AutoMatchQqItem"
+                                    Text="QQ Music (metadata)"
+                                    Click="AutoMatchQqItem_Click" />
+                    <MenuFlyoutItem x:Name="AutoMatchKugouItem"
+                                    Text="KuGou Music (metadata)"
+                                    Click="AutoMatchKugouItem_Click" />
+                  </MenuFlyout>
+                </DropDownButton.Flyout>
+              </DropDownButton>
               <Button x:Name="ConfirmSelectedMatchesButton"
                       Padding="10,5" Click="ConfirmSelectedMatchesButton_Click"
                       IsEnabled="False" Visibility="Collapsed">
@@ -789,15 +803,7 @@
                     </Grid>
                   </TabViewItem>
 
-                  <TabViewItem x:Name="QqLyricsTab"
-                               Header="QQ Music" IsClosable="False">
-                    <local:CloudLyricsPanel x:Name="QqCloudLyricsPanel" />
-                  </TabViewItem>
-                  <TabViewItem x:Name="KugouLyricsTab"
-                               Header="KuGou Music" IsClosable="False">
-                    <local:CloudLyricsPanel x:Name="KugouCloudLyricsPanel" />
-                  </TabViewItem>
-                  <TabViewItem x:Name="MatchTab" Header="NetEase match" IsClosable="False">
+                   <TabViewItem x:Name="MatchTab" Header="NetEase match" IsClosable="False">
                     <StackPanel Padding="4,14" Spacing="12">
                       <Border
                           x:Name="CurrentMatchCard"
@@ -888,14 +894,25 @@
                       <StackPanel
                           Orientation="Horizontal"
                           Spacing="8">
-                        <Button
-                            x:Name="OpenMatchDialogButton"
-                            Click="OpenMatchDialogButton_Click">
+                        <DropDownButton x:Name="OpenMatchDialogButton">
                           <StackPanel Orientation="Horizontal" Spacing="7">
                             <SymbolIcon Symbol="Find" />
                             <TextBlock x:Name="OpenMatchDialogButtonText" Text="Find or change match…" />
                           </StackPanel>
-                        </Button>
+                          <DropDownButton.Flyout>
+                            <MenuFlyout>
+                              <MenuFlyoutItem x:Name="FindNeteaseMatchItem"
+                                              Text="NetEase Music…"
+                                              Click="FindNeteaseMatchItem_Click" />
+                              <MenuFlyoutItem x:Name="FindQqMatchItem"
+                                              Text="QQ Music…"
+                                              Click="FindQqMatchItem_Click" />
+                              <MenuFlyoutItem x:Name="FindKugouMatchItem"
+                                              Text="KuGou Music…"
+                                              Click="FindKugouMatchItem_Click" />
+                            </MenuFlyout>
+                          </DropDownButton.Flyout>
+                        </DropDownButton>
                         <Button
                             x:Name="ConfirmMatchButton"
                             Visibility="Collapsed"
