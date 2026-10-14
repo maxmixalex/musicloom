@@ -20,6 +20,7 @@ public sealed partial class MainWindow
     private Brush? _previousImmersiveTitleForeground;
     private Color? _previousCaptionButtonBackground;
     private Color? _previousCaptionButtonForeground;
+    private bool _captionColorsSupported;
      private void InitializeImmersivePlayer()
     {
         ImmersiveView.CloseRequested += (_, _) => CloseImmersivePlayer();
@@ -30,8 +31,11 @@ public sealed partial class MainWindow
             // album-derived gradient, keeping readable white captions.
             AppTitleBar.Background = new SolidColorBrush(background);
             AppTitleBar.Foreground = new SolidColorBrush(Colors.White);
-            AppWindow.TitleBar.ButtonBackgroundColor = background;
-            AppWindow.TitleBar.ButtonForegroundColor = Colors.White;
+            if (_captionColorsSupported)
+            {
+                AppWindow.TitleBar.ButtonBackgroundColor = background;
+                AppWindow.TitleBar.ButtonForegroundColor = Colors.White;
+            }
         };
         ImmersiveView.PreviousRequested += async (_, _) =>
             await PlayQueueOffsetAsync(-1);
@@ -89,10 +93,16 @@ public sealed partial class MainWindow
             _previousImmersiveTitleTheme = AppTitleBar.RequestedTheme;
             _previousImmersiveTitleBackground = AppTitleBar.Background;
             _previousImmersiveTitleForeground = AppTitleBar.Foreground;
-            _previousCaptionButtonBackground =
-                AppWindow.TitleBar.ButtonBackgroundColor;
-            _previousCaptionButtonForeground =
-                AppWindow.TitleBar.ButtonForegroundColor;
+            _captionColorsSupported =
+                Microsoft.UI.Windowing.AppWindowTitleBar
+                    .IsCustomizationSupported();
+            if (_captionColorsSupported)
+            {
+                _previousCaptionButtonBackground =
+                    AppWindow.TitleBar.ButtonBackgroundColor;
+                _previousCaptionButtonForeground =
+                    AppWindow.TitleBar.ButtonForegroundColor;
+            }
 
             _immersiveActive = true;
             AppTitleBar.RequestedTheme = ElementTheme.Dark;
@@ -139,10 +149,13 @@ public sealed partial class MainWindow
         AppTitleBar.RequestedTheme = _previousImmersiveTitleTheme;
         AppTitleBar.Background = _previousImmersiveTitleBackground;
         AppTitleBar.Foreground = _previousImmersiveTitleForeground;
-        AppWindow.TitleBar.ButtonBackgroundColor =
-            _previousCaptionButtonBackground;
-        AppWindow.TitleBar.ButtonForegroundColor =
-            _previousCaptionButtonForeground;
+        if (_captionColorsSupported)
+        {
+            AppWindow.TitleBar.ButtonBackgroundColor =
+                _previousCaptionButtonBackground;
+            AppWindow.TitleBar.ButtonForegroundColor =
+                _previousCaptionButtonForeground;
+        }
         _activePlaybackLyric?.IsActive = false;
         _activePlaybackLyric = null;
         _lastAutoScrolledLyric = null;
