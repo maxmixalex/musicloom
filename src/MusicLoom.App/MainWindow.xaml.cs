@@ -1887,8 +1887,10 @@ public sealed partial class MainWindow : Window
                 new(accent);
 
             AccentPreview.Background = brush;
-            SyncButton.Background = brush;
-            OperationProgressBar.Foreground = brush;
+            // Let Fluent AccentButtonStyle resolve theme-aware states
+            // instead of pinning one hardcoded background in dark mode.
+            SyncButton.ClearValue(Control.BackgroundProperty);
+            OperationProgressBar.ClearValue(Control.ForegroundProperty);
         }
         else
         {
