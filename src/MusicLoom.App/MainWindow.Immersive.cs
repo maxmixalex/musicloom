@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using MusicLoom.Core.Configuration;
+using Windows.UI;
 using MusicLoom.Core.Lyrics;
 
 namespace MusicLoom.App;
@@ -13,9 +15,24 @@ public sealed partial class MainWindow
     private bool _immersiveActive;
     private int _immersiveLoadVersion;
     private int _immersiveArtworkVersion;
+    private ElementTheme _previousImmersiveTitleTheme;
+    private Brush? _previousImmersiveTitleBackground;
+    private Brush? _previousImmersiveTitleForeground;
+    private Color? _previousCaptionButtonBackground;
+    private Color? _previousCaptionButtonForeground;
      private void InitializeImmersivePlayer()
     {
         ImmersiveView.CloseRequested += (_, _) => CloseImmersivePlayer();
+        ImmersiveView.PaletteChanged += background =>
+        {
+            if (!_immersiveActive) return;
+            // Match the visible native title/caption area to the actual
+            // album-derived gradient, keeping readable white captions.
+            AppTitleBar.Background = new SolidColorBrush(background);
+            AppTitleBar.Foreground = new SolidColorBrush(Colors.White);
+            AppWindow.TitleBar.ButtonBackgroundColor = background;
+            AppWindow.TitleBar.ButtonForegroundColor = Colors.White;
+        };
         ImmersiveView.PreviousRequested += async (_, _) =>
             await PlayQueueOffsetAsync(-1);
         ImmersiveView.NextRequested += async (_, _) =>
@@ -69,7 +86,16 @@ public sealed partial class MainWindow
         {
             // Keep AppTitleBar visible and theme-aware. Only replace the
             // navigation client area, without modifying OS window bounds.
+            _previousImmersiveTitleTheme = AppTitleBar.RequestedTheme;
+            _previousImmersiveTitleBackground = AppTitleBar.Background;
+            _previousImmersiveTitleForeground = AppTitleBar.Foreground;
+            _previousCaptionButtonBackground =
+                AppWindow.TitleBar.ButtonBackgroundColor;
+            _previousCaptionButtonForeground =
+                AppWindow.TitleBar.ButtonForegroundColor;
+
             _immersiveActive = true;
+            AppTitleBar.RequestedTheme = ElementTheme.Dark;
             ImmersiveHost.Visibility = Visibility.Visible;
             ImmersiveView.SetMode(_lyricsDisplayMode);
             UpdatePlayerProgress();
@@ -87,6 +113,7 @@ public sealed partial class MainWindow
             {
                 ImmersiveView.SetTrack(
                     L("Nothing playing", "尚未播放"), string.Empty, null, []);
+                await ImmersiveView.ApplyArtworkColorsAsync(null);
             }
         }
         catch (Exception error)
@@ -109,6 +136,13 @@ public sealed partial class MainWindow
         ++_immersiveArtworkVersion;
         _immersiveActive = false;
         ImmersiveHost.Visibility = Visibility.Collapsed;
+        AppTitleBar.RequestedTheme = _previousImmersiveTitleTheme;
+        AppTitleBar.Background = _previousImmersiveTitleBackground;
+        AppTitleBar.Foreground = _previousImmersiveTitleForeground;
+        AppWindow.TitleBar.ButtonBackgroundColor =
+            _previousCaptionButtonBackground;
+        AppWindow.TitleBar.ButtonForegroundColor =
+            _previousCaptionButtonForeground;
         _activePlaybackLyric?.IsActive = false;
         _activePlaybackLyric = null;
         _lastAutoScrolledLyric = null;

@@ -21,6 +21,7 @@ public sealed partial class ImmersivePlayer : UserControl
     private bool _updatingMode;
     private int _artworkRequest;
 
+    internal event Action<Color>? PaletteChanged;
     public event EventHandler? CloseRequested;
     public event EventHandler? PreviousRequested;
     public event EventHandler? NextRequested;
@@ -260,6 +261,7 @@ public sealed partial class ImmersivePlayer : UserControl
         LyricsFadeGradient.GradientStops[0].Color =
             Color.FromArgb(0, fadeBase.R, fadeBase.G, fadeBase.B);
         LyricsFadeGradient.GradientStops[1].Color = fadeBase;
+        PaletteChanged?.Invoke(ArtworkGradient.GradientStops[0].Color);
     }
 
     private void LeftPanel_SizeChanged(
