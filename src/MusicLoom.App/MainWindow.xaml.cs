@@ -4311,12 +4311,18 @@ public sealed partial class MainWindow : Window
 
     private void ShowDetailPane()
     {
+        if (DetailPane.Visibility == Visibility.Visible)
+        {
+            // Keep the user's resized pane widths when changing songs.
+            return;
+        }
+
         LibraryListColumn.Width =
             new GridLength(
                 5,
                 GridUnitType.Star);
         LibrarySplitterColumn.Width =
-            new GridLength(6);
+            new GridLength(8);
         LibraryDetailColumn.Width =
             new GridLength(
                 7,
@@ -10901,8 +10907,6 @@ public sealed partial class MainWindow : Window
         ClearLyricsButtonText.Text = L("Clear", "清空");
         AdjustLyricsButtonText.Text = L("Adjust", "调整");
         EditLyricsButtonText.Text = L("Edit", "编辑");
-        CurrentLyricsOffsetItem.Text = L(
-            "Current offset: 0 ms", "当前偏移：0 毫秒");
         ToolTipService.SetToolTip(
             ImmersiveOpenButton,
             L("Open immersive player", "打开沉浸式播放器"));
@@ -10913,8 +10917,6 @@ public sealed partial class MainWindow : Window
             L("Adjust lyric timing", "调整歌词时间"));
         ToolTipService.SetToolTip(EditLyricsButton,
             L("Edit lyrics", "编辑歌词"));
-        AdvanceLyricsItem.Text = L("Move earlier…", "前移……");
-        DelayLyricsItem.Text = L("Move later…", "后移……");
         LyricsEditorSettingTitle.Text = L("Lyrics editor", "歌词编辑器");
         LyricsEditorSettingDescription.Text = L(
             "Use default editor or choose an application.",

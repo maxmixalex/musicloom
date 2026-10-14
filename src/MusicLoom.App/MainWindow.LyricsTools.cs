@@ -67,45 +67,8 @@ public sealed partial class MainWindow
         }
     }
 
-    private async void AdjustLyricsFlyout_Opening(object sender, object e)
-    {
-        CurrentLyricsOffsetItem.Text =
-            L("Current offset: loading…", "当前偏移：读取中……");
-        if (_selectedLibraryItem is not LibraryDisplayItem item)
-        {
-            CurrentLyricsOffsetItem.Text = L(
-                "Current offset: 0 ms", "当前偏移：0 毫秒");
-            return;
-        }
-
-        try
-        {
-            int offset = await new SqliteLyricsCache(DatabasePath)
-                .GetOffsetMillisecondsAsync(item.Entry.SourcePath) ?? 0;
-            if (ReferenceEquals(item, _selectedLibraryItem))
-            {
-                CurrentLyricsOffsetItem.Text = L(
-                    $"Current offset: {offset:+#;-#;0} ms",
-                    $"当前偏移：{offset:+#;-#;0} 毫秒");
-            }
-        }
-        catch (Exception error)
-        {
-            AppDiagnostics.LogException("Could not retrieve lyric offset.", error);
-            CurrentLyricsOffsetItem.Text = L(
-                "Current offset unavailable", "无法读取当前偏移量");
-        }
-    }
-
-    private async void AdvanceLyricsItem_Click(
-        object sender, RoutedEventArgs e) =>
-        await AdjustLyricsAsync(moveEarlier: true);
-
-    private async void DelayLyricsItem_Click(
-        object sender, RoutedEventArgs e) =>
-        await AdjustLyricsAsync(moveEarlier: false);
-
-    private async Task AdjustLyricsAsync(bool moveEarlier)
+    private async void AdjustLyricsButton_Click(
+        object sender, RoutedEventArgs e)
     {
         if (_busy || _lyricsEditInProgress ||
             _selectedLibraryItem is not LibraryDisplayItem item)
@@ -119,12 +82,12 @@ public sealed partial class MainWindow
             int previous = await store.GetOffsetMillisecondsAsync(
                 item.Entry.SourcePath) ?? 0;
 
-            NumberBox amount = new()
+            NumberBox offset = new()
             {
-                Header = L("Offset (milliseconds)", "偏移量（毫秒）"),
-                Minimum = 0,
+                Header = L("Total offset (milliseconds)", "总偏移量（毫秒）"),
+                Minimum = -3_600_000,
                 Maximum = 3_600_000,
-                Value = 500,
+                Value = previous,
                 SmallChange = 50,
                 LargeChange = 1000,
                 SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
@@ -133,15 +96,14 @@ public sealed partial class MainWindow
             panel.Children.Add(new TextBlock
             {
                 Text = L(
-                    $"Current total offset: {previous:+#;-#;0} ms. Enter the amount to {(moveEarlier ? "move earlier" : "delay")}.",
-                    $"当前累计偏移：{previous:+#;-#;0} 毫秒。请输入本次{(moveEarlier ? "前移" : "后移")}的毫秒数。"),
+                    "Set the total lyric offset. Negative values move lyrics earlier, positive values delay them, and zero resets it.",
+                    "直接设置歌词总偏移量：负数提前，正数延后，输入 0 即重置。"),
                 TextWrapping = TextWrapping.Wrap,
             });
-            panel.Children.Add(amount);
+            panel.Children.Add(offset);
+
             ContentDialog dialog = CreateLyricsDialog(
-                moveEarlier
-                    ? L("Move lyrics earlier", "歌词前移")
-                    : L("Delay lyrics", "歌词后移"));
+                L("Set lyric offset", "设置歌词偏移量"));
             dialog.Content = panel;
             dialog.PrimaryButtonText = L("Apply", "应用");
             dialog.CloseButtonText = L("Cancel", "取消");
@@ -149,30 +111,31 @@ public sealed partial class MainWindow
             {
                 return;
             }
-            if (!double.IsFinite(amount.Value) || amount.Value < 0
-                || amount.Value > 3_600_000)
+            if (!double.IsFinite(offset.Value)
+                || offset.Value < -3_600_000 || offset.Value > 3_600_000)
             {
-                throw new InvalidDataException(
-                    "Invalid lyric offset value.");
+                throw new InvalidDataException("Invalid lyric offset value.");
             }
-            int shift = checked((int)Math.Round(amount.Value));
-            int total = checked(previous + (moveEarlier ? -shift : shift));
+
+            int total = checked((int)Math.Round(offset.Value));
+            if (total == previous)
+            {
+                return;
+            }
+
             await store.SetOffsetMillisecondsAsync(
                 item.Entry.SourcePath, total);
-            CurrentLyricsOffsetItem.Text = L(
-                $"Current offset: {total:+#;-#;0} ms",
-                $"当前偏移：{total:+#;-#;0} 毫秒");
             await QueueLyricOutputSyncAsync(item);
             ShowInfo(InfoBarSeverity.Success,
-                L("Lyric timing adjusted", "歌词时间已调整"),
+                L("Lyric offset saved", "歌词偏移量已保存"),
                 L(
-                    $"Output offset is now {total:+#;-#;0} ms; apply it on the next synchronization.",
-                    $"输出偏移已设为 {total:+#;-#;0} 毫秒；下次同步时生效。"));
+                    $"Total output offset is {total:+#;-#;0} ms; the next sync will apply it.",
+                    $"输出总偏移量为 {total:+#;-#;0} 毫秒；将在下次同步时生效。"));
         }
         catch (Exception error)
         {
             HandleUiException(
-                L("Could not adjust lyric timing.", "无法调整歌词时间。"),
+                L("Could not set lyric offset.", "无法设置歌词偏移量。"),
                 error);
         }
     }

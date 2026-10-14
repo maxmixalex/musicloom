@@ -598,14 +598,11 @@
                         <RowDefinition Height="*" />
                       </Grid.RowDefinitions>
 
-                      <Grid Margin="2,0,2,10" RowSpacing="8">
-                        <Grid.RowDefinitions>
-                          <RowDefinition Height="Auto" />
-                          <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                      <Grid Margin="2,0,2,10" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="Auto" />
                           <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <ScrollViewer
                             x:Name="LyricsSourceViewport"
@@ -632,17 +629,17 @@
                         <ComboBox
                             x:Name="LyricsModeBox"
                             Grid.Column="0"
-                            Width="130"
+                            Width="126"
                             HorizontalAlignment="Left"
                             SelectionChanged="LyricsModeBox_SelectionChanged">
                           <ComboBoxItem x:Name="LyricsOriginalOnlyItem" Content="Original only" Tag="originalOnly" />
                           <ComboBoxItem x:Name="LyricsPreferTranslationItem" Content="Prefer translation" Tag="preferTranslation" />
                           <ComboBoxItem x:Name="LyricsPreferOriginalItem" Content="Prefer original" Tag="preferOriginal" />
                         </ComboBox>
-                        <StackPanel Grid.Row="1" Grid.ColumnSpan="2"
+                        <StackPanel Grid.Column="2"
                                     Orientation="Horizontal"
-                                    HorizontalAlignment="Left" Spacing="6">
-                          <Button x:Name="ClearLyricsButton" Padding="10,5"
+                                    HorizontalAlignment="Right" Spacing="4">
+                          <Button x:Name="ClearLyricsButton" Padding="6,4"
                                   Click="ClearLyricsButton_Click"
                                   ToolTipService.ToolTip="Clear lyrics">
                             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -650,26 +647,15 @@
                               <TextBlock x:Name="ClearLyricsButtonText" Text="Clear" />
                             </StackPanel>
                           </Button>
-                          <DropDownButton x:Name="AdjustLyricsButton" Padding="10,5"
-                                          ToolTipService.ToolTip="Adjust timing">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Button x:Name="AdjustLyricsButton" Padding="6,4"
+                                  Click="AdjustLyricsButton_Click"
+                                  ToolTipService.ToolTip="Set lyric offset">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
                               <FontIcon Glyph="&#xE823;" FontSize="14" />
                               <TextBlock x:Name="AdjustLyricsButtonText" Text="Adjust" />
                             </StackPanel>
-                            <DropDownButton.Flyout>
-                              <MenuFlyout Opening="AdjustLyricsFlyout_Opening">
-                                <MenuFlyoutItem x:Name="CurrentLyricsOffsetItem"
-                                                Text="Current offset: 0 ms"
-                                                IsEnabled="False" />
-                                <MenuFlyoutSeparator />
-                                <MenuFlyoutItem x:Name="AdvanceLyricsItem"
-                                                Text="Move earlier…" Click="AdvanceLyricsItem_Click" />
-                                <MenuFlyoutItem x:Name="DelayLyricsItem"
-                                                Text="Move later…" Click="DelayLyricsItem_Click" />
-                              </MenuFlyout>
-                            </DropDownButton.Flyout>
-                          </DropDownButton>
-                          <Button x:Name="EditLyricsButton" Padding="10,5"
+                          </Button>
+                          <Button x:Name="EditLyricsButton" Padding="6,4"
                                   Click="EditLyricsButton_Click"
                                   ToolTipService.ToolTip="Edit lyrics">
                             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -679,6 +665,7 @@
                           </Button>
                           <DropDownButton
                             x:Name="CopyAllLyricsButton"
+                            Padding="6,4"
                             ToolTipService.ToolTip="Copy full lyrics">
                           <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE8C8;" FontSize="14" />
