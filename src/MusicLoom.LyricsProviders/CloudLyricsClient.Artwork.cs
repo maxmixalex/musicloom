@@ -88,11 +88,11 @@ public sealed partial class CloudLyricsClient
         }
 
         string mid = FirstPresent(album,
-            "pmid", "mid", "albumMID", "albumMid", "albummid", "album_mid");
+            "pmid", "mid", "albumMID", "albumMid", "albumMId", "albummid", "album_mid");
         if (mid.Length == 0)
         {
             mid = FirstPresent(song,
-                "albummid", "albumMID", "albumMid",
+                "albummid", "albumMID", "albumMid", "albumMId",
                 "album_mid", "album_pmid", "albumPMid");
         }
 
@@ -113,17 +113,29 @@ public sealed partial class CloudLyricsClient
             + mid + ".jpg";
     }
 
+    private static string ValidNumericFrom(JsonElement node, params string[] keys)
+    {
+        foreach (string key in keys)
+        {
+            string value = FirstPresent(node, key);
+            if (IsValidNumericId(value))
+            {
+                return value;
+            }
+        }
+        return string.Empty;
+    }
+
     internal static string KugouAlbumId(JsonElement song)
     {
-        JsonElement album = Child(song, "album", "album_info", "albumInfo");
-        string value = FirstPresent(song, "album_id", "albumid",
+        string value = ValidNumericFrom(song, "album_id", "albumid",
             "AlbumID", "AlbumId", "albumId");
-        if (value.Length == 0)
-        {
-            value = FirstPresent(album, "album_id", "albumid",
-                "AlbumID", "AlbumId", "albumId", "id");
-        }
-        return IsValidNumericId(value) ? value : string.Empty;
+        if (value.Length != 0)
+            return value;
+
+        JsonElement album = Child(song, "album", "album_info", "albumInfo");
+        return ValidNumericFrom(album, "album_id", "albumid",
+            "AlbumID", "AlbumId", "albumId", "id");
     }
 
     internal static string? KugouArtworkUrl(JsonElement song)

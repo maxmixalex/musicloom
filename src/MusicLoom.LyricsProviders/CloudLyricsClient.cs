@@ -335,11 +335,11 @@ public sealed partial class CloudLyricsClient : IDisposable
             // different album MID / image field names.
             string? cover = QqArtworkUrl(song);
             string albumId = Find(song, "album", out JsonElement albumNode)
-                ? FirstPresent(albumNode, "id", "albumID", "albumId")
+                ? ValidNumericFrom(albumNode, "id", "albumID", "albumId")
                 : "";
             if (albumId.Length == 0)
             {
-                albumId = FirstPresent(song, "albumid", "albumId", "albumID");
+                albumId = ValidNumericFrom(song, "albumid", "albumId", "albumID");
             }
             entries.Add(new CloudLyricsCandidate(
                 CloudLyricsSource.QqMusic, id, title, artist,
