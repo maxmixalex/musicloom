@@ -12,6 +12,11 @@ public sealed partial class MainWindow
     private double _splitTotal;
     private double _splitDelta;
 
+    private void LibrarySplitter_Loaded(object sender, RoutedEventArgs e)
+    {
+        LibraryResizeCursor.Apply(LibrarySplitter);
+    }
+
     private void LibrarySplitter_DragStarted(
         object sender, DragStartedEventArgs e)
     {

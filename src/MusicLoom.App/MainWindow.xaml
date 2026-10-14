@@ -399,25 +399,26 @@
             <!-- A compositor-throttled Thumb replaces GridSplitter's
                  full synchronous layout per input pixel. Every pointer
                  delta contributes to a smooth frame; never round to 3 px. -->
-            <local:LibraryResizeThumb x:Name="LibrarySplitter"
+            <primitives:Thumb x:Name="LibrarySplitter"
                               Grid.Column="1"
                               Width="12"
                               HorizontalAlignment="Stretch"
                               Background="Transparent"
+                              Loaded="LibrarySplitter_Loaded"
                               DragStarted="LibrarySplitter_DragStarted"
                               DragDelta="LibrarySplitter_DragDelta"
                               DragCompleted="LibrarySplitter_DragCompleted"
                               Visibility="Collapsed">
-              <local:LibraryResizeThumb.Template>
-                <ControlTemplate TargetType="local:LibraryResizeThumb">
+              <primitives:Thumb.Template>
+                <ControlTemplate TargetType="primitives:Thumb">
                   <Grid Background="Transparent">
                     <Border Width="2" HorizontalAlignment="Center"
                             CornerRadius="1"
                             Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
                   </Grid>
                 </ControlTemplate>
-              </local:LibraryResizeThumb.Template>
-            </local:LibraryResizeThumb>
+              </primitives:Thumb.Template>
+            </primitives:Thumb>
 
             <Border
                 x:Name="DetailPane"
