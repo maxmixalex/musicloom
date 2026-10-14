@@ -30,11 +30,11 @@ public sealed partial class MainWindow
             // Match the visible native title/caption area to the actual
             // album-derived gradient, keeping readable white captions.
             AppTitleBar.Background = new SolidColorBrush(background);
-            AppTitleBar.Foreground = new SolidColorBrush(Colors.White);
+            AppTitleBar.Foreground = new SolidColorBrush(Color.FromArgb(255, 255, 255, 255));
             if (_captionColorsSupported)
             {
                 AppWindow.TitleBar.ButtonBackgroundColor = background;
-                AppWindow.TitleBar.ButtonForegroundColor = Colors.White;
+                AppWindow.TitleBar.ButtonForegroundColor = Color.FromArgb(255, 255, 255, 255);
             }
         };
         ImmersiveView.PreviousRequested += async (_, _) =>
