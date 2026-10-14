@@ -589,8 +589,8 @@ internal static class SyncExecutorRegression
         Equal(0, provider.CallCount);
         True(!File.Exists(sidecar));
         True(File.Exists(fixture.DestinationPath));
-        True(before.SequenceEqual(
-            await File.ReadAllBytesAsync(fixture.SourcePath)));
+        byte[] sourceAfter = await File.ReadAllBytesAsync(fixture.SourcePath);
+        True(before.SequenceEqual(sourceAfter));
     }
 
     private static async Task AutomaticProviderLyricsAreNotManualEditsAsync()
