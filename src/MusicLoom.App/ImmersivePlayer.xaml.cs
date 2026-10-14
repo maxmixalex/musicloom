@@ -249,7 +249,6 @@ public sealed partial class ImmersivePlayer : UserControl
         ArtworkGradient.GradientStops[1].Color = Blend(ink, secondary, 0.36);
         ArtworkGradient.GradientStops[2].Color = Blend(ink, primary, 0.14);
         Color accent = Blend(primary, white, 0.30);
-        BrandAccent.Background = new SolidColorBrush(accent);
         ProgressSlider.Foreground = new SolidColorBrush(accent);
         ProgressSlider.Resources["SliderTrackValueFill"] = new SolidColorBrush(accent);
         ProgressSlider.Resources["SliderTrackValueFillPointerOver"] =

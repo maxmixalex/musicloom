@@ -67,8 +67,8 @@ public sealed partial class MainWindow
 
         try
         {
-            // Cover the existing window's client area, including our
-            // custom TitleBar. Do not resize the window or alter AppWindow.
+            // Keep AppTitleBar visible and theme-aware. Only replace the
+            // navigation client area, without modifying OS window bounds.
             _immersiveActive = true;
             ImmersiveHost.Visibility = Visibility.Visible;
             ImmersiveView.SetMode(_lyricsDisplayMode);

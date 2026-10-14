@@ -1996,7 +1996,7 @@
       </Border>
     </Grid>
     </NavigationView>
-    <Grid x:Name="ImmersiveHost" Grid.RowSpan="2"
+    <Grid x:Name="ImmersiveHost" Grid.Row="1"
           Visibility="Collapsed">
       <local:ImmersivePlayer x:Name="ImmersiveView"
                              HorizontalAlignment="Stretch"

@@ -20,14 +20,8 @@
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
-    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10"
-                HorizontalAlignment="Left" VerticalAlignment="Top"
-                IsHitTestVisible="False">
-      <Border x:Name="BrandAccent" Width="4" Height="19" CornerRadius="2"
-              Background="#82B0D6" />
-      <TextBlock Text="MusicLoom" FontSize="16" FontWeight="SemiBold"
-                 Foreground="White" />
-    </StackPanel>
+    <!-- The window's real, theme-aware MusicLoom title bar remains visible
+         above this content. Never duplicate it inside the player. -->
 
     <Grid Grid.Row="0" MaxWidth="1160" HorizontalAlignment="Center"
           VerticalAlignment="Center" ColumnSpacing="38">
