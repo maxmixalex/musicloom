@@ -13,6 +13,7 @@ public sealed partial class MainWindow
 {
     private bool _immersiveActive;
     private int _immersiveLoadVersion;
+    private int _immersiveArtworkVersion;
     private AppWindowPresenterKind _previousPresenterKind =
         AppWindowPresenterKind.Overlapped;
 
@@ -78,6 +79,7 @@ public sealed partial class MainWindow
             {
                 ImmersiveView.SetTrack(
                     L("Nothing playing", "尚未播放"), string.Empty, null, []);
+                await ImmersiveView.ApplyArtworkColorsAsync(null);
             }
         }
         catch (Exception error)
@@ -97,6 +99,7 @@ public sealed partial class MainWindow
         }
 
         ++_immersiveLoadVersion;
+        ++_immersiveArtworkVersion;
         _immersiveActive = false;
         ImmersiveHost.Visibility = Visibility.Collapsed;
         _activePlaybackLyric?.IsActive = false;
@@ -129,6 +132,14 @@ public sealed partial class MainWindow
         ImmersiveView.SetTrack(title, subtitle, item.Artwork, []);
         ImmersiveView.SetMode(_lyricsDisplayMode);
 
+        // Palette retrieval must not depend on the lyric database responding,
+        // nor be invalidated by changing the lyric display mode mid-load.
+        if (updatePalette)
+        {
+            int artworkVersion = ++_immersiveArtworkVersion;
+            _ = RefreshImmersiveArtworkAsync(item, artworkVersion);
+        }
+
         try
         {
             LibraryLyricsRecord? record =
@@ -147,11 +158,19 @@ public sealed partial class MainWindow
             _lastAutoScrolledLyric = null;
             UpdatePlaybackLyrics();
 
-            if (!updatePalette)
-            {
-                return;
-            }
+        }
+        catch (Exception error)
+        {
+            AppDiagnostics.LogException(
+                "Could not refresh immersive lyrics.", error);
+        }
+    }
 
+    private async Task RefreshImmersiveArtworkAsync(
+        LibraryDisplayItem item, int artworkVersion)
+    {
+        try
+        {
             byte[]? imageBytes =
                 ReferenceEquals(item, _selectedLibraryItem)
                     ? _currentArtworkBytes
@@ -161,15 +180,18 @@ public sealed partial class MainWindow
                 imageBytes = await Task.Run(
                     () => LoadTrackDetail(settings, item.Entry).Artwork);
             }
-            if (_immersiveActive && version == _immersiveLoadVersion)
+
+            if (!_immersiveActive ||
+                artworkVersion != _immersiveArtworkVersion)
             {
-                await ImmersiveView.ApplyArtworkColorsAsync(imageBytes);
+                return;
             }
+            await ImmersiveView.ApplyArtworkColorsAsync(imageBytes);
         }
         catch (Exception error)
         {
             AppDiagnostics.LogException(
-                "Could not refresh immersive lyrics or artwork.", error);
+                "Could not refresh immersive artwork.", error);
         }
     }
 }
