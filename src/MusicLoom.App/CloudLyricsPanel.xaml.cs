@@ -61,13 +61,15 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     public void Localize(Func<string, string, string> translate)
     {
         _translate = translate;
-        ArtistBox.PlaceholderText = L("Artist", "艺术家");
-        TitleBox.PlaceholderText = L("Title", "歌曲名");
-        SearchButton.Content = L("Search", "搜索");
+        SearchLayout.Localize(L);
+        ArtistBox.Header = L("Artist", "艺术家");
+        TitleBox.Header = L("Title", "歌曲名");
+        AlbumBox.Header = L("Album", "专辑");
+        SearchButton.Content = L("Search by metadata", "按元数据搜索");
         AudioRecognizeButton.Content = L(
             "Recognize from audio",
             "通过音频识别");
-        UseLyricsButton.Content = L("Use selected lyrics", "采用所选歌词");
+        UseLyricsButton.Content = L("Use selected", "使用所选");
         if (CandidatesList.ItemsSource is null)
         {
             ProviderStatus.Text = L(
@@ -76,7 +78,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         }
     }
 
-    public void SetTrack(string? path, string artist = "", string title = "")
+    public void SetTrack(string? path, string artist = "", string title = "", string album = "")
     {
         if (string.Equals(path, _sourcePath,
                 StringComparison.OrdinalIgnoreCase))
@@ -88,6 +90,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         CancelRequest();
         ArtistBox.Text = artist;
         TitleBox.Text = title;
+        AlbumBox.Text = album;
         CandidatesList.ItemsSource = null;
         _previewCandidate = null;
         _previewDocument = null;
