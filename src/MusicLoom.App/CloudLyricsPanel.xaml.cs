@@ -159,8 +159,11 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             "选择结果后可预览歌词。"));
         ProviderStatus.Text = path is null
             ? L("Select a track.", "请选择一首歌曲。")
-            : L("Use audio recognition or search by artist and title.",
-                "可通过音频识别，或按艺术家与歌名搜索。");
+            : Source == CloudLyricsSource.KugouMusic
+                ? L("Use audio recognition or search by artist and title.",
+                    "可通过音频识别，或按艺术家与歌名搜索。")
+                : L("Search by artist and title. QQ audio recognition is not available.",
+                    "按艺术家和歌名搜索；QQ 音乐音频识别暂不可用。");
         UseLyricsButton.IsEnabled = false;
         AudioRecognizeButton.IsEnabled = path is not null
             && Source == CloudLyricsSource.KugouMusic;
