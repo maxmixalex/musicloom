@@ -4322,7 +4322,7 @@ public sealed partial class MainWindow : Window
                 5,
                 GridUnitType.Star);
         LibrarySplitterColumn.Width =
-            new GridLength(8);
+            new GridLength(12);
         LibraryDetailColumn.Width =
             new GridLength(
                 7,
@@ -10701,7 +10701,9 @@ public sealed partial class MainWindow : Window
          ToolTipService.SetToolTip(ClearLyricsButton,
             L("Clear all lyrics", "清空全部歌词"));
         ToolTipService.SetToolTip(AdjustLyricsButton,
-            L("Adjust lyric timing", "调整歌词时间"));
+            L("Set lyric offset", "设置歌词偏移量"));
+        ToolTipService.SetToolTip(LibrarySplitter,
+            L("Drag to resize panels", "拖动以调整面板宽度"));
         ToolTipService.SetToolTip(EditLyricsButton,
             L("Edit lyrics", "编辑歌词"));
         LyricsEditorSettingTitle.Text = L("Lyrics editor", "歌词编辑器");

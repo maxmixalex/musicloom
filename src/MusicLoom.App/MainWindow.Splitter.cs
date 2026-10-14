@@ -67,6 +67,13 @@ public sealed partial class MainWindow
             _splitStartLeft + _splitDelta, leftMinimum, maximum);
         double right = Math.Max(rightMinimum, _splitTotal - left);
 
+        // Skip redundant layouts for subpixel pointer changes.
+        if (Math.Abs(LibraryListColumn.Width.Value - left) < 0.5
+            && Math.Abs(LibraryDetailColumn.Width.Value - right) < 0.5)
+        {
+            return;
+        }
+
         LibraryListColumn.Width = new GridLength(left);
         LibraryDetailColumn.Width = new GridLength(right);
     }
