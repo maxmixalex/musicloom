@@ -12,6 +12,7 @@ public sealed partial class MainWindow
 {
     private bool _immersiveActive;
     private int _immersiveLoadVersion;
+    private int _immersiveArtworkVersion;
      private void InitializeImmersivePlayer()
     {
         ImmersiveView.CloseRequested += (_, _) => CloseImmersivePlayer();
@@ -105,6 +106,7 @@ public sealed partial class MainWindow
         }
 
         ++_immersiveLoadVersion;
+        ++_immersiveArtworkVersion;
         _immersiveActive = false;
         ImmersiveHost.Visibility = Visibility.Collapsed;
         _activePlaybackLyric?.IsActive = false;
@@ -127,9 +129,11 @@ public sealed partial class MainWindow
         ImmersiveView.SetMode(_lyricsDisplayMode);
         if (updatePalette)
         {
-            // Clear the previous song's gradient immediately while artwork
-            // is fetched; late decodes cannot overwrite newer songs.
+            int artworkVersion = ++_immersiveArtworkVersion;
+            // The palette cannot be coupled to a SQLite lyric query:
+            // no lyrics or switching language must never freeze cover color.
             _ = ImmersiveView.ApplyArtworkColorsAsync(null);
+            _ = RefreshImmersiveArtworkAsync(item, artworkVersion);
         }
 
         try
@@ -150,11 +154,19 @@ public sealed partial class MainWindow
             _lastAutoScrolledLyric = null;
             UpdatePlaybackLyrics();
 
-            if (!updatePalette)
-            {
-                return;
-            }
+        }
+        catch (Exception error)
+        {
+            AppDiagnostics.LogException(
+                "Could not refresh immersive lyrics.", error);
+        }
+    }
 
+    private async Task RefreshImmersiveArtworkAsync(
+        LibraryDisplayItem item, int artworkVersion)
+    {
+        try
+        {
             byte[]? imageBytes = await Task.Run(() =>
             {
                 if (_settings is not MusicLoomSettings settings)
@@ -162,15 +174,17 @@ public sealed partial class MainWindow
                 return TryReadEmbeddedArtwork(item.Entry)
                     ?? TryReadExternalArtwork(settings, item.Entry);
             });
-            if (_immersiveActive && version == _immersiveLoadVersion)
+
+            if (!_immersiveActive || artworkVersion != _immersiveArtworkVersion)
             {
-                await ImmersiveView.ApplyArtworkColorsAsync(imageBytes);
+                return;
             }
+            await ImmersiveView.ApplyArtworkColorsAsync(imageBytes);
         }
         catch (Exception error)
         {
             AppDiagnostics.LogException(
-                "Could not refresh immersive lyrics or artwork.", error);
+                "Could not refresh immersive artwork.", error);
         }
     }
 }
