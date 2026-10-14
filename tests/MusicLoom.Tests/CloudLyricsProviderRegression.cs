@@ -33,6 +33,20 @@ internal static class CloudLyricsProviderRegression
             throw new InvalidOperationException("KuGou parser lost search fields.");
         }
 
+        var ranking = CloudLyricsCandidateRanker.Rank(
+            new[]
+            {
+                new CloudLyricsCandidate(CloudLyricsSource.KugouMusic,
+                    "a", "Other", "Singer", "Another", 180_000),
+                new CloudLyricsCandidate(CloudLyricsSource.KugouMusic,
+                    "b", "Song", "Singer", "Release", 180_000),
+            }, "Song", "Singer", "Release");
+        if (ranking[0].Id != "b")
+        {
+            throw new InvalidOperationException(
+                "Cloud lyric searches did not prioritize title, artist and album.");
+        }
+
         const string candidates =
             """{"candidates":[{"id":"129","accesskey":"secret"}]}""";
         if (CloudLyricsClient.ParseKugouLyricsCandidate(candidates)

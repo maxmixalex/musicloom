@@ -127,9 +127,12 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             return;
         }
 
+        string title = TitleBox.Text.Trim();
+        string artist = ArtistBox.Text.Trim();
+        string album = AlbumBox.Text.Trim();
         string query = string.Join(" ", new[]
         {
-            ArtistBox.Text.Trim(), TitleBox.Text.Trim(),
+            artist, title,
         }.Where(static part => part.Length != 0));
         if (query.Length == 0)
         {
@@ -152,12 +155,21 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             IReadOnlyList<CloudLyricsCandidate> results =
                 await _client.SearchAsync(Source, query, cancellation);
             cancellation.ThrowIfCancellationRequested();
-            CandidatesList.ItemsSource = results;
-            ProviderStatus.Text = results.Count == 0
+            // A provider may reject compound artist/title searches; fall
+            // back to title alone, then rank by the metadata in this dialog.
+            if (results.Count == 0 && title.Length > 0 && artist.Length > 0)
+            {
+                results = await _client.SearchAsync(Source, title, cancellation);
+                cancellation.ThrowIfCancellationRequested();
+            }
+            IReadOnlyList<CloudLyricsCandidate> ranked =
+                CloudLyricsCandidateRanker.Rank(results, title, artist, album);
+            CandidatesList.ItemsSource = ranked;
+            ProviderStatus.Text = ranked.Count == 0
                 ? L("No matching songs found.", "未找到匹配歌曲。")
                 : L(
-                    $"{results.Count} result(s). Select a song to preview lyrics.",
-                    $"共 {results.Count} 条结果，选择歌曲后预览歌词。");
+                    $"{ranked.Count} result(s). Select a song to preview lyrics.",
+                    $"共 {ranked.Count} 条结果，选择歌曲后预览歌词。");
         }
         catch (OperationCanceledException)
         {

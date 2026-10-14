@@ -62,6 +62,7 @@ public sealed partial class CloudLyricsPanel
                     .First();
             ArtistBox.Text = best.Artist;
             TitleBox.Text = best.Title;
+            AlbumBox.Text = string.Empty;
             searchRecognized = true;
             ProviderStatus.Text = L(
                 "Audio recognized; searching for the corresponding lyrics…",
