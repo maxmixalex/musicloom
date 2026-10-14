@@ -144,7 +144,8 @@ public sealed partial class CloudLyricsClient
         [
             "album_img", "albumImg", "album_image", "album_pic",
             "imgurl", "imgUrl", "image", "Image", "img",
-            "sizable_cover", "sizableCover", "cover_url", "coverUrl", "cover"
+            "sizable_cover", "sizableCover", "union_cover", "unionCover",
+            "cover_url", "coverUrl", "cover"
         ];
 
         string? url = NormalizeArtworkUrl(FirstPresent(song, fields));

@@ -85,6 +85,24 @@ internal static class CloudLyricsProviderRegression
                 "KuGou artwork URL normalization or album ID fallback failed.");
         }
 
+        const string kugouUnionCover = """
+        {"data":{"lists":[{
+          "FileHash":"ABCD1234ABCD1234ABCD1234ABCD1234",
+          "ID":13,"SongName":"Union Cover","SingerName":"A",
+          "AlbumName":"Real album","AlbumID":4242,
+          "trans_param":{"union_cover":
+            "http://imge.kugou.com/stdmusic/{size}/from-union.jpg"}
+        }]}}
+        """;
+        var unionCovers = CloudLyricsClient.ParseKugouSearch(kugouUnionCover);
+        if (unionCovers.Count != 1
+            || unionCovers[0].CoverUrl !=
+                "https://imge.kugou.com/stdmusic/300/from-union.jpg")
+        {
+            throw new InvalidOperationException(
+                "KuGou v2 trans_param.union_cover was not displayed.");
+        }
+
         const string albumPayload = """
         {"status":1,"data":{"albumname":"Release",
          "imgurl":"http://imge.kugou.com/stdmusic/{size}/dated.jpg"}}
