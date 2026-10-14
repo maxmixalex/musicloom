@@ -912,6 +912,12 @@ public sealed partial class MainWindow : Window
         object? sender,
         object e)
     {
+        // Dragging the list/detail boundary already forces a full grid
+        // measure. Skip periodic progress/lyric/waveform UI work until the
+        // pointer is released; the underlying MediaPlayer keeps playing.
+        if (_splitDragging)
+            return;
+
         UpdatePlayerProgress();
         UpdateReactiveWaveform();
         UpdatePlaybackLyrics();

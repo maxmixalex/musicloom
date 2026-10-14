@@ -26,6 +26,7 @@ public sealed partial class MainWindow
         _splitDelta = 0;
         _splitDragging = true;
         PlayingWaveform.SuspendDuringLibrarySplit = true;
+        StopKaraokeFrameRendering();
     }
 
     private void LibrarySplitter_DragDelta(
@@ -90,5 +91,12 @@ public sealed partial class MainWindow
             new GridLength(left, GridUnitType.Star);
         LibraryDetailColumn.Width =
             new GridLength(right, GridUnitType.Star);
+
+        // Resume all UI data from the current player position exactly once;
+        // no 50ms timer or karaoke frame work ran during the drag.
+        UpdatePlayerProgress();
+        UpdateReactiveWaveform();
+        UpdatePlaybackLyrics();
+        RefreshKaraokeFrameRendering();
     }
 }

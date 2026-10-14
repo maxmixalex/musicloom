@@ -22,7 +22,8 @@ public sealed partial class MainWindow
             && _mediaPlayer.Source is not null
             && _mediaPlayer.PlaybackSession.PlaybackState
                 == MediaPlaybackState.Playing
-            && !_suppressPlaybackLyricFollow;
+            && !_suppressPlaybackLyricFollow
+            && !_splitDragging;
 
         if (needsFrames == _karaokeFrameRenderingSubscribed)
         {
@@ -43,7 +44,8 @@ public sealed partial class MainWindow
     private void KaraokeCompositionFrame(object? sender, object? args)
     {
         if (_activePlaybackLyric is { IsActive: true } line
-            && !_suppressPlaybackLyricFollow)
+            && !_suppressPlaybackLyricFollow
+            && !_splitDragging)
         {
             line.PlaybackPosition = _mediaPlayer.PlaybackSession.Position;
         }
