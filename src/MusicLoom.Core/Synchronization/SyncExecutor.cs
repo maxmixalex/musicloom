@@ -337,7 +337,9 @@ public sealed class SyncExecutor
 
                     if (canonical is
                         {
-                            Origin: LibraryLyricsOrigin.ManualEdited,
+                            Origin: LibraryLyricsOrigin.ManualEdited
+                                or LibraryLyricsOrigin.AutoQq
+                                or LibraryLyricsOrigin.AutoKugou,
                             HasLyrics: true,
                         } && canonical.Text is string editedText)
                     {
@@ -346,10 +348,14 @@ public sealed class SyncExecutor
                         int offset = _lyricsOffsetStore is null ? 0 :
                             await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
                                 entry.SourcePath, cancellationToken) ?? 0;
+                        LrcDocument shifted = LrcDocument.Shift(edited, offset);
+                        bool explicitlyEdited = canonical.Origin
+                            == LibraryLyricsOrigin.ManualEdited;
                         LyricsWriteResult output = await _lyricsWriter.WriteAsync(
                             entry.DestinationPath,
-                            LrcDocument.Shift(edited, offset),
-                            overrideExisting: true,
+                            shifted,
+                            overrideExisting: explicitlyEdited
+                                || settings.Organizer.Lyrics.OverrideExisting,
                             cancellationToken);
                         partial = partial with
                         {
@@ -358,7 +364,10 @@ public sealed class SyncExecutor
                                 : output.Status == LyricsWriteStatus.SkippedExisting
                                     ? LyricsState.Existing : LyricsState.Unsupported,
                             LyricsCheckedAt = DateTimeOffset.UtcNow,
-                            LyricsFingerprint = ComputeLyricsFingerprint(edited),
+                            LyricsFingerprint = output.Status
+                                == LyricsWriteStatus.Written
+                                    ? ComputeLyricsFingerprint(shifted)
+                                    : partial.LyricsFingerprint,
                         };
                         if (output.Status == LyricsWriteStatus.Written) writtenLyrics++;
                         else if (output.Status == LyricsWriteStatus.SkippedExisting) existingLyrics++;

@@ -269,7 +269,9 @@ public sealed partial class MainWindow
 
                     await cache.SaveLibraryAsync(new LibraryLyricsRecord(
                         item.Entry.SourcePath,
-                        LibraryLyricsOrigin.ManualEdited,
+                        source == CloudLyricsSource.QqMusic
+                            ? LibraryLyricsOrigin.AutoQq
+                            : LibraryLyricsOrigin.AutoKugou,
                         lyrics.ToString(),
                         null,
                         (source == CloudLyricsSource.QqMusic

@@ -198,6 +198,22 @@ internal sealed class LibraryLyricsIndexer
             origin = LibraryLyricsOrigin.Netease;
         }
 
+        if (lyrics is null
+            && current is
+            {
+                Origin: LibraryLyricsOrigin.AutoQq
+                    or LibraryLyricsOrigin.AutoKugou,
+                HasLyrics: true,
+            })
+        {
+            // Unlike ManualEdited, automated metadata choices are lower
+            // priority than source embedded/sidecar and NetEase caches.
+            // They remain canonical if none of those sources is available,
+            // and a scan can replace them when local lyrics appear.
+            origin = current.Origin;
+            lyrics = current.Text;
+        }
+
         if (current is not null
             && current.Origin == origin
             && string.Equals(
