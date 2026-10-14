@@ -4306,12 +4306,18 @@ public sealed partial class MainWindow : Window
 
     private void ShowDetailPane()
     {
+        // Switching tracks must not reset the user's chosen pane widths.
+        if (DetailPane.Visibility == Visibility.Visible)
+        {
+            return;
+        }
+
         LibraryListColumn.Width =
             new GridLength(
                 5,
                 GridUnitType.Star);
         LibrarySplitterColumn.Width =
-            new GridLength(6);
+            new GridLength(10);
         LibraryDetailColumn.Width =
             new GridLength(
                 7,
@@ -10906,8 +10912,7 @@ public sealed partial class MainWindow : Window
             L("Adjust lyric timing", "调整歌词时间"));
         ToolTipService.SetToolTip(EditLyricsButton,
             L("Edit lyrics", "编辑歌词"));
-        AdvanceLyricsItem.Text = L("Move earlier…", "前移……");
-        DelayLyricsItem.Text = L("Move later…", "后移……");
+        AdjustLyricsButtonText.Text = L("Adjust", "调整");
         LyricsEditorSettingTitle.Text = L("Lyrics editor", "歌词编辑器");
         LyricsEditorSettingDescription.Text = L(
             "Use default editor or choose an application.",

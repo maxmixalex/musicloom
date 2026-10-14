@@ -4,8 +4,6 @@ using System.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using MusicLoom.Core.Lyrics;
-using MusicLoom.Core.Synchronization;
-using MusicLoom.Tagging;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 
@@ -27,8 +25,8 @@ public sealed partial class MainWindow
         confirm.Content = new TextBlock
         {
             Text = L(
-                "Remove the lyrics from MusicLoom and the generated phone copy. Source audio and source-side LRC files will not be modified.",
-                "删除 MusicLoom 中的歌词和同步目标中的歌词。源音频与源目录的 LRC 不会被修改。"),
+                "Clear MusicLoom's stored lyrics? Source files and synchronized output will not be modified until you run Sync.",
+                "仅清空 MusicLoom 歌词数据库。源文件和同步目标在执行同步前不会被修改。"),
             TextWrapping = TextWrapping.Wrap,
         };
         confirm.PrimaryButtonText = L("Clear", "清空");
@@ -53,23 +51,10 @@ public sealed partial class MainWindow
             _currentLyricsRaw = null;
             RenderLyrics();
 
-            if (_settings is not null
-                && item.Entry.DestinationPath is string path
-                && File.Exists(path)
-                && IsPathInside(path, _settings.Path.DestinationDirectory))
-            {
-                await new TagLibSharpLyricsWriter().RemoveAsync(path);
-                string sidecar = SidecarLrcLyricsWriter.GetSidecarPath(path);
-                if (File.Exists(sidecar))
-                {
-                    File.Delete(sidecar);
-                }
-            }
-
             ShowInfo(InfoBarSeverity.Success,
                 L("Lyrics cleared", "歌词已清空"),
-                L("Generated lyrics removed. The source library is unchanged.",
-                  "已删除同步目标歌词，源音乐库未修改。"));
+                L("Lyrics cleared in the database; destination changes await synchronization.",
+                   "已清空歌词数据库，同步目标将在下次同步时更新。"));
         }
         catch (Exception error)
         {
@@ -79,15 +64,8 @@ public sealed partial class MainWindow
         }
     }
 
-    private async void AdvanceLyricsItem_Click(
-        object sender, RoutedEventArgs e) =>
-        await AdjustLyricsAsync(moveEarlier: true);
-
-    private async void DelayLyricsItem_Click(
-        object sender, RoutedEventArgs e) =>
-        await AdjustLyricsAsync(moveEarlier: false);
-
-    private async Task AdjustLyricsAsync(bool moveEarlier)
+    private async void AdjustLyricsButton_Click(
+        object sender, RoutedEventArgs e)
     {
         if (_busy || _lyricsEditInProgress ||
             _selectedLibraryItem is not LibraryDisplayItem item)
@@ -101,12 +79,12 @@ public sealed partial class MainWindow
             int previous = await store.GetOffsetMillisecondsAsync(
                 item.Entry.SourcePath) ?? 0;
 
-            NumberBox amount = new()
+            NumberBox offset = new()
             {
-                Header = L("Offset (milliseconds)", "偏移量（毫秒）"),
-                Minimum = 0,
+                Header = L("Total offset (milliseconds)", "总偏移量（毫秒）"),
+                Minimum = -3_600_000,
                 Maximum = 3_600_000,
-                Value = 500,
+                Value = previous,
                 SmallChange = 50,
                 LargeChange = 1000,
                 SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
@@ -115,15 +93,14 @@ public sealed partial class MainWindow
             panel.Children.Add(new TextBlock
             {
                 Text = L(
-                    $"Current total offset: {previous:+#;-#;0} ms. Enter the amount to {(moveEarlier ? "move earlier" : "delay")}.",
-                    $"当前累计偏移：{previous:+#;-#;0} 毫秒。请输入本次{(moveEarlier ? "前移" : "后移")}的毫秒数。"),
+                    "Set the total lyric offset: negative means earlier, positive means later, and zero resets it.",
+                    "直接设置歌词总偏移量：负数提前，正数延后，输入 0 即重置。"),
                 TextWrapping = TextWrapping.Wrap,
             });
-            panel.Children.Add(amount);
+            panel.Children.Add(offset);
+
             ContentDialog dialog = CreateLyricsDialog(
-                moveEarlier
-                    ? L("Move lyrics earlier", "歌词前移")
-                    : L("Delay lyrics", "歌词后移"));
+                L("Set lyric offset", "设置歌词偏移量"));
             dialog.Content = panel;
             dialog.PrimaryButtonText = L("Apply", "应用");
             dialog.CloseButtonText = L("Cancel", "取消");
@@ -131,27 +108,31 @@ public sealed partial class MainWindow
             {
                 return;
             }
-            if (!double.IsFinite(amount.Value) || amount.Value < 0
-                || amount.Value > 3_600_000)
+            if (!double.IsFinite(offset.Value)
+                || offset.Value < -3_600_000 || offset.Value > 3_600_000)
             {
-                throw new InvalidDataException(
-                    "Invalid lyric offset value.");
+                throw new InvalidDataException("Invalid lyric offset value.");
             }
-            int shift = checked((int)Math.Round(amount.Value));
-            int total = checked(previous + (moveEarlier ? -shift : shift));
+
+            int total = checked((int)Math.Round(offset.Value));
+            if (total == previous)
+            {
+                return;
+            }
+
             await store.SetOffsetMillisecondsAsync(
                 item.Entry.SourcePath, total);
             await QueueLyricOutputSyncAsync(item);
             ShowInfo(InfoBarSeverity.Success,
-                L("Lyric timing adjusted", "歌词时间已调整"),
+                L("Lyric offset saved", "歌词偏移量已保存"),
                 L(
-                    $"Output offset is now {total:+#;-#;0} ms; apply it on the next synchronization.",
-                    $"输出偏移已设为 {total:+#;-#;0} 毫秒；下次同步时生效。"));
+                    $"Total output offset is {total:+#;-#;0} ms; synchronization will apply it.",
+                    $"输出总偏移量为 {total:+#;-#;0} 毫秒，将在同步时生效。"));
         }
         catch (Exception error)
         {
             HandleUiException(
-                L("Could not adjust lyric timing.", "无法调整歌词时间。"),
+                L("Could not set lyric offset.", "无法设置歌词偏移量。"),
                 error);
         }
     }
