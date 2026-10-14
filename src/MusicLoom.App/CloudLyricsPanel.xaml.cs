@@ -109,9 +109,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     public void Localize(Func<string, string, string> translate)
     {
         _translate = translate;
-        SearchHeading.Text = L("Search", "搜索信息");
-        CandidatesHeading.Text = L("Candidates", "候选项");
-        LyricsHeading.Text = L("Lyrics", "歌词");
+        SearchLayout.Localize(L);
         ArtistBox.Header = L("Artist", "艺术家");
         TitleBox.Header = L("Title", "歌曲名");
         AlbumBox.Header = L("Album", "专辑");

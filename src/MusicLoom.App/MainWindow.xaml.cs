@@ -6521,18 +6521,6 @@ public sealed partial class MainWindow : Window
             Spacing = 10,
         };
         searchPanel.Children.Add(
-            new TextBlock
-            {
-                Text =
-                    L("Search", "搜索信息"),
-                FontSize = 18,
-                FontWeight =
-                    new Windows.UI.Text.FontWeight
-                    {
-                        Weight = 600,
-                    },
-            });
-        searchPanel.Children.Add(
             artistBox);
         searchPanel.Children.Add(
             titleBox);
@@ -6545,223 +6533,22 @@ public sealed partial class MainWindow : Window
         searchPanel.Children.Add(
             status);
 
-        Grid candidatePanel = new();
-        candidatePanel.RowDefinitions.Add(
-            new RowDefinition
-            {
-                Height =
-                    GridLength.Auto,
-            });
-        candidatePanel.RowDefinitions.Add(
-            new RowDefinition
-            {
-                Height =
-                    new GridLength(
-                        1,
-                        GridUnitType.Star),
-            });
-
-        TextBlock candidatesHeading = new()
-        {
-            Text =
-                L(
-                    "Candidates",
-                    "候选项"),
-            FontSize = 18,
-            FontWeight =
-                new Windows.UI.Text.FontWeight
-                {
-                    Weight = 600,
-                },
-            Margin =
-                new Thickness(
-                    0,
-                    0,
-                    0,
-                    8),
-        };
-        candidatePanel.Children.Add(
-            candidatesHeading);
-        Grid.SetRow(
-            results,
-            1);
-        candidatePanel.Children.Add(
-            results);
-
-        Grid lyricsPanel = new();
-        lyricsPanel.RowDefinitions.Add(
-            new RowDefinition
-            {
-                Height =
-                    GridLength.Auto,
-            });
-        lyricsPanel.RowDefinitions.Add(
-            new RowDefinition
-            {
-                Height =
-                    new GridLength(
-                        1,
-                        GridUnitType.Star),
-            });
-
-        TextBlock lyricsHeading = new()
-        {
-            Text =
-                L(
-                    "Lyrics",
-                    "歌词"),
-            FontSize = 18,
-            FontWeight =
-                new Windows.UI.Text.FontWeight
-                {
-                    Weight = 600,
-                },
-            Margin =
-                new Thickness(
-                    0,
-                    0,
-                    0,
-                    8),
-        };
-        lyricsPanel.Children.Add(
-            lyricsHeading);
-        Grid.SetRow(
-            lyricsPreview,
-            1);
-        lyricsPanel.Children.Add(
-            lyricsPreview);
-
-        Border WrapColumn(
-            UIElement child) =>
-            new()
-            {
-                Padding =
-                    new Thickness(12),
-                CornerRadius =
-                    new CornerRadius(8),
-                BorderThickness =
-                    new Thickness(1),
-                BorderBrush =
-                    Application.Current
-                        .Resources[
-                            "CardStrokeColorDefaultBrush"]
-                        as Microsoft.UI.Xaml.Media.Brush,
-                Background =
-                    Application.Current
-                        .Resources[
-                            "CardBackgroundFillColorDefaultBrush"]
-                        as Microsoft.UI.Xaml.Media.Brush,
-                Child = child,
-            };
-
-        Grid root = new()
-        {
-            Width = 1140,
-            Height = 500,
-            ColumnSpacing = 12,
-            HorizontalAlignment =
-                HorizontalAlignment.Center,
-            VerticalAlignment =
-                VerticalAlignment.Center,
-        };
-        root.ColumnDefinitions.Add(
-            new ColumnDefinition
-            {
-                Width =
-                    new GridLength(270),
-            });
-        root.ColumnDefinitions.Add(
-            new ColumnDefinition
-            {
-                Width =
-                    new GridLength(500),
-            });
-        root.ColumnDefinitions.Add(
-            new ColumnDefinition
-            {
-                Width =
-                    new GridLength(
-                        1,
-                        GridUnitType.Star),
-            });
-
-        Border searchColumn =
-            WrapColumn(searchPanel);
-        Border candidateColumn =
-            WrapColumn(candidatePanel);
-        Border lyricColumn =
-            WrapColumn(lyricsPanel);
-
-        root.Children.Add(
-            searchColumn);
-        Grid.SetColumn(
-            candidateColumn,
-            1);
-        root.Children.Add(
-            candidateColumn);
-        Grid.SetColumn(
-            lyricColumn,
-            2);
-        root.Children.Add(
-            lyricColumn);
-
+        // Shared search/results/preview XAML for all three providers.
         CloseMatchOverlay();
-
         Button useSelectedButton = new()
         {
-            Content =
-                L(
-                    "Use selected",
-                    "使用所选"),
+            Content = L("Use selected", "使用所选"),
             IsEnabled = false,
-            Style =
-                Application.Current.Resources[
-                    "AccentButtonStyle"]
-                as Style,
+            Style = Application.Current.Resources["AccentButtonStyle"] as Style,
         };
-
-        StackPanel footer = new()
+        LyricsSearchDialogView shell = new()
         {
-            Orientation =
-                Orientation.Horizontal,
-            HorizontalAlignment =
-                HorizontalAlignment.Right,
-            Spacing = 8,
-            Margin =
-                new Thickness(
-                    0,
-                    12,
-                    0,
-                    0),
+            SearchContent = searchPanel,
+            CandidatesContent = results,
+            LyricsContent = lyricsPreview,
+            FooterContent = useSelectedButton,
         };
-        footer.Children.Add(
-            useSelectedButton);
-
-        Grid shell = new()
-        {
-            Padding =
-                new Thickness(0),
-        };
-        shell.RowDefinitions.Add(
-            new RowDefinition
-            {
-                Height =
-                    new GridLength(
-                        1,
-                        GridUnitType.Star),
-            });
-        shell.RowDefinitions.Add(
-            new RowDefinition
-            {
-                Height =
-                    GridLength.Auto,
-            });
-        shell.Children.Add(root);
-        Grid.SetRow(
-            footer,
-            1);
-        shell.Children.Add(
-            footer);
+        shell.Localize(L);
 
         TaskCompletionSource<NeteaseMatchCandidate?>
             completion =
