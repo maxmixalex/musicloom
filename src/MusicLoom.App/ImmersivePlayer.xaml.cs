@@ -110,7 +110,8 @@ public sealed partial class ImmersivePlayer : UserControl
         int request = ++_artworkRequest;
         if (artwork is null || artwork.Length == 0)
         {
-            SetPalette(Color.FromArgb(255, 51, 103, 138));
+            SetPalette(Color.FromArgb(255, 64, 108, 148),
+                       Color.FromArgb(255, 50, 82, 111));
             return;
         }
 
@@ -127,52 +128,139 @@ public sealed partial class ImmersivePlayer : UserControl
             PixelDataProvider pixels = await decoder.GetPixelDataAsync(
                 BitmapPixelFormat.Bgra8,
                 BitmapAlphaMode.Straight,
-                new BitmapTransform
-                {
-                    ScaledWidth = 24,
-                    ScaledHeight = 24,
-                },
+                new BitmapTransform { ScaledWidth = 32, ScaledHeight = 32 },
                 ExifOrientationMode.IgnoreExifOrientation,
                 ColorManagementMode.DoNotColorManage);
-            byte[] data = pixels.DetachPixelData();
-
-            double red = 0, green = 0, blue = 0, total = 0;
-            for (int i = 0; i + 3 < data.Length; i += 4)
+            (Color primary, Color secondary) = ExtractPalette(pixels.DetachPixelData());
+            if (request == _artworkRequest)
             {
-                double r = data[i + 2] / 255.0;
-                double g = data[i + 1] / 255.0;
-                double b = data[i] / 255.0;
-                double max = Math.Max(r, Math.Max(g, b));
-                double min = Math.Min(r, Math.Min(g, b));
-                double chroma = max - min;
-                double weight = data[i + 3] / 255.0
-                    * (0.2 + chroma * 2)
-                    * (max > 0.15 ? 1 : 0.25);
-                red += r * weight;
-                green += g * weight;
-                blue += b * weight;
-                total += weight;
-            }
-
-            if (request != _artworkRequest)
-            {
-                return;
-            }
-
-            if (total > 0.01)
-            {
-                SetPalette(Color.FromArgb(
-                    255,
-                    (byte)Math.Clamp((int)Math.Round(red / total * 255), 0, 255),
-                    (byte)Math.Clamp((int)Math.Round(green / total * 255), 0, 255),
-                    (byte)Math.Clamp((int)Math.Round(blue / total * 255), 0, 255)));
+                SetPalette(primary, secondary);
             }
         }
-        catch (Exception)
+        catch (Exception error)
         {
-            // Album decoding is optional decoration; never stop playback.
-            SetPalette(Color.FromArgb(255, 51, 103, 138));
+            AppDiagnostics.LogException("Could not decode immersive artwork palette.", error);
+            if (request == _artworkRequest)
+            {
+                SetPalette(Color.FromArgb(255, 64, 108, 148),
+                           Color.FromArgb(255, 50, 82, 111));
+            }
         }
+    }
+
+    // Chroma-weighted dominant hue clusters distinguish e.g. red, blue,
+    // green and purple covers without letting a small white text area or
+    // neutral photographic background wash every album into the same grey.
+    private static (Color Primary, Color Secondary) ExtractPalette(byte[] bgra)
+    {
+        const int Buckets = 24;
+        double[] weights = new double[Buckets];
+        double[] reds = new double[Buckets];
+        double[] greens = new double[Buckets];
+        double[] blues = new double[Buckets];
+        double neutralR = 0, neutralG = 0, neutralB = 0, neutralWeight = 0;
+
+        for (int i = 0; i + 3 < bgra.Length; i += 4)
+        {
+            double alpha = bgra[i + 3] / 255.0;
+            if (alpha < 0.15) continue;
+
+            double red = bgra[i + 2] / 255.0;
+            double green = bgra[i + 1] / 255.0;
+            double blue = bgra[i] / 255.0;
+            double max = Math.Max(red, Math.Max(green, blue));
+            double min = Math.Min(red, Math.Min(green, blue));
+            double chroma = max - min;
+            neutralR += red * alpha;
+            neutralG += green * alpha;
+            neutralB += blue * alpha;
+            neutralWeight += alpha;
+
+            if (chroma < 0.10 || max < 0.12 || min > 0.95)
+                continue;
+
+            double hue = max == red
+                ? (green - blue) / chroma
+                : max == green
+                    ? 2 + (blue - red) / chroma
+                    : 4 + (red - green) / chroma;
+            hue = ((hue % 6) + 6) % 6;
+            int bucket = Math.Min(Buckets - 1, (int)(hue / 6 * Buckets));
+            double weight = alpha * Math.Pow(chroma, 1.35)
+                * (0.40 + Math.Sqrt(max));
+            weights[bucket] += weight;
+            reds[bucket] += red * weight;
+            greens[bucket] += green * weight;
+            blues[bucket] += blue * weight;
+        }
+
+        static byte Byte(double value) =>
+            (byte)Math.Clamp((int)Math.Round(value * 255), 0, 255);
+        static Color ColorOf(double r, double g, double b) =>
+            Color.FromArgb(255, Byte(r), Byte(g), Byte(b));
+
+        int main = -1;
+        for (int j = 0; j < Buckets; j++)
+            if (main == -1 || weights[j] > weights[main]) main = j;
+        if (main < 0 || weights[main] < 0.01)
+        {
+            double n = Math.Max(neutralWeight, 1);
+            Color neutral = ColorOf(
+                neutralR / n, neutralG / n, neutralB / n);
+            return (neutral, neutral);
+        }
+
+        Color primary = ColorOf(reds[main] / weights[main],
+            greens[main] / weights[main],
+            blues[main] / weights[main]);
+        int secondaryBin = -1;
+        for (int j = 0; j < Buckets; j++)
+        {
+            int dist = Math.Min(
+                (j - main + Buckets) % Buckets,
+                (main - j + Buckets) % Buckets);
+            if (dist < 3 || weights[j] < weights[main] * 0.12) continue;
+            if (secondaryBin == -1 || weights[j] > weights[secondaryBin])
+                secondaryBin = j;
+        }
+        Color secondary = secondaryBin < 0
+            ? primary
+            : ColorOf(reds[secondaryBin] / weights[secondaryBin],
+                greens[secondaryBin] / weights[secondaryBin],
+                blues[secondaryBin] / weights[secondaryBin]);
+        return (primary, secondary);
+    }
+
+    private void SetPalette(Color primary, Color secondary)
+    {
+        static Color Blend(Color first, Color second, double weight)
+        {
+            byte Part(byte a, byte b) =>
+                (byte)Math.Clamp((int)Math.Round(a * (1 - weight) + b * weight), 0, 255);
+            return Color.FromArgb(255,
+                Part(first.R, second.R),
+                Part(first.G, second.G),
+                Part(first.B, second.B));
+        }
+
+        Color ink = Color.FromArgb(255, 10, 14, 23);
+        Color white = Color.FromArgb(255, 255, 255, 255);
+        ArtworkGradient.GradientStops[0].Color = Blend(ink, primary, 0.47);
+        ArtworkGradient.GradientStops[1].Color = Blend(ink, secondary, 0.36);
+        ArtworkGradient.GradientStops[2].Color = Blend(ink, primary, 0.14);
+        Color accent = Blend(primary, white, 0.30);
+        BrandAccent.Background = new SolidColorBrush(accent);
+        ProgressSlider.Foreground = new SolidColorBrush(accent);
+        ProgressSlider.Resources["SliderTrackValueFill"] = new SolidColorBrush(accent);
+        ProgressSlider.Resources["SliderTrackValueFillPointerOver"] =
+            new SolidColorBrush(Blend(primary, white, 0.45));
+        ProgressSlider.Resources["SliderThumbBackground"] = new SolidColorBrush(accent);
+        // The lyric fade must match the new background rather than retain
+        // its previous album's background color.
+        Color fadeBase = ArtworkGradient.GradientStops[2].Color;
+        LyricsFadeGradient.GradientStops[0].Color =
+            Color.FromArgb(0, fadeBase.R, fadeBase.G, fadeBase.B);
+        LyricsFadeGradient.GradientStops[1].Color = fadeBase;
     }
 
     private void LeftPanel_SizeChanged(
@@ -198,23 +286,6 @@ public sealed partial class ImmersivePlayer : UserControl
             args.Handled = true;
             LyricSeekRequested?.Invoke(position.TotalSeconds);
         }
-    }
-
-    private void SetPalette(Color color)
-    {
-        Color Shade(double factor, double lift = 0) =>
-            Color.FromArgb(255,
-                (byte)Math.Clamp((int)(color.R * factor + lift), 0, 255),
-                (byte)Math.Clamp((int)(color.G * factor + lift), 0, 255),
-                (byte)Math.Clamp((int)(color.B * factor + lift), 0, 255));
-
-        ArtworkGradient.GradientStops[0].Color = Shade(0.68, 20);
-        ArtworkGradient.GradientStops[1].Color = Shade(0.48, 13);
-        ArtworkGradient.GradientStops[2].Color = Shade(0.27, 9);
-        Color fadeBase = Shade(0.34, 12);
-        LyricsFadeGradient.GradientStops[0].Color =
-            Color.FromArgb(0, fadeBase.R, fadeBase.G, fadeBase.B);
-        LyricsFadeGradient.GradientStops[1].Color = fadeBase;
     }
 
     private void ProgressSlider_ValueChanged(
