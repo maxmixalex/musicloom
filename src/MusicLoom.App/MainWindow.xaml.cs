@@ -5537,7 +5537,7 @@ public sealed partial class MainWindow : Window
     }
 
 
-    private static LyricDisplayLine[] BuildLyricLines(
+    internal static LyricDisplayLine[] BuildLyricLines(
         string? raw,
         string displayMode)
     {

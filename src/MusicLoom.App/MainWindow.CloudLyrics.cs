@@ -37,6 +37,8 @@ public sealed partial class MainWindow
     {
         QqCloudLyricsPanel = new CloudLyricsPanel();
         KugouCloudLyricsPanel = new CloudLyricsPanel();
+        QqCloudLyricsPanel.ConfigurePreviewFrom(LyricsList);
+        KugouCloudLyricsPanel.ConfigurePreviewFrom(LyricsList);
         QqCloudLyricsPanel.Source = CloudLyricsSource.QqMusic;
         KugouCloudLyricsPanel.Source = CloudLyricsSource.KugouMusic;
         KugouCloudLyricsPanel.CaptureAudioPcm16 =

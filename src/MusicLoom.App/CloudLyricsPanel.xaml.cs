@@ -58,6 +58,18 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         InitializeComponent();
     }
 
+    // Use MainWindow's actual lyric row template for QQ and KuGou.
+    internal void ConfigurePreviewFrom(ListView source)
+    {
+        LyricsPreviewList.ItemTemplate = source.ItemTemplate;
+        LyricsPreviewList.ItemContainerStyle = source.ItemContainerStyle;
+    }
+
+    private void SetPreviewMessage(string message) =>
+        LyricsPreviewList.ItemsSource =
+            new[] { new LyricDisplayLine(
+                message, null, LyricsDisplayModes.OriginalOnly) };
+
     public void Localize(Func<string, string, string> translate)
     {
         _translate = translate;
@@ -94,7 +106,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         CandidatesList.ItemsSource = null;
         _previewCandidate = null;
         _previewDocument = null;
-        LyricsPreview.Text = string.Empty;
+        LyricsPreviewList.ItemsSource = null;
         ProviderStatus.Text = path is null
             ? L("Select a track.", "请选择一首歌曲。")
             : L("Search by artist and title.", "按艺术家和歌名搜索。");
@@ -148,7 +160,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         _previewCandidate = null;
         _previewDocument = null;
         CandidatesList.ItemsSource = null;
-        LyricsPreview.Text = string.Empty;
+        LyricsPreviewList.ItemsSource = null;
         ProviderStatus.Text = L("Searching…", "正在搜索……");
         try
         {
@@ -199,12 +211,12 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         UseLyricsButton.IsEnabled = false;
         if (chosen is null)
         {
-            LyricsPreview.Text = string.Empty;
+            LyricsPreviewList.ItemsSource = null;
             return;
         }
 
         CancellationToken cancellation = NewRequest();
-        LyricsPreview.Text = L("Loading lyrics…", "正在加载歌词……");
+        SetPreviewMessage(L("Loading lyrics…", "正在加载歌词……"));
         try
         {
             LrcDocument? doc =
@@ -217,9 +229,9 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
 
             if (doc is not { Lines.Count: > 0 })
             {
-                LyricsPreview.Text = L(
+                SetPreviewMessage(L(
                     "No timed lyrics are available for this candidate.",
-                    "所选歌曲没有可用的带时间戳歌词。");
+                    "所选歌曲没有可用的带时间戳歌词。"));
                 return;
             }
 
@@ -227,7 +239,8 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             // Preview readable text, not QRC/KRC inline timing markup.
             // The canonical document still retains all word timestamps
             // when the user adopts the selected lyrics.
-            LyricsPreview.Text = FormatPreview(doc);
+            LyricsPreviewList.ItemsSource = MainWindow.BuildLyricLines(
+                doc.ToString(), LyricsDisplayModes.PreferOriginal);
             UseLyricsButton.IsEnabled = true;
         }
         catch (OperationCanceledException)
@@ -237,25 +250,10 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         {
             AppDiagnostics.LogException(
                 "Could not decode QQ/KuGou lyrics.", error);
-            LyricsPreview.Text = L(
+            SetPreviewMessage(L(
                 "Could not load lyrics from this provider.",
-                "无法从此歌词源获取歌词。");
+                "无法从此歌词源获取歌词。"));
         }
-    }
-
-    private static string FormatPreview(LrcDocument document)
-    {
-        return string.Join(Environment.NewLine,
-            LrcPresentation.Project(document).Select(line =>
-            {
-                string prefix = line.Timestamp is TimeSpan time
-                    ? FormattableString.Invariant(
-                        $"[{(int)time.TotalMinutes:00}:{time.Seconds:00}] ")
-                    : "";
-                return prefix + line.Original
-                    + (string.IsNullOrWhiteSpace(line.Translation)
-                        ? "" : Environment.NewLine + line.Translation);
-            }));
     }
 
     private void UseLyricsButton_Click(object sender, RoutedEventArgs e)

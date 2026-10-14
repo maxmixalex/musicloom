@@ -45,10 +45,9 @@
       </ListView>
     </local:LyricsSearchDialogView.CandidatesContent>
     <local:LyricsSearchDialogView.LyricsContent>
-      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-        <TextBlock x:Name="LyricsPreview" TextWrapping="Wrap"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-      </ScrollViewer>
+      <ListView x:Name="LyricsPreviewList" SelectionMode="None"
+                HorizontalContentAlignment="Stretch"
+                ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
     </local:LyricsSearchDialogView.LyricsContent>
     <local:LyricsSearchDialogView.FooterContent>
       <Button x:Name="UseLyricsButton" Content="Use selected"
