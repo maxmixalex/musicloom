@@ -28,6 +28,8 @@ internal static class SyncExecutorRegression
         await LegacyMergedLyricsCacheForcesRefreshAsync();
         await CanonicalEmbeddedLyricsNeverUseRemoteAsync();
         await CanonicalSidecarLyricsWriteWithoutRemoteAsync();
+        await ClearedLyricsModifyDestinationOnlyDuringSyncAsync();
+        await AutomaticProviderLyricsAreNotManualEditsAsync();
         await FetchSuccessSurvivesOutputFailureAsync();
         await NoLyricsPreservesExistingTargetAsync();
         MatchWarningHandlesChineseAndArtistSubsets();
@@ -546,6 +548,75 @@ internal static class SyncExecutorRegression
         Equal(0, recognizer.CallCount);
         Equal(0, provider.CallCount);
         Equal(1, writer.WriteCalls);
+    }
+
+    private static async Task ClearedLyricsModifyDestinationOnlyDuringSyncAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true, overrideExisting: true);
+        string sidecar = SidecarLrcLyricsWriter.GetSidecarPath(
+            fixture.DestinationPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(sidecar)!);
+        await File.WriteAllTextAsync(sidecar,
+            "[00:01.000]Old synchronized output");
+        byte[] before = await File.ReadAllBytesAsync(fixture.SourcePath);
+
+        InMemoryLibraryLyricsCache library = new();
+        await library.SaveLibraryAsync(new LibraryLyricsRecord(
+            fixture.SourcePath, LibraryLyricsOrigin.ManualEmpty,
+            null, null, "manual-empty", DateTimeOffset.UtcNow));
+
+        // Changing only canonical SQLite must never mutate the target.
+        True(File.Exists(sidecar));
+        Equal("[00:01.000]Old synchronized output",
+            await File.ReadAllTextAsync(sidecar));
+
+        FakeEmbeddedCleaner cleaner = new();
+        FakeLyricsProvider provider = new(LyricsLookupResult.NoLyrics());
+        FakeLyricsWriter writer = new(LyricsProbeStatus.Missing);
+        SyncExecutionSummary result = await new SyncExecutor(
+            new LocalLibraryMaterializer(),
+            new FakeRecognizer(TrackRecognitionResult.NoMatch()),
+            provider, writer,
+            libraryLyricsCache: library,
+            embeddedLyricsCleaner: cleaner).ExecuteAsync(
+            fixture.Settings, fixture.Plan, fixture.State, fixture.StateStore);
+
+        Equal(0, result.Errors.Count);
+        Equal(1, result.CompletedTracks);
+        Equal(1, cleaner.Calls);
+        Equal(0, writer.WriteCalls);
+        Equal(0, provider.CallCount);
+        True(!File.Exists(sidecar));
+        True(File.Exists(fixture.DestinationPath));
+        True(before.SequenceEqual(
+            await File.ReadAllBytesAsync(fixture.SourcePath)));
+    }
+
+    private static async Task AutomaticProviderLyricsAreNotManualEditsAsync()
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(
+            lyricsEnabled: true, overrideExisting: false);
+        InMemoryLibraryLyricsCache library = new();
+        await library.SaveLibraryAsync(new LibraryLyricsRecord(
+            fixture.SourcePath, LibraryLyricsOrigin.AutoKugou,
+            "[00:01.000]Automatic match", null, "auto-kugou:test",
+            DateTimeOffset.UtcNow));
+
+        FakeLyricsProvider provider = new(LyricsLookupResult.NoLyrics());
+        FakeLyricsWriter writer = new(LyricsProbeStatus.Missing);
+        SyncExecutionSummary result = await new SyncExecutor(
+            new LocalLibraryMaterializer(),
+            new FakeRecognizer(TrackRecognitionResult.NoMatch()),
+            provider, writer,
+            libraryLyricsCache: library).ExecuteAsync(
+                fixture.Settings, fixture.Plan, fixture.State, fixture.StateStore);
+
+        Equal(1, result.WrittenLyrics);
+        Equal(1, writer.WriteCalls);
+        Equal(false, writer.LastOverrideExisting);
+        Equal("[00:01.000]Automatic match", writer.LastLyrics?.ToString());
+        Equal(0, provider.CallCount);
     }
 
     private static async Task FetchSuccessSurvivesOutputFailureAsync()
@@ -1354,6 +1425,8 @@ internal static class SyncExecutorRegression
 
         public int ProbeCalls { get; private set; }
         public int WriteCalls { get; private set; }
+        public bool LastOverrideExisting { get; private set; }
+        public LrcDocument? LastLyrics { get; private set; }
 
         public ValueTask<LyricsProbeResult> ProbeAsync(
             string path,
@@ -1373,6 +1446,8 @@ internal static class SyncExecutorRegression
         {
             cancellationToken.ThrowIfCancellationRequested();
             WriteCalls++;
+            LastOverrideExisting = overrideExisting;
+            LastLyrics = lyrics;
             return ValueTask.FromResult(
                 new LyricsWriteResult(_writeStatus));
         }
@@ -1392,6 +1467,23 @@ internal static class SyncExecutorRegression
             bool overrideExisting,
             CancellationToken cancellationToken = default) =>
             throw new IOException("Simulated output write failure.");
+    }
+
+    private sealed class FakeEmbeddedCleaner : IEmbeddedLyricsCleaner
+    {
+        public int Calls { get; private set; }
+
+        public ValueTask<bool> RemoveAsync(
+            string destinationPath,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!File.Exists(destinationPath))
+                throw new InvalidOperationException(
+                    "Cleaner received a nonexistent destination.");
+            Calls++;
+            return ValueTask.FromResult(true);
+        }
     }
 
     private sealed class InMemoryLibraryLyricsCache : ILibraryLyricsCache
