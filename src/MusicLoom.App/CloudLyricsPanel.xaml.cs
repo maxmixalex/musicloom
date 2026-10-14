@@ -65,7 +65,7 @@ internal sealed class CloudCandidateRow
 /// <summary>
 /// Shared NetEase-style three-column lyric matching dialog for QQ and KuGou.
 /// The document is adopted into canonical SQLite only after explicit selection.
-/// Recognition uploads PCM only after an additional privacy confirmation.
+/// Recognition uploads PCM only after the user explicitly chooses audio recognition.
 /// </summary>
 public sealed partial class CloudLyricsPanel : UserControl, IDisposable
 {
@@ -117,7 +117,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         AlbumBox.Header = L("Album", "专辑");
         SearchButton.Content = L("Search by metadata", "按元数据搜索");
         AudioRecognizeButton.Content = L(
-            "Recognize from audio (experimental)", "通过音频识别（实验性）");
+            "Recognize from audio", "通过音频识别");
         UseLyricsButton.Content = L("Use selected", "使用所选");
         if (CandidatesList.ItemsSource is null)
         {

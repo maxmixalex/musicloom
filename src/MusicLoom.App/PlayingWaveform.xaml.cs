@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Dispatching;
 using Windows.Foundation;
+using Windows.UI;
 
 namespace MusicLoom.App;
 
@@ -57,10 +58,45 @@ public sealed partial class PlayingWaveform : UserControl
     {
         InitializeComponent();
         WaveRoot.Clip = _outerClip;
-        Loaded += (_, _) => RenderWaveform();
+        Loaded += (_, _) =>
+        {
+            RefreshWaveContrast();
+            RenderWaveform();
+        };
+        ActualThemeChanged += (_, _) => RefreshWaveContrast();
         // Coalesce live GridSplitter resize events into a single low-priority
         // render rather than rebuilding geometry for every pointer pixel.
         SizeChanged += (_, _) => QueueResizeRender();
+    }
+
+    private void RefreshWaveContrast()
+    {
+        // Keep legacy light-theme appearance and all live wave dynamics.
+        // Dark surfaces need a perceptible but still subordinate contour.
+        Color accent = Application.Current.Resources.TryGetValue(
+            "SystemAccentColor", out object? resource) && resource is Color value
+                ? value : Color.FromArgb(255, 70, 125, 184);
+
+        if (ActualTheme == ElementTheme.Dark)
+        {
+            byte Brighten(byte c) => (byte)Math.Clamp(
+                (int)Math.Round(c * 0.52 + 255 * 0.48), 0, 255);
+            SolidColorBrush visible = new(Color.FromArgb(255,
+                Brighten(accent.R), Brighten(accent.G),
+                Brighten(accent.B)));
+            WaveLine.Stroke = visible;
+            WaveArea.Fill = visible;
+            WaveLine.Opacity = 0.68;
+            WaveArea.Opacity = 0.18;
+        }
+        else
+        {
+            SolidColorBrush normal = new(accent);
+            WaveLine.Stroke = normal;
+            WaveArea.Fill = normal;
+            WaveLine.Opacity = 0.15;
+            WaveArea.Opacity = 0.045;
+        }
     }
 
     private void QueueResizeRender()
