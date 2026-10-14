@@ -120,10 +120,13 @@ public sealed partial class MainWindow
         LibraryDisplayItem item, bool updatePalette = true)
     {
         int version = ++_immersiveLoadVersion;
-        string label = string.IsNullOrWhiteSpace(item.Artist)
-            ? item.Title
-            : item.Artist + " - " + item.Title;
-        ImmersiveView.SetTrack(label, item.Album, item.Artwork, []);
+        string title = item.Title;
+        string subtitle = string.IsNullOrWhiteSpace(item.Artist)
+            ? item.Album
+            : string.IsNullOrWhiteSpace(item.Album)
+                ? item.Artist
+                : item.Artist + "  ·  " + item.Album;
+        ImmersiveView.SetTrack(title, subtitle, item.Artwork, []);
         ImmersiveView.SetMode(_lyricsDisplayMode);
 
         try
@@ -138,7 +141,7 @@ public sealed partial class MainWindow
 
             LyricDisplayLine[] lines = BuildLyricLines(
                 record?.Text, _lyricsDisplayMode);
-            ImmersiveView.SetTrack(label, item.Album, item.Artwork, lines);
+            ImmersiveView.SetTrack(title, subtitle, item.Artwork, lines);
             _activePlaybackLyric?.IsActive = false;
             _activePlaybackLyric = null;
             _lastAutoScrolledLyric = null;
