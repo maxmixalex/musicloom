@@ -7,8 +7,36 @@ namespace MusicLoom.App;
 
 public sealed partial class MainWindow
 {
+    private CloudLyricsPanel QqCloudLyricsPanel = null!;
+    private CloudLyricsPanel KugouCloudLyricsPanel = null!;
+
+    private void QqLyricsSearchButton_Click(
+        object sender, Microsoft.UI.Xaml.RoutedEventArgs e) =>
+        OpenCloudLyricsSearch(QqCloudLyricsPanel, "QQ Music", "QQ 音乐");
+
+    private void KugouLyricsSearchButton_Click(
+        object sender, Microsoft.UI.Xaml.RoutedEventArgs e) =>
+        OpenCloudLyricsSearch(KugouCloudLyricsPanel, "KuGou Music", "酷狗音乐");
+
+    private void OpenCloudLyricsSearch(
+        CloudLyricsPanel panel, string nameEn, string nameZh)
+    {
+        if (_busy || _selectedLibraryItem is not LibraryDisplayItem item)
+        {
+            return;
+        }
+
+        CloseMatchOverlay();
+        panel.SetTrack(item.Entry.SourcePath, item.Artist, item.Title, item.Album);
+        ShowAppOverlay(
+            L("Find " + nameEn + " lyrics", "查找" + nameZh + "歌词"),
+            panel, maxWidth: 1200, maxHeight: 640);
+    }
+
     private void InitializeCloudLyricsPanels()
     {
+        QqCloudLyricsPanel = new CloudLyricsPanel();
+        KugouCloudLyricsPanel = new CloudLyricsPanel();
         QqCloudLyricsPanel.Source = CloudLyricsSource.QqMusic;
         KugouCloudLyricsPanel.Source = CloudLyricsSource.KugouMusic;
         KugouCloudLyricsPanel.CaptureAudioPcm16 =
@@ -44,6 +72,7 @@ public sealed partial class MainWindow
                     : "manual-kugou:" + e.Candidate.Id,
                 DateTimeOffset.UtcNow);
             await SaveManualLyricsAsync(item, manual);
+            CloseMatchOverlay();
             await ShowTrackDetailsAsync(item);
 
             ShowInfo(
