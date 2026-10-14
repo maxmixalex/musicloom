@@ -34,7 +34,7 @@
                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                  TextTrimming="CharacterEllipsis" />
       <Button x:Name="AudioRecognizeButton" Grid.Column="1"
-              Content="Audio recognize (experimental)"
+              Content="Recognize from audio"
               Click="AudioRecognizeButton_Click"
               Visibility="Collapsed" Padding="10,5" />
     </Grid>

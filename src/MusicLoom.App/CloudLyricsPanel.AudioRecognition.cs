@@ -25,28 +25,6 @@ public sealed partial class CloudLyricsPanel
             return;
         }
 
-        ContentDialog confirm = new()
-        {
-            XamlRoot = XamlRoot,
-            Title = L(
-                "Experimental KuGou audio recognition",
-                "实验性酷狗音频识别"),
-            Content = new TextBlock
-            {
-                Text = L(
-                    "MusicLoom will decode up to 10 seconds from this local track and upload the PCM audio fragment to KuGou's unofficial recognition endpoint. Only the fragment is sent; no changes will be made to your source file. Continue?",
-                    "Musicloom 将从本地歌曲读取最多 10 秒音频，并将 PCM 片段上传到酷狗的非官方识别接口。不会修改源文件。是否继续？"),
-                TextWrapping = TextWrapping.Wrap,
-            },
-            PrimaryButtonText = L("Recognize", "开始识别"),
-            CloseButtonText = L("Cancel", "取消"),
-            DefaultButton = ContentDialogButton.Close,
-        };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return;
-        }
-
         CancellationToken token = NewRequest();
         _busy = true;
         SearchButton.IsEnabled = false;
@@ -95,10 +73,10 @@ public sealed partial class CloudLyricsPanel
         catch (Exception error)
         {
             AppDiagnostics.LogException(
-                "Experimental KuGou audio recognition request failed.", error);
+                "KuGou audio recognition request failed.", error);
             ProviderStatus.Text = L(
-                "The experimental KuGou recognition endpoint is unavailable. You can still search by title and artist.",
-                "实验性酷狗识曲接口目前不可用；仍可按歌名和艺术家搜索歌词。");
+                "KuGou audio recognition is unavailable. You can still search by title and artist.",
+                "酷狗识曲当前不可用，仍可按歌名和艺术家搜索歌词。");
         }
         finally
         {

@@ -65,8 +65,8 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         TitleBox.PlaceholderText = L("Title", "歌曲名");
         SearchButton.Content = L("Search", "搜索");
         AudioRecognizeButton.Content = L(
-            "Audio recognize (experimental)",
-            "音频识别（实验性）");
+            "Recognize from audio",
+            "通过音频识别");
         UseLyricsButton.Content = L("Use selected lyrics", "采用所选歌词");
         if (CandidatesList.ItemsSource is null)
         {

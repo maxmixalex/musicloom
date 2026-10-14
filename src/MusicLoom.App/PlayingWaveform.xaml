@@ -19,10 +19,10 @@
                Opacity="0.16"
                IsHitTestVisible="False" />
       <Polyline x:Name="WaveLine"
-                Stroke="{ThemeResource TextFillColorSecondaryBrush}"
+                Stroke="{ThemeResource AccentFillColorDefaultBrush}"
                 StrokeThickness="1.65"
                 StrokeLineJoin="Round"
-                Opacity="0.48"
+                Opacity="0.8"
                 IsHitTestVisible="False" />
     </Canvas>
   </Grid>

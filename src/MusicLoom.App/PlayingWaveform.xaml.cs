@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Dispatching;
 using Windows.Foundation;
+using Windows.UI;
 
 namespace MusicLoom.App;
 
@@ -53,10 +54,38 @@ public sealed partial class PlayingWaveform : UserControl
     {
         InitializeComponent();
         WaveRoot.Clip = _outerClip;
-        Loaded += (_, _) => RenderWaveform();
+        Loaded += (_, _) =>
+        {
+            RefreshWaveContrast();
+            RenderWaveform();
+        };
+        ActualThemeChanged += (_, _) => RefreshWaveContrast();
         // Coalesce live GridSplitter resize events into a single low-priority
         // render rather than rebuilding geometry for every pointer pixel.
         SizeChanged += (_, _) => QueueResizeRender();
+    }
+
+    private void RefreshWaveContrast()
+    {
+        // Preserve the chosen accent hue and wave dynamics; make the line
+        // and surface legible against both Fluent theme backgrounds.
+        Color accent = Application.Current.Resources.TryGetValue(
+            "SystemAccentColor", out object? resource) && resource is Color value
+                ? value
+                : Color.FromArgb(255, 70, 125, 184);
+        bool dark = ActualTheme == ElementTheme.Dark;
+        double towardWhite = dark ? 0.49 : 0;
+        double towardBlack = dark ? 0 : 0.22;
+        byte Channel(byte part) => (byte)Math.Clamp(
+            (int)Math.Round(
+                (part + (255 - part) * towardWhite) * (1 - towardBlack)),
+            0, 255);
+        SolidColorBrush brush = new(Color.FromArgb(255,
+            Channel(accent.R), Channel(accent.G), Channel(accent.B)));
+        WaveLine.Stroke = brush;
+        WaveArea.Fill = brush;
+        WaveLine.Opacity = dark ? 0.92 : 0.74;
+        WaveArea.Opacity = dark ? 0.24 : 0.14;
     }
 
     private void QueueResizeRender()
