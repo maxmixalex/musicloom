@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -27,21 +28,12 @@ public sealed class CloudLyricsAcceptedEventArgs : EventArgs
 /// Presentation-only candidate wrapper: source results retain their provider
 /// IDs and times, while WinUI gets an actual ImageSource and readable duration.
 /// </summary>
-internal sealed class CloudCandidateRow
+internal sealed class CloudCandidateRow : INotifyPropertyChanged
 {
     public CloudCandidateRow(CloudLyricsCandidate candidate)
     {
         Candidate = candidate;
-        if (candidate.CoverUrl is string artwork
-            && Uri.TryCreate(artwork, UriKind.Absolute, out Uri? uri)
-            && uri.Scheme == Uri.UriSchemeHttps)
-        {
-            Artwork = new BitmapImage
-            {
-                DecodePixelWidth = 100,
-                UriSource = uri,
-            };
-        }
+        ApplyArtwork(candidate.CoverUrl);
     }
 
     public CloudLyricsCandidate Candidate { get; }
@@ -59,7 +51,28 @@ internal sealed class CloudCandidateRow
                 : $"{(int)time.TotalMinutes}:{time.Seconds:00}";
         }
     }
-    public BitmapImage? Artwork { get; }
+    public BitmapImage? Artwork { get; private set; }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public void ApplyArtwork(string? address)
+    {
+        if (string.IsNullOrWhiteSpace(address)
+            || !Uri.TryCreate(address, UriKind.Absolute, out Uri? uri)
+            || uri.Scheme != Uri.UriSchemeHttps
+            || Artwork?.UriSource == uri)
+        {
+            return;
+        }
+
+        Artwork = new BitmapImage
+        {
+            DecodePixelWidth = 112,
+            UriSource = uri,
+        };
+        PropertyChanged?.Invoke(this,
+            new PropertyChangedEventArgs(nameof(Artwork)));
+    }
 }
 
 /// <summary>
@@ -147,6 +160,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         _trackAlbum = album;
         _trackDurationMs = durationMilliseconds;
         CancelRequest();
+        CancelArtworkLoad();
         ArtistBox.Text = artist;
         TitleBox.Text = title;
         AlbumBox.Text = album;
@@ -243,6 +257,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         }
 
         CancellationToken ct = NewRequest();
+        CancelArtworkLoad();
         _busy = true;
         SearchButton.IsEnabled = false;
         AudioRecognizeButton.IsEnabled = false;
@@ -274,6 +289,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             if (ranked.Length > 0)
             {
                 CandidatesList.SelectedIndex = 0;
+                BeginArtworkLoading(ranked);
             }
         }
         catch (OperationCanceledException)
@@ -388,6 +404,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     {
         _disposed = true;
         CancelRequest();
+        CancelArtworkLoad();
         _client.Dispose();
         DisposeAudioRecognition();
     }
