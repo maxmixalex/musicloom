@@ -222,6 +222,7 @@ public sealed partial class MainWindow
                     ? "notepad.exe" : configured,
                 UseShellExecute = false,
             };
+            ConfigureBlockingEditor(info);
             info.ArgumentList.Add(tempPath);
             using Process editor = Process.Start(info)
                 ?? throw new InvalidOperationException(
@@ -288,6 +289,41 @@ public sealed partial class MainWindow
                 }
             }
             RenderLyrics();
+        }
+    }
+
+    /// <summary>
+    /// Some editors hand the file to an existing instance and their launcher
+    /// exits immediately. Git's commit-message workflow uses an editor wait
+    /// flag; apply the same documented flags to common user-selected editors.
+    /// An unknown executable is launched unchanged.
+    /// </summary>
+    private static void ConfigureBlockingEditor(ProcessStartInfo info)
+    {
+        string executable = Path.GetFileNameWithoutExtension(info.FileName)
+            .ToLowerInvariant();
+        switch (executable)
+        {
+            case "code":
+            case "code - insiders":
+            case "codium":
+            case "vscodium":
+            case "cursor":
+            case "windsurf":
+                info.ArgumentList.Add("--wait");
+                break;
+            case "subl":
+            case "sublime_text":
+                info.ArgumentList.Add("--wait");
+                break;
+            case "notepad++":
+                // Force an independent editor process so WaitForExitAsync
+                // follows the actual editing window, not IPC hand-off.
+                info.ArgumentList.Add("-multiInst");
+                break;
+            case "kate":
+                info.ArgumentList.Add("--block");
+                break;
         }
     }
 
