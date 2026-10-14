@@ -26,7 +26,8 @@ public sealed record CloudLyricsCandidate(
     int DurationMilliseconds,
     string? Hash = null,
     string? SongMid = null,
-    string? CoverUrl = null);
+    string? CoverUrl = null,
+    string? AlbumId = null);
 
 public sealed partial class CloudLyricsClient : IDisposable
 {
@@ -330,17 +331,20 @@ public sealed partial class CloudLyricsClient : IDisposable
             {
                 continue;
             }
-            string coverPmid = Find(song, "album", out JsonElement coverAlbum)
-                ? Str(coverAlbum, "pmid", "mid") : "";
-            string? cover = coverPmid.Length > 0
-                && coverPmid.All(char.IsLetterOrDigit)
-                    ? "https://y.gtimg.cn/music/photo_new/T002R300x300M000"
-                        + coverPmid + ".jpg"
-                    : null;
+            // The Android Lite and desktop/Web search responses expose
+            // different album MID / image field names.
+            string? cover = QqArtworkUrl(song);
+            string albumId = Find(song, "album", out JsonElement albumNode)
+                ? FirstPresent(albumNode, "id", "albumID", "albumId")
+                : "";
+            if (albumId.Length == 0)
+            {
+                albumId = FirstPresent(song, "albumid", "albumId", "albumID");
+            }
             entries.Add(new CloudLyricsCandidate(
                 CloudLyricsSource.QqMusic, id, title, artist,
                 album, checked(seconds * 1000), SongMid: mid,
-                CoverUrl: cover));
+                CoverUrl: cover, AlbumId: albumId));
         }
         return entries;
     }
@@ -384,18 +388,13 @@ public sealed partial class CloudLyricsClient : IDisposable
                 artist = SingerNames(song, "Singers");
             }
 
-            string artwork = Str(song,
-                "album_img", "album_image", "img", "Image", "album_pic");
-            string? cover = Uri.TryCreate(
-                artwork.Replace("{size}", "150", StringComparison.OrdinalIgnoreCase),
-                UriKind.Absolute, out Uri? coverUri)
-                && coverUri.Scheme == Uri.UriSchemeHttps
-                    ? coverUri.ToString() : null;
+            string albumId = KugouAlbumId(song);
+            string? cover = KugouArtworkUrl(song);
             entries.Add(new CloudLyricsCandidate(
                 CloudLyricsSource.KugouMusic, id, title, artist,
                 Str(song, "album_name", "AlbumName"),
                 checked(Int(song, "duration", "Duration") * 1000),
-                Hash: hash, CoverUrl: cover));
+                Hash: hash, CoverUrl: cover, AlbumId: albumId));
         }
         return entries;
     }
