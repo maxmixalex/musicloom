@@ -227,8 +227,8 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             : Source == CloudLyricsSource.KugouMusic
                 ? L("Use audio recognition or search by artist and title.",
                     "可通过音频识别，或按艺术家与歌名搜索。")
-                : L("Search by artist and title. QQ audio recognition is not available.",
-                    "按艺术家和歌名搜索；QQ 音乐音频识别暂不可用。");
+                : L("Search by artist and title.",
+                    "按艺术家和歌曲名搜索。");
         UseMatchButton.IsEnabled = false;
         AudioRecognizeButton.IsEnabled = path is not null
             && Source == CloudLyricsSource.KugouMusic;

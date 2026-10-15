@@ -36,17 +36,18 @@ public sealed partial class MainWindow
         try
         {
             SqliteProviderMatchStore matches = new(DatabasePath);
-            Task<StoredProviderMatch?> qq = matches.GetAsync(
+            // On first use both lookups would otherwise concurrently
+            // attempt CREATE TABLE on the same SQLite database.
+            StoredProviderMatch? qq = await matches.GetAsync(
                 item.Entry.SourcePath, CloudLyricsSource.QqMusic);
-            Task<StoredProviderMatch?> kugou = matches.GetAsync(
+            StoredProviderMatch? kugou = await matches.GetAsync(
                 item.Entry.SourcePath, CloudLyricsSource.KugouMusic);
-            await Task.WhenAll(qq, kugou);
             if (version != _providerMatchLoadVersion
                 || !ReferenceEquals(_selectedLibraryItem, item))
                 return;
 
-            _visibleQqMatch = await qq;
-            _visibleKugouMatch = await kugou;
+            _visibleQqMatch = qq;
+            _visibleKugouMatch = kugou;
             RenderCloudMatchPanels();
         }
         catch (Exception exception)

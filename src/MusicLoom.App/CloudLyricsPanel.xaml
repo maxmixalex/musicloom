@@ -11,7 +11,16 @@
                   SelectionMode="Single"
                   SelectionChanged="CandidatesList_SelectionChanged"
                   HorizontalContentAlignment="Stretch"
+                  Padding="12,0,22,0"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListView.ItemContainerStyle>
+            <Style TargetType="ListViewItem">
+              <Setter Property="Padding" Value="0" />
+              <Setter Property="Margin" Value="6,1,12,1" />
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </Style>
+          </ListView.ItemContainerStyle>
           <ListView.ItemTemplate>
             <DataTemplate>
               <local:LyricsSearchCandidateCard
