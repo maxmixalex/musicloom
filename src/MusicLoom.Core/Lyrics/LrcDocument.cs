@@ -42,22 +42,29 @@ public sealed partial class LrcDocument
                 {
                     try
                     {
-                        string encoded = line[9..^1];
-                        string json = Encoding.UTF8.GetString(
-                            Convert.FromBase64String(encoded));
-                        string?[]? annotations =
-                            System.Text.Json.JsonSerializer
-                                .Deserialize<string?[]>(json);
-                        if (annotations is { Length: > 0 }
-                            && annotations.Length == previous.Count
-                            && annotations.Length <= 256)
+                        byte[] encoded = Convert.FromBase64String(line[9..^1]);
+                        // JsonDocument is trim/NativeAOT-safe: avoid the
+                        // reflection-based JsonSerializer overloads here.
+                        using var metadata = System.Text.Json.JsonDocument.Parse(encoded);
+                        if (metadata.RootElement.ValueKind
+                            == System.Text.Json.JsonValueKind.Array)
                         {
-                            LrcLine last = document.Lines[^1];
-                            document.Lines[^1] = last with
+                            string?[] annotations = metadata.RootElement
+                                .EnumerateArray()
+                                .Select(static value => value.ValueKind
+                                    == System.Text.Json.JsonValueKind.String
+                                        ? value.GetString() : null)
+                                .ToArray();
+                            if (annotations.Length == previous.Count
+                                && annotations.Length <= 256)
                             {
-                                Words = previous.Select((word, i) =>
-                                    word with { Ruby = annotations[i] }).ToArray(),
-                            };
+                                LrcLine last = document.Lines[^1];
+                                document.Lines[^1] = last with
+                                {
+                                    Words = previous.Select((word, i) =>
+                                        word with { Ruby = annotations[i] }).ToArray(),
+                                };
+                            }
                         }
                     }
                     catch (FormatException) { }
@@ -433,10 +440,19 @@ public sealed partial class LrcDocument
             if (includeRuby && line.Words is { Count: > 0 and <= 256 } words
                 && words.Any(static word => !string.IsNullOrWhiteSpace(word.Ruby)))
             {
-                string json = System.Text.Json.JsonSerializer.Serialize(
-                    words.Select(static word => word.Ruby).ToArray());
-                string marker = Convert.ToBase64String(
-                    Encoding.UTF8.GetBytes(json));
+                using MemoryStream buffer = new();
+                using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+                {
+                    writer.WriteStartArray();
+                    foreach (LrcWord word in words)
+                    {
+                        if (word.Ruby is null) writer.WriteNullValue();
+                        else writer.WriteStringValue(word.Ruby);
+                    }
+                    writer.WriteEndArray();
+                    writer.Flush();
+                }
+                string marker = Convert.ToBase64String(buffer.ToArray());
                 builder.Append("[ml-ruby:").Append(marker).Append("]\n");
             }
         }
