@@ -94,6 +94,8 @@ public sealed partial class MainWindow : Window
     private int _detailRequestId;
     private int _artworkGeneration;
     private int _matchArtworkRequestId;
+    private string? _netEaseArtworkMatchIdentity;
+    private bool _netEaseArtworkRequestPending;
     private double _playerTargetVolume;
     private string _uiLanguage =
         DetectSystemLanguage();
@@ -7664,7 +7666,6 @@ public sealed partial class MainWindow : Window
 
     private void RefreshCurrentMatchCard(LibraryDisplayItem? item)
     {
-        int artworkRequest = ++_matchArtworkRequestId;
         long? songId = null;
         string? trackName = null;
         string? artist = null;
@@ -7704,9 +7705,12 @@ public sealed partial class MainWindow : Window
             Selected: item is not null,
             Suppressed: suppressed,
             Id: songId?.ToString(CultureInfo.InvariantCulture),
-            Title: trackName,
-            Artist: artist,
-            Album: album,
+            // NetEase legacy behavior: keep the local title/artist/album
+            // as display fallbacks for an existing real NetEase ID only.
+            // QQ/KuGou adapters never infer a remote match from local tags.
+            Title: songId is null ? null : trackName ?? item?.Title,
+            Artist: songId is null ? null : artist ?? item?.Artist,
+            Album: songId is null ? null : album ?? item?.Album,
             CoverUrl: coverUrl,
             ExternalLink: songId is long id
                 ? new Uri($"https://music.163.com/#/song?id={id}")
@@ -7716,11 +7720,31 @@ public sealed partial class MainWindow : Window
                 && HasCachedMatch(item.Entry.SourcePath),
             Busy: _busy));
 
-        if (item is not null && songId is long matchId
-            && string.IsNullOrWhiteSpace(coverUrl) && !_busy)
+        string? identity = item is not null && songId is long resolvedId
+            && !suppressed
+                ? item.Entry.SourcePath + "\0" +
+                    resolvedId.ToString(CultureInfo.InvariantCulture)
+                : null;
+        if (!string.Equals(_netEaseArtworkMatchIdentity, identity,
+                StringComparison.Ordinal))
         {
+            _netEaseArtworkMatchIdentity = identity;
+            _netEaseArtworkRequestPending = false;
+            ++_matchArtworkRequestId;
+        }
+
+        // A missing URL is hydrated once while a request is active.
+        // Progress/status/theme refreshes may call this repeatedly: do NOT
+        // cancel/restart the in-flight NetEase GetSongAsync on each call.
+        if (identity is not null && songId is long matchId
+            && item is not null && !_busy
+            && string.IsNullOrWhiteSpace(coverUrl)
+            && NeteaseMatchPanel.DisplayedArtworkUri is null
+            && !_netEaseArtworkRequestPending)
+        {
+            _netEaseArtworkRequestPending = true;
             _ = LoadCurrentMatchArtworkAsync(
-                item, matchId, artworkRequest);
+                item, matchId, _matchArtworkRequestId);
         }
     }
 
@@ -7786,6 +7810,13 @@ public sealed partial class MainWindow : Window
             AppDiagnostics.LogException(
                 "Could not load NetEase artwork.",
                 exception);
+        }
+        finally
+        {
+            // Retry is possible on a subsequent explicit refresh. The
+            // successful image itself is retained by ProviderMatchTabView.
+            if (requestId == _matchArtworkRequestId)
+                _netEaseArtworkRequestPending = false;
         }
     }
 

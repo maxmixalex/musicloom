@@ -40,6 +40,13 @@ internal sealed record MatchTabPresentation(
 public sealed partial class ProviderMatchTabView : UserControl
 {
     private string _providerName = "";
+    private MatchProviderKind _providerKind = MatchProviderKind.Netease;
+    private string? _displayedMatchId;
+    private Uri? _displayedArtworkUri;
+
+    internal Uri? DisplayedArtworkUri => _displayedArtworkUri;
+    internal string? DisplayedMatchId => _displayedMatchId;
+
     private Func<string, string, string> _translate = (en, _) => en;
 
     public event EventHandler? SearchRequested;
@@ -82,6 +89,7 @@ public sealed partial class ProviderMatchTabView : UserControl
         MatchProviderKind kind)
     {
         _translate = translate;
+        _providerKind = kind;
         (string en, string zh) = kind switch
         {
             MatchProviderKind.Netease => ("NetEase", "网易云"),
@@ -117,8 +125,21 @@ public sealed partial class ProviderMatchTabView : UserControl
     // three separately managed controls with identical-looking markup.
     internal void Present(MatchTabPresentation state)
     {
-        ArtworkImage.Source = null;
-        ArtworkPlaceholder.Visibility = Visibility.Visible;
+        // Preserve a successfully loaded NetEase/QQ/KuGou cover whenever
+        // the same provider match is re-rendered (busy, language, sync,
+        // details reload). Only a DIFFERENT song ID or an empty/suppressed
+        // state invalidates the artwork. The old renderer cleared every
+        // time, cancelling asynchronous NetEase cover hydration.
+        string? nextId = state.HasMatch ? state.Id : null;
+        if (nextId is null || !string.Equals(
+                _displayedMatchId, nextId, StringComparison.Ordinal))
+        {
+            ArtworkImage.Source = null;
+            ArtworkPlaceholder.Visibility = Visibility.Visible;
+            _displayedArtworkUri = null;
+        }
+        _displayedMatchId = nextId;
+
         TitleLabel.Text = string.Empty;
         ArtistLabel.Text = string.Empty;
         AlbumLabel.Text = string.Empty;
@@ -169,22 +190,38 @@ public sealed partial class ProviderMatchTabView : UserControl
             ? Visibility.Collapsed : Visibility.Visible;
 
         if (state.CoverUrl is string cover
-            && Uri.TryCreate(cover, UriKind.Absolute, out Uri? image)
-            && image.Scheme == Uri.UriSchemeHttps)
+            && Uri.TryCreate(cover, UriKind.Absolute, out Uri? image))
             ShowArtwork(image);
     }
 
     internal void ShowArtwork(Uri? artwork)
     {
-        if (artwork is null || artwork.Scheme != Uri.UriSchemeHttps)
+        if (artwork is null || !IsAcceptedCoverUri(artwork))
             return;
+        if (artwork.Equals(_displayedArtworkUri)
+            && ArtworkImage.Source is BitmapImage)
+            return;
+
+        // The ORIGINAL NetEase card accepted HTTP as well as HTTPS cover
+        // URLs. Old persisted NetEase records can have an HTTP URL; the
+        // previous shared renderer rejected those and displayed nothing.
         ArtworkImage.Source = new BitmapImage
         {
             DecodePixelWidth = 108,
             UriSource = artwork,
         };
+        _displayedArtworkUri = artwork;
         ArtworkPlaceholder.Visibility = Visibility.Collapsed;
     }
+
+    private bool IsAcceptedCoverUri(Uri uri) =>
+        uri.IsAbsoluteUri
+        && uri.UserInfo.Length == 0
+        && uri.IsDefaultPort
+        && (uri.Scheme == Uri.UriSchemeHttps
+            || (_providerKind == MatchProviderKind.Netease
+                && uri.Scheme == Uri.UriSchemeHttp));
+
 
     internal void ShowCloudState(
         StoredProviderMatch? record, bool selected, bool busy)
