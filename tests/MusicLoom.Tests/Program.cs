@@ -18,6 +18,7 @@ List<(string Name, Action Test)> tests =
     ("LRC timing offsets do not modify canonical lyrics", LyricsOffsetRegression.Run),
     ("Cloud lyric providers parse search and lyric payloads", CloudLyricsProviderRegression.Run),
     ("QQ/KuGou remote preview URLs respect provider grants", CloudAudioPreviewRegression.Run),
+    ("QQ and KuGou matches persist independently with durable explicit empty states", ProviderMatchPersistenceRegression.Run),
     ("Unofficial QQ/KRC encrypted word timings and client requests", TimedLyricsRegression.Run),
     ("Experimental KuGou PCM recognition signs binary samples", KugouAudioRecognitionRegression.Run),
     ("LRC merge aligns translations within 200 ms", LrcMerge),
