@@ -4,23 +4,7 @@
   xmlns:local="using:MusicLoom.App" MinWidth="760">
   <local:LyricsSearchDialogView x:Name="SearchLayout">
     <local:LyricsSearchDialogView.SearchContent>
-      <StackPanel Spacing="10">
-        <TextBox x:Name="ArtistBox" Header="Artist" />
-        <TextBox x:Name="TitleBox" Header="Title" />
-        <TextBox x:Name="AlbumBox" Header="Album" />
-        <Button x:Name="AudioRecognizeButton"
-                Content="Recognize from audio"
-                Click="AudioRecognizeButton_Click"
-                Visibility="Collapsed"
-                HorizontalAlignment="Stretch" />
-        <Button x:Name="SearchButton" Content="Search by metadata"
-                Click="SearchButton_Click"
-                HorizontalAlignment="Stretch"
-                Style="{ThemeResource AccentButtonStyle}" />
-        <TextBlock x:Name="ProviderStatus"
-                   TextWrapping="Wrap"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-      </StackPanel>
+      <local:LyricsSearchFormView x:Name="SearchInputs"/>
     </local:LyricsSearchDialogView.SearchContent>
     <local:LyricsSearchDialogView.CandidatesContent>
       <ListView x:Name="CandidatesList"

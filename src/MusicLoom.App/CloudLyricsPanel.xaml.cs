@@ -85,6 +85,15 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
 public sealed partial class CloudLyricsPanel : UserControl, IDisposable
 {
     private readonly CloudLyricsClient _client = new();
+
+    // These are the actual controls inside the shared LyricsSearchFormView,
+    // not a second provider-specific copy with equivalent styling.
+    private TextBox ArtistBox => SearchInputs.ArtistField;
+    private TextBox TitleBox => SearchInputs.TitleField;
+    private TextBox AlbumBox => SearchInputs.AlbumField;
+    private Button AudioRecognizeButton => SearchInputs.RecognitionAction;
+    private Button SearchButton => SearchInputs.SearchAction;
+    private TextBlock ProviderStatus => SearchInputs.StatusLabel;
     private Func<string, string, string> _translate = (english, _) => english;
     private CancellationTokenSource? _activeRequest;
     private string? _sourcePath;
@@ -120,6 +129,8 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     public CloudLyricsPanel()
     {
         InitializeComponent();
+        SearchButton.Click += SearchButton_Click;
+        AudioRecognizeButton.Click += AudioRecognizeButton_Click;
         LyricsPreview.SeekRequested += time => LyricSeekRequested?.Invoke(time);
     }
 
@@ -127,6 +138,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     {
         _translate = translate;
         SearchLayout.Localize(L);
+        SearchInputs.Localize(L);
         ArtistBox.Header = L("Artist", "艺术家");
         TitleBox.Header = L("Title", "歌曲名");
         AlbumBox.Header = L("Album", "专辑");

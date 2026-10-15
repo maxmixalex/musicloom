@@ -1,0 +1,21 @@
+<UserControl
+    x:Class="MusicLoom.App.LyricsSearchFormView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel Spacing="10">
+    <TextBox x:Name="ArtistInput" Header="Artist" />
+    <TextBox x:Name="TitleInput" Header="Title" />
+    <TextBox x:Name="AlbumInput" Header="Album" />
+    <Button x:Name="RecognitionButton"
+            Content="Recognize from audio"
+            HorizontalAlignment="Stretch"
+            Visibility="Collapsed" />
+    <Button x:Name="SearchActionButton"
+            Content="Search by metadata"
+            HorizontalAlignment="Stretch"
+            Style="{ThemeResource AccentButtonStyle}" />
+    <TextBlock x:Name="StatusText"
+               TextWrapping="Wrap"
+               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+  </StackPanel>
+</UserControl>

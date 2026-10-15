@@ -6401,76 +6401,28 @@ public sealed partial class MainWindow : Window
         {
         }
 
-        TextBox artistBox = new()
-        {
-            Header =
-                L("Artist", "艺术家"),
-            Text =
-                item.Artist.Contains(
-                    L(
-                        "Unknown artist",
-                        "未知艺术家"),
-                    StringComparison
-                        .OrdinalIgnoreCase)
-                    ? string.Empty
-                    : item.Artist,
-        };
-
-        TextBox titleBox = new()
-        {
-            Header =
-                L("Title", "歌曲名"),
-            Text = item.Title,
-        };
-
-        TextBox albumBox = new()
-        {
-            Header =
-                L("Album", "专辑"),
-            Text =
-                item.Album.Contains(
-                    L(
-                        "Unknown album",
-                        "未知专辑"),
-                    StringComparison
-                        .OrdinalIgnoreCase)
-                    ? string.Empty
-                    : item.Album,
-        };
-
-        Button fingerprintButton = new()
-        {
-            Content =
-                L(
-                    "Recognize from audio",
-                    "通过音频指纹识别"),
-            HorizontalAlignment =
-                HorizontalAlignment.Stretch,
-        };
-
-        Button searchButton = new()
-        {
-            Content =
-                L(
-                    "Search by metadata",
-                    "按元数据搜索"),
-            HorizontalAlignment =
-                HorizontalAlignment.Stretch,
-            Style =
-                (Style)Application.Current
-                    .Resources[
-                        "AccentButtonStyle"],
-        };
-
-        TextBlock status = new()
-        {
-            Foreground =
-                Application.Current.Resources[
-                    "TextFillColorSecondaryBrush"]
-                as Microsoft.UI.Xaml.Media.Brush,
-            TextWrapping =
-                TextWrapping.Wrap,
-        };
+        // The exact same form control is hosted by every provider;
+        // only its actions and recognition adapter vary.
+        LyricsSearchFormView form = new();
+        form.Localize(L);
+        TextBox artistBox = form.ArtistField;
+        artistBox.Text = item.Artist.Contains(
+                L("Unknown artist", "未知艺术家"),
+                StringComparison.OrdinalIgnoreCase)
+            ? string.Empty : item.Artist;
+        TextBox titleBox = form.TitleField;
+        titleBox.Text = item.Title;
+        TextBox albumBox = form.AlbumField;
+        albumBox.Text = item.Album.Contains(
+                L("Unknown album", "未知专辑"),
+                StringComparison.OrdinalIgnoreCase)
+            ? string.Empty : item.Album;
+        Button fingerprintButton = form.RecognitionAction;
+        fingerprintButton.Visibility = Visibility.Visible;
+        fingerprintButton.Content =
+            L("Recognize from audio", "通过音频指纹识别");
+        Button searchButton = form.SearchAction;
+        TextBlock status = form.StatusLabel;
 
         ListView results = new()
         {
@@ -6537,23 +6489,6 @@ public sealed partial class MainWindow : Window
                 null, LyricsDisplayModes.OriginalOnly),
         };
 
-        StackPanel searchPanel = new()
-        {
-            Spacing = 10,
-        };
-        searchPanel.Children.Add(
-            artistBox);
-        searchPanel.Children.Add(
-            titleBox);
-        searchPanel.Children.Add(
-            albumBox);
-        searchPanel.Children.Add(
-            fingerprintButton);
-        searchPanel.Children.Add(
-            searchButton);
-        searchPanel.Children.Add(
-            status);
-
         // Shared search/results/preview XAML for all three providers.
         CloseMatchOverlay();
         Button useSelectedButton = new()
@@ -6564,7 +6499,7 @@ public sealed partial class MainWindow : Window
         };
         LyricsSearchDialogView shell = new()
         {
-            SearchContent = searchPanel,
+            SearchContent = form,
             CandidatesContent = results,
             LyricsContent = lyricView,
             FooterContent = useSelectedButton,
