@@ -100,9 +100,11 @@ internal static class CloudAudioPreviewRegression
         }
 
         Uri? kgBackup = CloudLyricsClient.ParseKugouGuestPreviewResponse(
-            """{"status":1,"data":{
+            """
+            {"status":1,"data":{
             "play_url":"https://untrusted.invalid/f.mp3",
-            "play_backup_url":"https://fs.w.kugou.com/guest/backup.mp3"}}""");
+            "play_backup_url":"https://fs.w.kugou.com/guest/backup.mp3"}}
+            """);
         if (kgBackup?.AbsoluteUri
             != "https://fs.w.kugou.com/guest/backup.mp3")
         {
