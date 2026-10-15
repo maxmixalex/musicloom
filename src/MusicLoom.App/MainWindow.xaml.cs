@@ -316,10 +316,14 @@ public sealed partial class MainWindow : Window
                     {
                         ShowInfo(
                             InfoBarSeverity.Error,
-                            L(
-                                "Playback failed",
-                                "播放失败"),
+                            _playingCloudPreviewCandidate is not null
+                                ? L("Remote preview failed", "远程试听失败")
+                                : L("Playback failed", "播放失败"),
                             args.ErrorMessage);
+                        if (_playingCloudPreviewCandidate is not null)
+                            _activeCloudLyricsPanel?.SetPreviewStatus(L(
+                                "The remote stream could not be played. The provider may restrict access.",
+                                "无法播放远程音频，音源可能限制访问。"));
                     });
 
         _mediaPlayer.PlaybackSession
@@ -402,6 +406,7 @@ public sealed partial class MainWindow : Window
 
             _playingLibraryItem = item;
             _playingPreviewCandidate = null;
+            _playingCloudPreviewCandidate = null;
             _ = LoadWaveformForTrackAsync(item);
 
             if (_activePlaybackLyric
@@ -640,6 +645,7 @@ public sealed partial class MainWindow : Window
             _smoothedAudioFrame = null;
             _playingPreviewCandidate =
                 candidate;
+            _playingCloudPreviewCandidate = null;
             _playbackQueue = [];
             _playbackQueueIndex = -1;
             RefreshNowPlayingPlaylist();
@@ -1019,6 +1025,8 @@ public sealed partial class MainWindow : Window
                         : Symbol.Play;
         }
 
+        UpdateCloudPreviewVisualState();
+
         if (_selectedLibraryItem is not null)
         {
             DetailPlayIcon.Symbol =
@@ -1066,6 +1074,16 @@ public sealed partial class MainWindow : Window
         {
             source = immersiveLines;
             targetList = ImmersiveView.LyricsList;
+        }
+        else if (_playingCloudPreviewCandidate is not null
+            && _activeCloudLyricsPanel is CloudLyricsPanel cloudPanel
+            && SameCloudCandidate(
+                _playingCloudPreviewCandidate, cloudPanel.SelectedCandidate)
+            && cloudPanel.PreviewLyricsList.ItemsSource
+                is IEnumerable<LyricDisplayLine> cloudLines)
+        {
+            source = cloudLines;
+            targetList = cloudPanel.PreviewLyricsList;
         }
         else if (_playingPreviewCandidate is not null
             && _activeMatchDialogCandidate

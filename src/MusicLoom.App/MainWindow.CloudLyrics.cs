@@ -1,9 +1,12 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Imaging;
 using MusicLoom.Audio.Windows;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.LyricsProviders;
 using MusicLoom.Metadata;
+using Windows.Media.Core;
+using Windows.Media.Playback;
 
 namespace MusicLoom.App;
 
@@ -15,6 +18,28 @@ namespace MusicLoom.App;
 /// </summary>
 public sealed partial class MainWindow
 {
+    // The current QQ/KuGou preview belongs to the existing player, never
+    // the local library queue or the NetEase song preview state.
+    private CloudLyricsCandidate? _playingCloudPreviewCandidate;
+    private CloudLyricsPanel? _activeCloudLyricsPanel;
+
+    private static bool SameCloudCandidate(
+        CloudLyricsCandidate? first, CloudLyricsCandidate? second) =>
+        first is not null && second is not null
+        && first.Source == second.Source
+        && string.Equals(first.Id, second.Id, StringComparison.Ordinal)
+        && string.Equals(first.SongMid, second.SongMid,
+            StringComparison.Ordinal)
+        && string.Equals(first.Hash, second.Hash, StringComparison.Ordinal);
+
+    private void UpdateCloudPreviewVisualState()
+    {
+        _activeCloudLyricsPanel?.UpdatePreviewPlaying(
+            _playingCloudPreviewCandidate,
+            _mediaPlayer.PlaybackSession.PlaybackState
+                == MediaPlaybackState.Playing);
+    }
+
     private async void FindNeteaseMatchItem_Click(
         object sender, RoutedEventArgs e)
     {
@@ -99,52 +124,14 @@ public sealed partial class MainWindow
         }
 
         panel.LyricsAccepted += CloudLyricsPanel_LyricsAccepted;
-        panel.PreviewRequested += async _ =>
-        {
-            try
-            {
-                if (ReferenceEquals(_playingLibraryItem, item)
-                    && _mediaPlayer.PlaybackSession.PlaybackState ==
-                        Windows.Media.Playback.MediaPlaybackState.Playing)
-                {
-                    _mediaPlayer.Pause();
-                }
-                else
-                {
-                    // QQ and KuGou searches provide lyrics metadata but not
-                    // an authenticated preview audio URL. This deliberately
-                    // previews the corresponding local file, never a fake
-                    // provider stream, while sharing the NetEase play button.
-                    await PlayLibraryItemAsync(item);
-                }
-                UpdatePlayerVisualState();
-            }
-            catch (Exception error)
-            {
-                AppDiagnostics.LogException(
-                    "Could not preview local track in lyric search.", error);
-            }
-        };
+        panel.PreviewRequested += async candidate =>
+            await PlayCloudPreviewAsync(candidate, panel);
         panel.LyricSeekRequested += async timestamp =>
         {
-            try
-            {
-                if (!ReferenceEquals(_playingLibraryItem, item))
-                {
-                    await PlayLibraryItemAsync(item, startPosition: timestamp);
-                }
-                else if (_mediaPlayer.Source is not null)
-                {
-                    _mediaPlayer.PlaybackSession.Position = timestamp;
-                    _mediaPlayer.Play();
-                    UpdatePlaybackLyrics();
-                }
-            }
-            catch (Exception error)
-            {
-                AppDiagnostics.LogException(
-                    "Could not seek selected provider lyric.", error);
-            }
+            // Double-click seeks the remote candidate shown in the same
+            // lyrics preview, not the unrelated local source file.
+            if (panel.SelectedCandidate is CloudLyricsCandidate selected)
+                await PlayCloudPreviewAsync(selected, panel, timestamp);
         };
 
         double? durationMs = null;
@@ -162,6 +149,8 @@ public sealed partial class MainWindow
             item.Artist, item.Title, item.Album, durationMs);
 
         CloseMatchOverlay();
+        _activeCloudLyricsPanel = panel;
+        UpdateCloudPreviewVisualState();
         ShowAppOverlay(
             source == CloudLyricsSource.QqMusic
                 ? L("Find QQ Music lyrics", "查找 QQ 音乐歌词")
@@ -169,7 +158,178 @@ public sealed partial class MainWindow
             panel,
             maxWidth: 1200,
             maxHeight: 640,
-            onClosed: () => panel.Dispose());
+            onClosed: () =>
+            {
+                if (ReferenceEquals(_activeCloudLyricsPanel, panel))
+                    _activeCloudLyricsPanel = null;
+                panel.Dispose();
+            });
+    }
+
+    private async Task PlayCloudPreviewAsync(
+        CloudLyricsCandidate candidate,
+        CloudLyricsPanel originatingPanel,
+        TimeSpan? startPosition = null)
+    {
+        // The same shared playback session is used for all three providers.
+        // Pause/resume and lyric seeking must not trigger a second network
+        // request for the same already-authorized stream.
+        if (SameCloudCandidate(_playingCloudPreviewCandidate, candidate)
+            && _mediaPlayer.Source is not null)
+        {
+            try
+            {
+                if (startPosition is TimeSpan seek)
+                {
+                    await SeekPlayerWhenReadyAsync(seek);
+                    _mediaPlayer.Play();
+                    UpdatePlaybackLyrics();
+                }
+                else if (_mediaPlayer.PlaybackSession.PlaybackState
+                    == MediaPlaybackState.Playing)
+                {
+                    _mediaPlayer.Pause();
+                }
+                else
+                {
+                    _mediaPlayer.Play();
+                }
+                UpdatePlayerVisualState();
+            }
+            catch (Exception error)
+            {
+                AppDiagnostics.LogException(
+                    "Could not seek/resume remote provider stream.", error);
+                originatingPanel.SetPreviewStatus(L(
+                    "Could not resume remote preview.",
+                    "无法继续播放远程试听。"));
+            }
+            return;
+        }
+
+        CancellationTokenSource transition = BeginPlaybackTransition();
+        try
+        {
+            originatingPanel.SetPreviewStatus(L(
+                "Requesting remote stream from provider…",
+                "正在从音源获取远程试听地址……"));
+
+            using CloudLyricsClient client = new();
+            CloudAudioPreviewResult preview =
+                await client.GetAudioPreviewAsync(candidate, transition.Token);
+            transition.Token.ThrowIfCancellationRequested();
+
+            // Search panel may be closed while the network request is
+            // running. Do not unexpectedly start playback after it closes.
+            if (!ReferenceEquals(_activeCloudLyricsPanel, originatingPanel))
+                return;
+
+            if (!preview.CanPlay)
+            {
+                string why = preview.Status switch
+                {
+                    CloudAudioPreviewStatus.InvalidCandidate => L(
+                        "The result lacks a valid playback identifier.",
+                        "该搜索结果缺少有效的音频播放标识。"),
+                    CloudAudioPreviewStatus.ProviderUnavailable => L(
+                        "The remote audio service is unavailable.",
+                        "远程音频服务暂时不可用。"),
+                    _ => L(
+                        "No public stream for this song (login, membership or copyright restriction).",
+                        "该歌曲没有游客可播放的音频地址（可能需要登录、会员权限或受版权限制）。"),
+                };
+                originatingPanel.SetPreviewStatus(why);
+                ShowInfo(InfoBarSeverity.Warning,
+                    L("Remote preview unavailable", "远程试听不可用"), why);
+                return;
+            }
+
+            if (_mediaPlayer.Source is not null
+                && _mediaPlayer.Volume > 0.001)
+            {
+                await FadePlayerVolumeAsync(
+                    _mediaPlayer.Volume, fadeIn: false, transition.Token);
+            }
+            transition.Token.ThrowIfCancellationRequested();
+
+            _playingLibraryItem?.SetPlaying(false);
+            _playingLibraryItem = null;
+            _playingPreviewCandidate = null;
+            _playingCloudPreviewCandidate = candidate;
+
+            _waveformCancellation?.Cancel();
+            _playingAudioFrames = null;
+            _smoothedAudioFrame = null;
+            _playbackQueue = [];
+            _playbackQueueIndex = -1;
+            RefreshNowPlayingPlaylist();
+
+            _activePlaybackLyric?.IsActive = false;
+            _activePlaybackLyric = null;
+            _suppressPlaybackLyricFollow = startPosition.HasValue;
+
+            _mediaPlayer.Volume = 0;
+            _mediaPlayer.Source = MediaSource.CreateFromUri(
+                preview.StreamUrl!);
+            PlayerTitleText.Text = string.IsNullOrWhiteSpace(candidate.Artist)
+                ? candidate.Title
+                : candidate.Artist + " - " + candidate.Title;
+            PlayerMetadataText.Text = candidate.Album;
+            if (candidate.CoverUrl is string artwork
+                && Uri.TryCreate(artwork, UriKind.Absolute, out Uri? artUri)
+                && artUri.Scheme == Uri.UriSchemeHttps)
+            {
+                PlayerArtworkImage.Source = new BitmapImage
+                {
+                    DecodePixelWidth = 144,
+                    UriSource = artUri,
+                };
+                PlayerArtworkPlaceholder.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                PlayerArtworkImage.Source = null;
+                PlayerArtworkPlaceholder.Visibility = Visibility.Visible;
+            }
+            ConfigureAuxiliaryLongText();
+
+            if (startPosition is TimeSpan position)
+                await SeekPlayerWhenReadyAsync(position);
+
+            transition.Token.ThrowIfCancellationRequested();
+            _mediaPlayer.Play();
+            await WaitForPlaybackStartAsync(transition.Token);
+            await FadePlayerVolumeAsync(0, fadeIn: true, transition.Token);
+            _suppressPlaybackLyricFollow = false;
+
+            UpdatePlayerVisualState();
+            UpdatePlaybackLyrics();
+            originatingPanel.SetPreviewStatus(L(
+                "Playing the provider's remote audio stream.",
+                "正在播放音源提供的远程音频。"));
+        }
+        catch (OperationCanceledException) when (
+            transition.IsCancellationRequested)
+        {
+            // Rapidly selecting a new result is normal, not an error.
+        }
+        catch (Exception error)
+        {
+            _suppressPlaybackLyricFollow = false;
+            AppDiagnostics.LogException(
+                "QQ/KuGou remote audio preview failed.", error);
+            string message = L(
+                "Remote preview failed. The stream may be expired or blocked by the provider.",
+                "远程试听失败：音频地址可能已过期，或被音源限制访问。");
+            originatingPanel.SetPreviewStatus(message);
+            ShowInfo(InfoBarSeverity.Warning,
+                L("Remote preview failed", "远程试听失败"), message);
+        }
+        finally
+        {
+            CompletePlaybackTransition(transition);
+            UpdatePlayerVisualState();
+        }
     }
 
     private async void CloudLyricsPanel_LyricsAccepted(
