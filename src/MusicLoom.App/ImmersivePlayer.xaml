@@ -7,10 +7,10 @@
     KeyDown="ImmersivePlayer_KeyDown">
   <!-- Immersive overlays the app client area, NOT the system monitor. -->
   <Grid x:Name="ImmersiveLayoutRoot" Padding="34,24,34,20"
-        SizeChanged="ImmersiveLayoutRoot_SizeChanged">
+        MinHeight="0" SizeChanged="ImmersiveLayoutRoot_SizeChanged">
     <Grid.Background>
       <LinearGradientBrush x:Name="ArtworkGradient"
-                           StartPoint="0,0" EndPoint="1,1">
+                           StartPoint="0,0" EndPoint="0,1">
         <GradientStop Color="#386C8A" Offset="0" />
         <GradientStop Color="#2B5575" Offset="0.5" />
         <GradientStop Color="#183A55" Offset="1" />
@@ -24,8 +24,8 @@
     <!-- The window's real, theme-aware MusicLoom title bar remains visible
          above this content. Never duplicate it inside the player. -->
 
-    <Grid x:Name="PlayerColumns" Grid.Row="0" MaxWidth="1160"
-          HorizontalAlignment="Center" VerticalAlignment="Stretch"
+    <Grid x:Name="PlayerColumns" Grid.Row="0"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
           SizeChanged="PlayerColumns_SizeChanged"
           ColumnSpacing="38">
       <Grid.ColumnDefinitions>
@@ -43,7 +43,7 @@
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" x:Name="ImmersiveArtworkFrame"
-                Width="360" Height="360"
+                Width="0" Height="0"
                 HorizontalAlignment="Center" VerticalAlignment="Center"
                 CornerRadius="17" BorderThickness="0"
                 Translation="0,0,14">
@@ -176,9 +176,31 @@
               </DataTemplate>
             </ListView.ItemTemplate>
           </ListView>
-          <!-- Edge fade is applied to realized ListViewItem opacity
-               on BOTH ends. No black/colored gradient can paint over text. -->
-
+          <!-- Stationary viewport-edge veils: these are siblings of the
+               scrolling ListView, never items inside its scroll content.
+               Palette sampling keeps the veils flush with the background. -->
+          <Border x:Name="LyricsTopFade" Canvas.ZIndex="1"
+                  Height="90" VerticalAlignment="Top"
+                  HorizontalAlignment="Stretch" IsHitTestVisible="False">
+            <Border.Background>
+              <LinearGradientBrush x:Name="LyricsTopFadeBrush"
+                                   StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#FF386C8A" Offset="0"/>
+                <GradientStop Color="#00386C8A" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <Border x:Name="LyricsBottomFade" Canvas.ZIndex="1"
+                  Height="90" VerticalAlignment="Bottom"
+                  HorizontalAlignment="Stretch" IsHitTestVisible="False">
+            <Border.Background>
+              <LinearGradientBrush x:Name="LyricsBottomFadeBrush"
+                                   StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#00183A55" Offset="0"/>
+                <GradientStop Color="#FF183A55" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
         </Grid>
       </Grid>
     </Grid>

@@ -62,6 +62,8 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
                 : $"{(int)time.TotalMinutes}:{time.Seconds:00}";
         }
     }
+    public string DisplayMetadata => string.IsNullOrWhiteSpace(Candidate.Id)
+        ? Duration : $"#{Candidate.Id} · {Duration}";
     public BitmapImage? Artwork { get; private set; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -429,6 +431,25 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             ShowPreviewMessage(L(
                 "Could not load lyrics from this provider.",
                 "无法从此歌词源获取歌词。"));
+        }
+    }
+
+    private void CandidateCard_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not LyricsSearchCandidateCard card
+            || card.DataContext is not CloudCandidateRow row)
+            return;
+
+        // Follow the accepted NetEase right-hand metadata/link layout,
+        // linking only known-valid first-party QQ song MIDs.
+        if (row.Candidate.Source == CloudLyricsSource.QqMusic
+            && row.Candidate.SongMid is string mid
+            && mid.Length > 0
+            && mid.All(static ch => char.IsAsciiLetterOrDigit(ch)))
+        {
+            card.SetExternalLink(
+                new Uri("https://y.qq.com/n/ryqq/songDetail/" + mid),
+                L("Open in QQ Music", "在QQ音乐中打开"));
         }
     }
 

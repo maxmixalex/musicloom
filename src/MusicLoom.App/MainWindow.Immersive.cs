@@ -24,19 +24,7 @@ public sealed partial class MainWindow
      private void InitializeImmersivePlayer()
     {
         ImmersiveView.CloseRequested += (_, _) => CloseImmersivePlayer();
-        ImmersiveView.PaletteChanged += background =>
-        {
-            if (!_immersiveActive) return;
-            // Match the visible native title/caption area to the actual
-            // album-derived gradient, keeping readable white captions.
-            AppTitleBar.Background = new SolidColorBrush(background);
-            AppTitleBar.Foreground = new SolidColorBrush(Color.FromArgb(255, 255, 255, 255));
-            if (_captionColorsSupported)
-            {
-                AppWindow.TitleBar.ButtonBackgroundColor = background;
-                AppWindow.TitleBar.ButtonForegroundColor = Color.FromArgb(255, 255, 255, 255);
-            }
-        };
+        ImmersiveView.PaletteChanged += ApplyImmersiveTitlePalette;
         ImmersiveView.PreviousRequested += async (_, _) =>
             await PlayQueueOffsetAsync(-1);
         ImmersiveView.NextRequested += async (_, _) =>
@@ -78,6 +66,23 @@ public sealed partial class MainWindow
         };
     }
 
+    private void ApplyImmersiveTitlePalette(Color background)
+    {
+        if (!_immersiveActive) return;
+        // The player gradient is vertical: its entire top edge matches this
+        // solid title/caption color. Both are advanced on the SAME animation
+        // tick so no dark horizontal seam appears while switching songs.
+        AppTitleBar.Background = new SolidColorBrush(background);
+        AppTitleBar.Foreground = new SolidColorBrush(
+            Color.FromArgb(255, 255, 255, 255));
+        if (_captionColorsSupported)
+        {
+            AppWindow.TitleBar.ButtonBackgroundColor = background;
+            AppWindow.TitleBar.ButtonForegroundColor =
+                Color.FromArgb(255, 255, 255, 255);
+        }
+    }
+
     private async void ImmersiveOpenButton_Click(
         object sender, RoutedEventArgs e)
     {
@@ -110,6 +115,7 @@ public sealed partial class MainWindow
             AppTitleBar.Title = "MusicLoom";
             AppWindow.Title = "MusicLoom";
             AppTitleBar.RequestedTheme = ElementTheme.Dark;
+            ApplyImmersiveTitlePalette(ImmersiveView.CurrentTopColor);
             ImmersiveHost.Visibility = Visibility.Visible;
             ImmersiveView.SetMode(_lyricsDisplayMode);
             UpdatePlayerProgress();
@@ -187,7 +193,10 @@ public sealed partial class MainWindow
             int artworkVersion = ++_immersiveArtworkVersion;
             // The palette cannot be coupled to a SQLite lyric query:
             // no lyrics or switching language must never freeze cover color.
-            _ = ImmersiveView.ApplyArtworkColorsAsync(null);
+            // Avoid a blue/default intermediate flash before the real cover
+            // bytes arrive. A visible BitmapImage samples itself on ImageOpened.
+            if (item.Artwork is null)
+                _ = ImmersiveView.ApplyArtworkColorsAsync(null);
             _ = RefreshImmersiveArtworkAsync(item, artworkVersion);
         }
 

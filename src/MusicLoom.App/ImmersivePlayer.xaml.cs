@@ -23,6 +23,20 @@ public sealed partial class ImmersivePlayer : UserControl
     private bool _updatingMode;
     private int _artworkRequest;
 
+    // One shared animation clock drives the client gradient, progress accent,
+    // fixed lyric veils and real native title-bar colors together.
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _paletteTimer;
+    private readonly System.Diagnostics.Stopwatch _paletteClock = new();
+    private readonly Color[] _paletteStart = new Color[3];
+    private readonly Color[] _paletteTarget = new Color[3];
+    private Color _accentStart;
+    private Color _accentTarget;
+    private readonly SolidColorBrush _progressAccent =
+        new(Color.FromArgb(255, 232, 255, 255));
+    private readonly SolidColorBrush _progressAccentHover =
+        new(Color.FromArgb(255, 255, 255, 255));
+
+    internal Color CurrentTopColor => ArtworkGradient.GradientStops[0].Color;
     internal event Action<Color>? PaletteChanged;
     public event EventHandler? CloseRequested;
     public event EventHandler? PreviousRequested;
@@ -41,14 +55,18 @@ public sealed partial class ImmersivePlayer : UserControl
         AlbumCover.ImageOpened += async (_, _) =>
             await ApplyDisplayedCoverPaletteAsync();
         ImmersiveLyricsList.Loaded += (_, _) =>
-        {
-            HookLyricScroller();
-            DispatcherQueue.TryEnqueue(UpdateLyricEdgeOpacity);
-        };
+            DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
         ImmersiveLyricsList.SizeChanged += (_, _) =>
-            DispatcherQueue.TryEnqueue(UpdateLyricEdgeOpacity);
-        ImmersiveLyricsList.ContainerContentChanging += (_, _) =>
-            DispatcherQueue.TryEnqueue(UpdateLyricEdgeOpacity);
+            DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
+
+        _paletteTimer = DispatcherQueue.CreateTimer();
+        _paletteTimer.Interval = TimeSpan.FromMilliseconds(16);
+        _paletteTimer.Tick += (_, _) => AdvancePalette();
+        ProgressSlider.Foreground = _progressAccent;
+        ProgressSlider.Resources["SliderTrackValueFill"] = _progressAccent;
+        ProgressSlider.Resources["SliderTrackValueFillPointerOver"] =
+            _progressAccentHover;
+        ProgressSlider.Resources["SliderThumbBackground"] = _progressAccent;
         _initialized = true;
     }
 
@@ -96,7 +114,7 @@ public sealed partial class ImmersivePlayer : UserControl
         LyricModeBox.Visibility = display.Any(
             static line => !string.IsNullOrWhiteSpace(line.Translation))
             ? Visibility.Visible : Visibility.Collapsed;
-        DispatcherQueue.TryEnqueue(UpdateLyricEdgeOpacity);
+        DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
     }
 
     internal void SetProgress(
@@ -256,54 +274,96 @@ public sealed partial class ImmersivePlayer : UserControl
         return (primary, secondary);
     }
 
-    private void SetPalette(Color primary, Color secondary)
+    private static Color Blend(Color first, Color second, double weight)
     {
-        static Color Blend(Color first, Color second, double weight)
-        {
-            byte Part(byte a, byte b) =>
-                (byte)Math.Clamp((int)Math.Round(a * (1 - weight) + b * weight), 0, 255);
-            return Color.FromArgb(255,
-                Part(first.R, second.R),
-                Part(first.G, second.G),
-                Part(first.B, second.B));
-        }
-
-        Color ink = Color.FromArgb(255, 10, 14, 23);
-        Color white = Color.FromArgb(255, 255, 255, 255);
-        ArtworkGradient.GradientStops[0].Color = Blend(ink, primary, 0.70);
-        ArtworkGradient.GradientStops[1].Color = Blend(ink, secondary, 0.54);
-        ArtworkGradient.GradientStops[2].Color = Blend(ink, primary, 0.26);
-        Color accent = Blend(primary, white, 0.30);
-        ProgressSlider.Foreground = new SolidColorBrush(accent);
-        ProgressSlider.Resources["SliderTrackValueFill"] = new SolidColorBrush(accent);
-        ProgressSlider.Resources["SliderTrackValueFillPointerOver"] =
-            new SolidColorBrush(Blend(primary, white, 0.45));
-        ProgressSlider.Resources["SliderThumbBackground"] = new SolidColorBrush(accent);
-        // The list fades via item opacity, not a dark overlay. All gradient
-        // stops remain dedicated to the actual album-driven background.
-        PaletteChanged?.Invoke(ArtworkGradient.GradientStops[0].Color);
+        byte Part(byte a, byte b) =>
+            (byte)Math.Clamp((int)Math.Round(a * (1 - weight) + b * weight),
+                0, 255);
+        return Color.FromArgb(255,
+            Part(first.R, second.R), Part(first.G, second.G),
+            Part(first.B, second.B));
     }
 
-    // Both columns have exactly the same viewport height. Neither image
-    // aspect ratio nor lyric list desired size participates in measuring it.
+    private void SetPalette(Color primary, Color secondary)
+    {
+        Color ink = Color.FromArgb(255, 10, 14, 23);
+        Color white = Color.FromArgb(255, 255, 255, 255);
+        Color[] next =
+        [
+            Blend(ink, primary, 0.70),
+            Blend(ink, secondary, 0.54),
+            Blend(ink, primary, 0.26),
+        ];
+        for (int i = 0; i < 3; i++)
+        {
+            // Interrupted track changes continue smoothly from the current
+            // visible colors, not from the previous album's original hue.
+            _paletteStart[i] = ArtworkGradient.GradientStops[i].Color;
+            _paletteTarget[i] = next[i];
+        }
+        _accentStart = _progressAccent.Color;
+        _accentTarget = Blend(primary, white, 0.30);
+        _paletteClock.Restart();
+        _paletteTimer.Start();
+    }
+
+    private void AdvancePalette()
+    {
+        const double DurationMilliseconds = 480;
+        double progress = Math.Clamp(
+            _paletteClock.Elapsed.TotalMilliseconds / DurationMilliseconds,
+            0, 1);
+        // Smoothstep: no abrupt onset or end when a new cover is selected.
+        double easing = progress * progress * (3 - 2 * progress);
+        for (int i = 0; i < 3; i++)
+        {
+            ArtworkGradient.GradientStops[i].Color =
+                Blend(_paletteStart[i], _paletteTarget[i], easing);
+        }
+        _progressAccent.Color = Blend(_accentStart, _accentTarget, easing);
+        _progressAccentHover.Color = Blend(
+            _progressAccent.Color,
+            Color.FromArgb(255, 255, 255, 255), 0.20);
+        UpdateLyricFadeColors();
+        PaletteChanged?.Invoke(CurrentTopColor);
+
+        if (progress >= 1)
+        {
+            _paletteTimer.Stop();
+            _paletteClock.Stop();
+        }
+    }
+
+    // Layout dimensions are computed from the viewport, not from the image
+    // pixels, track-title length or virtualized lyric items. The two columns
+    // therefore always occupy identical height and resize with the window.
     private void ImmersiveLayoutRoot_SizeChanged(
         object sender, SizeChangedEventArgs e)
     {
-        double width = Math.Min(1160, Math.Max(0, e.NewSize.Width - 68));
-        if (Math.Abs(PlayerColumns.Width - width) > 0.5)
+        double width = Math.Max(0, e.NewSize.Width - 68) * 0.88;
+        // 24 + 20: root padding; 38: the exit-button row.
+        double height = Math.Max(0, e.NewSize.Height - 82) * 0.88;
+        if (!double.IsFinite(PlayerColumns.Width)
+            || Math.Abs(PlayerColumns.Width - width) > 0.5)
             PlayerColumns.Width = width;
+        if (!double.IsFinite(PlayerColumns.Height)
+            || Math.Abs(PlayerColumns.Height - height) > 0.5)
+            PlayerColumns.Height = height;
+        DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
     }
 
     private void PlayerColumns_SizeChanged(
         object sender, SizeChangedEventArgs e)
     {
-        double width = Math.Max(0, (e.NewSize.Width - 38) / 2);
-        double height = Math.Max(0, e.NewSize.Height - 146);
-        double size = Math.Max(0, Math.Min(480, Math.Min(width, height)));
-        if (Math.Abs(ImmersiveArtworkFrame.Width - size) > 0.5)
-            ImmersiveArtworkFrame.Width = size;
-        if (Math.Abs(ImmersiveArtworkFrame.Height - size) > 0.5)
-            ImmersiveArtworkFrame.Height = size;
+        double panelWidth = Math.Max(0, (e.NewSize.Width - 38) / 2);
+        // Reserve the progress/time rows, buttons and row spacing.
+        double panelHeight = Math.Max(0, e.NewSize.Height - 142);
+        double side = Math.Min(panelWidth, panelHeight);
+        if (Math.Abs(ImmersiveArtworkFrame.Width - side) > 0.5)
+            ImmersiveArtworkFrame.Width = side;
+        if (Math.Abs(ImmersiveArtworkFrame.Height - side) > 0.5)
+            ImmersiveArtworkFrame.Height = side;
+        DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
     }
 
     private async Task ApplyDisplayedCoverPaletteAsync()
@@ -340,54 +400,61 @@ public sealed partial class ImmersivePlayer : UserControl
         }
     }
 
-    // WinUI ListView has no WPF-style OpacityMask. Applying opacity to
-    // realized item containers gives a true alpha fade top AND bottom,
-    // independent of background hues and without darkening the lyrics.
-    private void HookLyricScroller()
+    // WinUI 3 does not expose a WPF-style OpacityMask on ListView.
+    // Instead the transparent-to-opaque edge veils are positioned OVER the
+    // viewport and sample the exact background gradient underneath. Unlike
+    // modifying each recycled ListViewItem, these do not move on scroll.
+    private void UpdateLyricFadeMasks()
     {
-        if (_lyricScroller is not null) return;
-        _lyricScroller = FindScroller(ImmersiveLyricsList);
-        if (_lyricScroller is not null)
-            _lyricScroller.ViewChanged += (_, _) => UpdateLyricEdgeOpacity();
-    }
-
-    private ScrollViewer? _lyricScroller;
-
-    private static ScrollViewer? FindScroller(DependencyObject root)
-    {
-        if (root is ScrollViewer viewer) return viewer;
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            ScrollViewer? found = FindScroller(VisualTreeHelper.GetChild(root, i));
-            if (found is not null) return found;
-        }
-        return null;
-    }
-
-    private void UpdateLyricEdgeOpacity()
-    {
-        Panel? panel = ImmersiveLyricsList.ItemsPanelRoot;
-        if (panel is null) return;
-
         double viewport = ImmersiveLyricsList.ActualHeight;
         if (viewport <= 0) return;
-        double edge = Math.Min(88, viewport * 0.23);
-        foreach (UIElement element in panel.Children)
+        double edge = Math.Min(92, viewport * 0.23);
+        if (Math.Abs(LyricsTopFade.Height - edge) > 0.5)
+            LyricsTopFade.Height = edge;
+        if (Math.Abs(LyricsBottomFade.Height - edge) > 0.5)
+            LyricsBottomFade.Height = edge;
+        DispatcherQueue.TryEnqueue(UpdateLyricFadeColors);
+    }
+
+    private Color BackgroundAt(double y)
+    {
+        double height = Math.Max(1, ImmersiveLayoutRoot.ActualHeight);
+        double position = Math.Clamp(y / height, 0, 1) * 2;
+        return position <= 1
+            ? Blend(ArtworkGradient.GradientStops[0].Color,
+                ArtworkGradient.GradientStops[1].Color, position)
+            : Blend(ArtworkGradient.GradientStops[1].Color,
+                ArtworkGradient.GradientStops[2].Color, position - 1);
+    }
+
+    private static Color WithAlpha(Color color, byte alpha) =>
+        Color.FromArgb(alpha, color.R, color.G, color.B);
+
+    private void UpdateLyricFadeColors()
+    {
+        if (!IsLoaded || ImmersiveLayoutRoot.ActualHeight <= 0)
+            return;
+        try
         {
-            if (element is not ListViewItem item) continue;
-            try
-            {
-                Point origin = item.TransformToVisual(ImmersiveLyricsList)
-                    .TransformPoint(new Point(0, 0));
-                double middle = origin.Y + item.ActualHeight / 2;
-                double upper = Math.Clamp(middle / edge, 0, 1);
-                double lower = Math.Clamp((viewport - middle) / edge, 0, 1);
-                item.Opacity = Math.Clamp(Math.Min(upper, lower), 0, 1);
-            }
-            catch (ArgumentException)
-            {
-                // A recycled item may detach during a layout pass.
-            }
+            double top = LyricsTopFade.TransformToVisual(ImmersiveLayoutRoot)
+                .TransformPoint(new Point(0, 0)).Y;
+            double bottom = LyricsBottomFade.TransformToVisual(ImmersiveLayoutRoot)
+                .TransformPoint(new Point(0, 0)).Y;
+
+            // Opaque exactly at the edge, fully transparent towards center;
+            // RGB at every stop matches the vertically painted background.
+            LyricsTopFadeBrush.GradientStops[0].Color =
+                WithAlpha(BackgroundAt(top), 255);
+            LyricsTopFadeBrush.GradientStops[1].Color =
+                WithAlpha(BackgroundAt(top + LyricsTopFade.ActualHeight), 0);
+            LyricsBottomFadeBrush.GradientStops[0].Color =
+                WithAlpha(BackgroundAt(bottom), 0);
+            LyricsBottomFadeBrush.GradientStops[1].Color =
+                WithAlpha(BackgroundAt(bottom + LyricsBottomFade.ActualHeight), 255);
+        }
+        catch (ArgumentException)
+        {
+            // The template is temporarily detached during layout changes.
         }
     }
 

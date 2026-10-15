@@ -6463,6 +6463,10 @@ public sealed partial class MainWindow : Window
         // QQ Music and KuGou. Not just three similar-looking containers.
         LyricsSearchPreviewView lyricView = new();
         ListView lyricsPreview = lyricView.LyricsList;
+        // Restore the EXACT pre-provider NetEase behavior: preview rows
+        // reuse the existing library lyric template and container style.
+        lyricsPreview.ItemTemplate = LyricsList.ItemTemplate;
+        lyricsPreview.ItemContainerStyle = LyricsList.ItemContainerStyle;
         InstallLyricScrollSuppression(lyricsPreview);
         _matchLyricsPreviewList = lyricsPreview;
 
@@ -6568,7 +6572,8 @@ public sealed partial class MainWindow : Window
             BitmapImage? artwork = null;
             if (Uri.TryCreate(candidate.CoverUrl, UriKind.Absolute,
                 out Uri? coverUri)
-                && coverUri.Scheme == Uri.UriSchemeHttps)
+                && (coverUri.Scheme == Uri.UriSchemeHttps
+                    || coverUri.Scheme == Uri.UriSchemeHttp))
             {
                 artwork = new BitmapImage
                 {

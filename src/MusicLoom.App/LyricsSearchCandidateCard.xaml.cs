@@ -88,8 +88,15 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
 
     public void SetExternalLink(Uri uri, string label)
     {
+        StackPanel content = new()
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+        };
+        content.Children.Add(new TextBlock { Text = label, FontSize = 11 });
+        content.Children.Add(new FontIcon { Glyph = "\uE8A7", FontSize = 11 });
         ExternalLinkButton.NavigateUri = uri;
-        ExternalLinkButton.Content = label;
+        ExternalLinkButton.Content = content;
         ExternalLinkButton.Visibility = Visibility.Visible;
     }
 

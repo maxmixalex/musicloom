@@ -27,11 +27,12 @@
                   SongTitle="{Binding Title}"
                   ArtistName="{Binding Artist}"
                   AlbumName="{Binding Album}"
-                  DurationText="{Binding Duration}"
+                  DurationText="{Binding DisplayMetadata}"
                   ArtworkSource="{Binding Artwork}"
                   PreviewTooltip="{Binding PreviewTooltip}"
                   IsPreviewPlaying="{Binding PreviewIsPlaying, Mode=OneWay}"
-                  PreviewRequested="CandidateCard_PreviewRequested"/>
+                  PreviewRequested="CandidateCard_PreviewRequested"
+                  Loaded="CandidateCard_Loaded"/>
             </DataTemplate>
           </ListView.ItemTemplate>
         </ListView>

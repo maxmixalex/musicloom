@@ -168,6 +168,125 @@ public sealed partial class MainWindow
                     provider + ": real WinUI matching panel rendered to PNG");
             }
 
+            // The previous evidence only rendered the provider DETAIL tabs.
+            // It never exercised "Find XX match": render the actual search
+            // dialog and confirm its candidate+lyric visual hierarchy.
+            host.Children.Clear();
+            LyricsSearchCandidateCard searchCard = new()
+            {
+                SongTitle = "Approved-style candidate",
+                ArtistName = "Remote artist",
+                AlbumName = "Remote album",
+                DurationText = "#186016 · 3:42",
+                ArtworkSource = await FixtureArtworkAsync(
+                    Color.FromArgb(255, 73, 139, 205)),
+                PreviewTooltip = "Play or pause preview",
+            };
+            searchCard.SetExternalLink(
+                new Uri("https://music.163.com/#/song?id=186016"),
+                "在网易云音乐中打开");
+            int previewInvocations = 0;
+            searchCard.PreviewRequested += (_, _) => previewInvocations++;
+            ListView candidateResults = new()
+            {
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            };
+            candidateResults.Items.Add(new ListViewItem
+            {
+                Content = searchCard,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            });
+
+            LyricsSearchPreviewView preview = new();
+            preview.LyricsList.ItemTemplate = LyricsList.ItemTemplate;
+            preview.LyricsList.ItemContainerStyle = LyricsList.ItemContainerStyle;
+            preview.ItemsSource =
+            [
+                new LyricDisplayLine("First original line", "第一句翻译",
+                    "preferOriginal", TimeSpan.FromSeconds(12)),
+                new LyricDisplayLine("Second original line", "第二句翻译",
+                    "preferOriginal", TimeSpan.FromSeconds(16)),
+            ];
+            LyricsSearchDialogView search = new()
+            {
+                SearchContent = new LyricsSearchFormView(),
+                CandidatesContent = candidateResults,
+                LyricsContent = preview,
+                FooterContent = new Button { Content = "使用所选" },
+            };
+            search.Localize((_, zh) => zh);
+            host.Children.Add(search);
+            await Task.Delay(140);
+
+            Assert(searchCard.Content is Grid cardGrid
+                && cardGrid.ColumnDefinitions.Count == 3
+                && cardGrid.ColumnDefinitions[0].Width.Value == 52
+                && cardGrid.ColumnDefinitions[2].Width.Value == 220,
+                "Search dialog: original NetEase 52px cover and 220px metadata/actions rail");
+            Assert(ReferenceEquals(preview.LyricsList.ItemTemplate,
+                    LyricsList.ItemTemplate)
+                && ReferenceEquals(preview.LyricsList.ItemContainerStyle,
+                    LyricsList.ItemContainerStyle),
+                "Search dialog: exact library karaoke/translation ListView template and container style");
+            Assert(search.Content is Grid,
+                "Search dialog: real three-column shared XAML visual tree");
+            Invoke(searchCard.FindName("PreviewButton") as Button
+                ?? throw new InvalidOperationException("Preview button not found"));
+            Assert(previewInvocations == 1,
+                "Search dialog: actual candidate play control dispatches once");
+            string searchPng = marker + ".SearchDialog.png";
+            await SavePanelScreenshotAsync(search, searchPng);
+            Assert(new FileInfo(searchPng).Length > 1800,
+                "Search dialog: actual WinUI candidate and bilingual lyric columns rendered");
+
+            // A fixed viewport must govern BOTH immersive columns. Long
+            // titles, translated lyrics and the cover's natural dimensions
+            // are not permitted to grow the player's overall footprint.
+            host.Children.Clear();
+            ImmersivePlayer immersive = new()
+            {
+                Width = 900,
+                Height = 520,
+            };
+            host.Children.Add(immersive);
+            immersive.SetTrack("Short title", "Artist", "Album", null,
+                [new LyricDisplayLine("One", null, "preferOriginal")]);
+            await Task.Delay(140);
+            Grid playerColumns = immersive.FindName("PlayerColumns") as Grid
+                ?? throw new InvalidOperationException("Immersive columns not found");
+            Grid leftColumn = immersive.FindName("LeftPanel") as Grid
+                ?? throw new InvalidOperationException("Left panel not found");
+            Grid rightColumn = immersive.FindName("RightPanel") as Grid
+                ?? throw new InvalidOperationException("Right panel not found");
+            double originalWidth = playerColumns.ActualWidth;
+            double originalHeight = playerColumns.ActualHeight;
+            Assert(originalWidth > 200 && originalHeight > 150
+                && Math.Abs(leftColumn.ActualHeight - rightColumn.ActualHeight) < 1,
+                "Immersive: equal-height viewport-proportional left and right columns");
+
+            immersive.SetTrack(new string('L', 320), new string('A', 240),
+                new string('B', 200), null,
+                Enumerable.Range(0, 120).Select(i =>
+                    new LyricDisplayLine(new string('X', 230),
+                        new string('中', 160),
+                        "preferOriginal", TimeSpan.FromSeconds(i))).ToArray());
+            await Task.Delay(160);
+            Assert(Math.Abs(playerColumns.ActualWidth - originalWidth) < 1
+                && Math.Abs(playerColumns.ActualHeight - originalHeight) < 1
+                && Math.Abs(leftColumn.ActualHeight - rightColumn.ActualHeight) < 1,
+                "Immersive: 120 long translated lines cannot change container dimensions");
+            Border upperFade = immersive.FindName("LyricsTopFade") as Border
+                ?? throw new InvalidOperationException("Top viewport fade not found");
+            Border lowerFade = immersive.FindName("LyricsBottomFade") as Border
+                ?? throw new InvalidOperationException("Bottom viewport fade not found");
+            Assert(!upperFade.IsHitTestVisible && !lowerFade.IsHitTestVisible
+                && upperFade.Height > 0 && lowerFade.Height > 0,
+                "Immersive: stationary, non-intercepting edge fades outside scrolling items");
+            string immersivePng = marker + ".ImmersiveViewport.png";
+            await SavePanelScreenshotAsync(immersive, immersivePng);
+            Assert(new FileInfo(immersivePng).Length > 1800,
+                "Immersive: actual WinUI viewport with long bilingual lyrics rendered");
+
             host.Children.Clear();
             AppRoot.Children.Remove(host);
             host = null;

@@ -49,6 +49,10 @@ public sealed partial class MainWindow
         {
             Source = source,
         };
+        // No separately invented QQ/KuGou lyric layout: use the exact
+        // library template previously reused by the approved NetEase dialog.
+        panel.PreviewLyricsList.ItemTemplate = LyricsList.ItemTemplate;
+        panel.PreviewLyricsList.ItemContainerStyle = LyricsList.ItemContainerStyle;
         panel.Localize(L);
         if (source == CloudLyricsSource.KugouMusic)
         {

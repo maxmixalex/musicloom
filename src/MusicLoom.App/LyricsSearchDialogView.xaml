@@ -3,10 +3,10 @@
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Grid RowSpacing="12">
     <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-    <Grid Height="500" ColumnSpacing="12">
+    <Grid Height="500" MaxWidth="1140" HorizontalAlignment="Stretch" ColumnSpacing="12">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="270" />
-        <ColumnDefinition Width="1.4*" MinWidth="280" />
+        <ColumnDefinition Width="500" />
         <ColumnDefinition Width="1*" MinWidth="220" />
       </Grid.ColumnDefinitions>
       <Border Grid.Column="0" Padding="14" CornerRadius="9" BorderThickness="1"
