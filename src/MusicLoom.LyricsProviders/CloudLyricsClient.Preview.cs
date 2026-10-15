@@ -271,9 +271,19 @@ public sealed partial class CloudLyricsClient
             && nested.ValueKind == JsonValueKind.Object
                 ? nested : node;
 
-        string address = FirstPresent(data, "play_url",
-            "playUrl", "url", "play_url_mid", "backupurl");
-        return NormalizeStreamUrl(address, CloudLyricsSource.KugouMusic);
+        // Do not stop at a nonempty but expired/non-provider primary URL:
+        // some public responses contain a usable backup stream instead.
+        foreach (string key in new[]
+        {
+            "play_url", "playUrl", "url", "play_url_mid",
+            "play_backup_url", "play_backup_url_mid", "backupurl",
+        })
+        {
+            Uri? playable = NormalizeStreamUrl(
+                Str(data, key), CloudLyricsSource.KugouMusic);
+            if (playable is not null) return playable;
+        }
+        return null;
     }
 
     /// <summary>

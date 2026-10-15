@@ -99,6 +99,17 @@ internal static class CloudAudioPreviewRegression
                 "KuGou mobile play-info response was not parsed.");
         }
 
+        Uri? kgBackup = CloudLyricsClient.ParseKugouGuestPreviewResponse(
+            """{"status":1,"data":{
+            "play_url":"https://untrusted.invalid/f.mp3",
+            "play_backup_url":"https://fs.w.kugou.com/guest/backup.mp3"}}""");
+        if (kgBackup?.AbsoluteUri
+            != "https://fs.w.kugou.com/guest/backup.mp3")
+        {
+            throw new InvalidOperationException(
+                "KuGou valid backup stream was hidden by a bad primary URL.");
+        }
+
         if (CloudLyricsClient.ParseKugouGuestPreviewResponse(
             """{"status":1,"data":{"play_url":""}}""") is not null
             || CloudLyricsClient.ParseKugouGuestPreviewResponse(
