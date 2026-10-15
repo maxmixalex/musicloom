@@ -172,6 +172,10 @@ public sealed partial class MainWindow : Window
         ApplyWindowIcon();
 
         LibraryFilterBox.SelectedIndex = 0;
+        LibraryLyricsFacetBox.SelectedIndex = 0;
+        LibraryNeteaseFacetBox.SelectedIndex = 0;
+        LibraryQqFacetBox.SelectedIndex = 0;
+        LibraryKugouFacetBox.SelectedIndex = 0;
         LibrarySortBox.SelectedIndex = 2;
         LibrarySortDirectionBox.SelectedIndex = 0;
         PlaylistSortBox.SelectedIndex = 2;
@@ -1304,6 +1308,10 @@ public sealed partial class MainWindow : Window
         LibrarySearchBox.Text =
             string.Empty;
         LibraryFilterBox.SelectedIndex = 0;
+        LibraryLyricsFacetBox.SelectedIndex = 0;
+        LibraryNeteaseFacetBox.SelectedIndex = 0;
+        LibraryQqFacetBox.SelectedIndex = 0;
+        LibraryKugouFacetBox.SelectedIndex = 0;
         ApplyLibraryFilter();
 
         NavigateTo("library");
@@ -3957,6 +3965,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void LibraryFacetFilter_SelectionChanged(
+        object sender, SelectionChangedEventArgs e)
+    {
+        if (!_refreshingLocalizedChoices)
+            ApplyLibraryFilter();
+    }
+
     private void LibrarySortBox_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
@@ -3982,7 +3997,11 @@ public sealed partial class MainWindow : Window
         if (LibraryList is null
             || LibrarySearchBox is null
             || LibraryFilterBox is null
-            || LibrarySortBox is null)
+            || LibrarySortBox is null
+            || LibraryLyricsFacetBox is null
+            || LibraryNeteaseFacetBox is null
+            || LibraryQqFacetBox is null
+            || LibraryKugouFacetBox is null)
         {
             return;
         }
@@ -4004,6 +4023,7 @@ public sealed partial class MainWindow : Window
 
         IEnumerable<LibraryDisplayItem>
             items = _allLibraryItems;
+        EnsureLibraryFacetSnapshot();
 
         if (filter != "all")
         {
@@ -4025,6 +4045,8 @@ public sealed partial class MainWindow : Window
                         StringComparison
                             .OrdinalIgnoreCase));
         }
+
+        items = items.Where(MatchesLibraryFacets);
 
         items =
             SortLibraryItems(
@@ -8588,6 +8610,10 @@ public sealed partial class MainWindow : Window
         LibrarySearchBox.Text =
             string.Empty;
         LibraryFilterBox.SelectedIndex = 0;
+        LibraryLyricsFacetBox.SelectedIndex = 0;
+        LibraryNeteaseFacetBox.SelectedIndex = 0;
+        LibraryQqFacetBox.SelectedIndex = 0;
+        LibraryKugouFacetBox.SelectedIndex = 0;
         ApplyLibraryFilter();
 
         NavigateTo("library");
@@ -9973,8 +9999,8 @@ public sealed partial class MainWindow : Window
                 "搜索歌曲、艺术家、专辑或路径");
         LibraryFilterAllItem.Content =
             L(
-                "All tracks",
-                "全部歌曲");
+                "All statuses",
+                "全部状态");
         LibraryFilterPendingItem.Content =
             L(
                 "Pending",
@@ -9991,6 +10017,7 @@ public sealed partial class MainWindow : Window
             L(
                 "Errors",
                 "错误");
+        LocalizeLibraryFacetBoxes();
         SortTitleItem.Content =
             L(
                 "Sort by title",
@@ -10482,6 +10509,10 @@ public sealed partial class MainWindow : Window
         ComboBox[] boxes =
         [
             LibraryFilterBox,
+            LibraryLyricsFacetBox,
+            LibraryNeteaseFacetBox,
+            LibraryQqFacetBox,
+            LibraryKugouFacetBox,
             LibrarySortBox,
             LibrarySortDirectionBox,
             LyricsModeBox,

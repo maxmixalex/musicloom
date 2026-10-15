@@ -59,6 +59,7 @@
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
 
@@ -152,6 +153,7 @@
               <TextBox
                   x:Name="LibrarySearchBox"
                   Grid.Column="1"
+                  MaxWidth="290" HorizontalAlignment="Stretch"
                   PlaceholderText="Search title, artist, album or path"
                   TextChanged="LibrarySearchBox_TextChanged" />
             </Grid>
@@ -160,7 +162,7 @@
                 x:Name="LibraryFilterBox"
                 Grid.Column="1"
                 SelectionChanged="LibraryFilterBox_SelectionChanged">
-              <ComboBoxItem x:Name="LibraryFilterAllItem" Content="All tracks" Tag="all" />
+              <ComboBoxItem x:Name="LibraryFilterAllItem" Content="All statuses" Tag="all" />
               <ComboBoxItem x:Name="LibraryFilterPendingItem" Content="Pending" Tag="pending" />
               <ComboBoxItem x:Name="LibraryFilterSyncedItem" Content="Synced" Tag="synced" />
               <ComboBoxItem x:Name="LibraryFilterWarningsItem" Content="Warnings" Tag="warning" />
@@ -206,7 +208,53 @@
             </StackPanel>
           </Grid>
 
-          <Grid Grid.Row="2">
+          <!-- Independent facet filters compose with search and sync status. -->
+          <Grid Grid.Row="2" ColumnSpacing="8" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="165"/>
+              <ColumnDefinition Width="177"/>
+              <ColumnDefinition Width="177"/>
+              <ColumnDefinition Width="177"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <ComboBox x:Name="LibraryLyricsFacetBox" Grid.Column="0"
+                      HorizontalAlignment="Stretch"
+                      SelectionChanged="LibraryFacetFilter_SelectionChanged">
+              <ComboBoxItem Tag="all" Content="Lyrics: all"/>
+              <ComboBoxItem Tag="present" Content="Lyrics: available"/>
+              <ComboBoxItem Tag="missing" Content="Lyrics: missing"/>
+              <ComboBoxItem Tag="empty" Content="Lyrics: explicitly empty"/>
+            </ComboBox>
+            <ComboBox x:Name="LibraryNeteaseFacetBox" Grid.Column="1"
+                      HorizontalAlignment="Stretch"
+                      SelectionChanged="LibraryFacetFilter_SelectionChanged">
+              <ComboBoxItem Tag="all" Content="NetEase: all"/>
+              <ComboBoxItem Tag="matched" Content="NetEase: matched"/>
+              <ComboBoxItem Tag="confirmed" Content="NetEase: confirmed"/>
+              <ComboBoxItem Tag="missing" Content="NetEase: unmatched"/>
+              <ComboBoxItem Tag="empty" Content="NetEase: explicitly empty"/>
+            </ComboBox>
+            <ComboBox x:Name="LibraryQqFacetBox" Grid.Column="2"
+                      HorizontalAlignment="Stretch"
+                      SelectionChanged="LibraryFacetFilter_SelectionChanged">
+              <ComboBoxItem Tag="all" Content="QQ Music: all"/>
+              <ComboBoxItem Tag="matched" Content="QQ Music: matched"/>
+              <ComboBoxItem Tag="confirmed" Content="QQ Music: confirmed"/>
+              <ComboBoxItem Tag="missing" Content="QQ Music: unmatched"/>
+              <ComboBoxItem Tag="empty" Content="QQ Music: explicitly empty"/>
+            </ComboBox>
+            <ComboBox x:Name="LibraryKugouFacetBox" Grid.Column="3"
+                      HorizontalAlignment="Stretch"
+                      SelectionChanged="LibraryFacetFilter_SelectionChanged">
+              <ComboBoxItem Tag="all" Content="KuGou: all"/>
+              <ComboBoxItem Tag="matched" Content="KuGou: matched"/>
+              <ComboBoxItem Tag="confirmed" Content="KuGou: confirmed"/>
+              <ComboBoxItem Tag="missing" Content="KuGou: unmatched"/>
+              <ComboBoxItem Tag="empty" Content="KuGou: explicitly empty"/>
+            </ComboBox>
+          </Grid>
+
+          <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
               <ColumnDefinition x:Name="LibraryListColumn" Width="*" MinWidth="360" />
               <ColumnDefinition x:Name="LibrarySplitterColumn" Width="0" />
@@ -588,6 +636,7 @@
                     Margin="0,16,0,0"
                     IsAddTabButtonVisible="False"
                     CanDragTabs="False"
+                    CanReorderTabs="False"
                     TabWidthMode="SizeToContent">
                   <TabViewItem x:Name="LyricsTab" Header="Lyrics" IsClosable="False">
                     <Grid Padding="2,12,2,2">

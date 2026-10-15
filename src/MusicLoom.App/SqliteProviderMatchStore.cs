@@ -73,6 +73,47 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
         }
     }
 
+    // One query for an entire library facet refresh; never SELECT per track.
+    public async Task<Dictionary<string, Dictionary<CloudLyricsSource, StoredProviderMatch>>>
+        LoadSnapshotAsync(CancellationToken ct = default)
+    {
+        Dictionary<string, Dictionary<CloudLyricsSource, StoredProviderMatch>> snapshot =
+            new(StringComparer.OrdinalIgnoreCase);
+        await using SqliteConnection db = await OpenAsync(ct);
+        await using SqliteCommand cmd = db.CreateCommand();
+        cmd.CommandText = """
+            SELECT source_path, provider, suppressed, confirmed,
+                   track_id, song_mid, media_mid, file_hash, album_id,
+                   title, artist, album, duration_ms, cover_url
+              FROM provider_matches;
+            """;
+        await using SqliteDataReader rows = await cmd.ExecuteReaderAsync(ct);
+        while (await rows.ReadAsync(ct))
+        {
+            string path = rows.GetString(0);
+            CloudLyricsSource provider = (CloudLyricsSource)rows.GetInt32(1);
+            bool suppressed = rows.GetInt32(2) != 0;
+            bool confirmed = rows.GetInt32(3) != 0;
+            string? Get(int index) => rows.IsDBNull(index) ? null : rows.GetString(index);
+            string? id = Get(4);
+            CloudLyricsCandidate? candidate =
+                suppressed || string.IsNullOrWhiteSpace(id) ? null
+                : new CloudLyricsCandidate(provider, id,
+                    Get(9) ?? "", Get(10) ?? "", Get(11) ?? "",
+                    rows.IsDBNull(12) ? 0 : rows.GetInt32(12),
+                    Hash: Get(7), SongMid: Get(5),
+                    CoverUrl: Get(13), AlbumId: Get(8), MediaMid: Get(6));
+            if (!snapshot.TryGetValue(path, out var providerRows))
+            {
+                providerRows = [];
+                snapshot.Add(path, providerRows);
+            }
+            providerRows[provider] = new StoredProviderMatch(
+                path, provider, candidate, suppressed, confirmed);
+        }
+        return snapshot;
+    }
+
     public async Task<StoredProviderMatch?> GetAsync(
         string sourcePath, CloudLyricsSource provider,
         CancellationToken ct = default)
