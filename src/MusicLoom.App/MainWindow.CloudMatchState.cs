@@ -78,6 +78,7 @@ public sealed partial class MainWindow
                 return;
 
             await matches.ConfirmAsync(item.Entry.SourcePath, provider);
+            InvalidateLibraryFacetSnapshot();
             if (ReferenceEquals(item, _selectedLibraryItem))
                 await RefreshCloudMatchTabsAsync(item);
         }
@@ -115,6 +116,7 @@ public sealed partial class MainWindow
             // The durable explicit no-match marker is provider-specific.
             // It prevents a later metadata auto-match from filling it again.
             await matches.SuppressAsync(item.Entry.SourcePath, provider);
+            InvalidateLibraryFacetSnapshot();
 
             SqliteLyricsCache cache = new(DatabasePath);
             LibraryLyricsRecord? canonical =

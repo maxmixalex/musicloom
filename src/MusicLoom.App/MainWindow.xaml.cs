@@ -2047,12 +2047,12 @@ public sealed partial class MainWindow : Window
 
                 try
                 {
+                    // Fingerprint is primary; a uniquely verified artist/title
+                    // search is a conservative fallback, including on decoder
+                    // or upstream fingerprint failure.
                     TrackRecognitionResult result =
-                        await Task.Run(
-                            () => recognizer.RecognizeAsync(
-                                entry.SourcePath,
-                                cancellation.Token),
-                            cancellation.Token);
+                        await RecognizeNeteaseWithMetadataFallbackAsync(
+                            recognizer, client, entry, cancellation.Token);
 
                     FileInfo source = new(entry.SourcePath);
                     TrackMetadata metadata = entry.Metadata!;
@@ -2243,6 +2243,8 @@ public sealed partial class MainWindow : Window
                     ? L("Match cancelled.", "匹配已取消。")
                     : L("Matching finished.", "匹配已完成。"));
         }
+
+        InvalidateLibraryFacetSnapshot();
 
         // Canonicalize only changed rows; do not replace ItemsSource or
         // reapply the active filter, which could hide the selected track.

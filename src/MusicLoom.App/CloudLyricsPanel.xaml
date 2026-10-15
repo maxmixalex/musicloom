@@ -31,8 +31,9 @@
                   ArtworkSource="{Binding Artwork}"
                   PreviewTooltip="{Binding PreviewTooltip}"
                   IsPreviewPlaying="{Binding PreviewIsPlaying, Mode=OneWay}"
-                  PreviewRequested="CandidateCard_PreviewRequested"
-                  Loaded="CandidateCard_Loaded"/>
+                  ExternalUrl="{Binding ExternalUrl}"
+                  ExternalLabel="{Binding ExternalLabel}"
+                  PreviewRequested="CandidateCard_PreviewRequested"/>
             </DataTemplate>
           </ListView.ItemTemplate>
         </ListView>

@@ -289,6 +289,7 @@ public sealed partial class MainWindow
             SqliteProviderMatchStore matches = new(DatabasePath);
             await matches.SaveMatchAsync(
                 e.SourcePath, e.Candidate, confirmed: true);
+            InvalidateLibraryFacetSnapshot();
 
             if (e.Document is { Lines.Count: > 0 } document)
             {
@@ -393,16 +394,19 @@ public sealed partial class MainWindow
 
         using CancellationTokenSource cancellation = new();
         _operationCancellation = cancellation;
-        SetBusy(true,
-            L($"Searching {provider} by metadata…",
-              $"正在通过{(source == CloudLyricsSource.QqMusic ? "QQ 音乐" : "酷狗音乐")}元数据搜索……"));
+        SetBusy(true, source == CloudLyricsSource.KugouMusic
+            ? L("Recognizing KuGou audio, with metadata fallback…",
+                "正在使用酷狗音频识曲，必要时回退元数据……")
+            : L("Searching QQ Music by metadata…", "正在按元数据搜索QQ音乐……"));
 
-        int updated = 0, ambiguous = 0, failures = 0;
+        int updated = 0, recognized = 0, ambiguous = 0, failures = 0;
         try
         {
             using CloudLyricsClient client = new();
             SqliteLyricsCache cache = new(DatabasePath);
             SqliteProviderMatchStore matchStore = new(DatabasePath);
+            using KugouAudioRecognitionClient kugouRecognizer = new();
+            KugouPcmWindowDecoder pcmDecoder = new();
 
             for (int i = 0; i < snapshot.Length; i++)
             {
@@ -429,30 +433,93 @@ public sealed partial class MainWindow
                         await cache.GetLibraryAsync(
                             item.Entry.SourcePath, cancellation.Token);
 
-                    if (string.IsNullOrWhiteSpace(item.Title)
-                        || string.IsNullOrWhiteSpace(item.Artist))
+                    CloudLyricsCandidate? chosen = null;
+                    if (source == CloudLyricsSource.KugouMusic)
                     {
-                        continue;
+                        try
+                        {
+                            byte[]? pcm = await pcmDecoder.DecodeAsync(
+                                item.Entry.SourcePath, cancellation.Token);
+                            if (pcm is { Length: > 0 })
+                            {
+                                var identified = await kugouRecognizer
+                                    .RecognizeAsync(pcm, cancellation.Token);
+                                foreach (KugouRecognitionCandidate recognizedSong
+                                    in identified.OrderByDescending(
+                                        static candidate => candidate.Confidence))
+                                {
+                                    if (string.IsNullOrWhiteSpace(recognizedSong.Title)
+                                        || string.IsNullOrWhiteSpace(recognizedSong.Artist))
+                                        continue;
+                                    var search = await client.SearchAsync(source,
+                                        recognizedSong.Artist + " " + recognizedSong.Title,
+                                        cancellation.Token);
+                                    // A matching provider file hash is preferred to
+                                    // metadata; otherwise require a unique exact
+                                    // recognized title+artist combination.
+                                    CloudLyricsCandidate[] hashMatches = search
+                                        .Where(candidate =>
+                                            !string.IsNullOrWhiteSpace(recognizedSong.AudioHash)
+                                            && string.Equals(candidate.Hash,
+                                                recognizedSong.AudioHash,
+                                                StringComparison.OrdinalIgnoreCase))
+                                        .ToArray();
+                                    CloudLyricsCandidate[] strictAudio = hashMatches.Length > 0
+                                        ? hashMatches
+                                        : search.Where(candidate =>
+                                            CanonicalMatchKey(candidate.Title)
+                                                == CanonicalMatchKey(recognizedSong.Title)
+                                            && CanonicalMatchKey(candidate.Artist)
+                                                == CanonicalMatchKey(recognizedSong.Artist))
+                                            .ToArray();
+                                    if (strictAudio.Length == 1)
+                                    {
+                                        chosen = strictAudio[0];
+                                        recognized++;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch (Exception error)
+                        {
+                            // Unavailable recognition must not prevent
+                            // the explicitly requested metadata fallback.
+                            AppDiagnostics.LogException(
+                                "KuGou audio recognition failed; using metadata fallback.",
+                                error);
+                        }
                     }
 
-                    IReadOnlyList<CloudLyricsCandidate> found =
-                        await client.SearchAsync(source,
+                    if (chosen is null)
+                    {
+                        if (string.IsNullOrWhiteSpace(item.Title)
+                            || string.IsNullOrWhiteSpace(item.Artist))
+                            continue;
+
+                        var found = await client.SearchAsync(source,
                             item.Artist + " " + item.Title,
                             cancellation.Token);
-                    CloudLyricsCandidate[] strict = found
-                        .Where(candidate =>
-                            ExactProviderMetadataMatch(item, candidate))
-                        .ToArray();
-                    if (strict.Length != 1)
-                    {
-                        if (strict.Length > 1) ambiguous++;
-                        continue;
+                        CloudLyricsCandidate[] strict = found
+                            .Where(candidate =>
+                                ExactProviderMetadataMatch(item, candidate))
+                            .ToArray();
+                        if (strict.Length != 1)
+                        {
+                            if (strict.Length > 1) ambiguous++;
+                            continue;
+                        }
+                        chosen = strict[0];
                     }
 
                     // Auto-matching records actual provider metadata,
                     // even if the track has no downloadable lyrics.
                     await matchStore.SaveMatchAsync(
-                        item.Entry.SourcePath, strict[0],
+                        item.Entry.SourcePath, chosen,
                         confirmed: false, ct: cancellation.Token);
                     updated++;
 
@@ -462,7 +529,7 @@ public sealed partial class MainWindow
                         && canonical?.Origin != LibraryLyricsOrigin.ManualEmpty)
                     {
                         LrcDocument? lyrics =
-                            await client.GetLyricsAsync(strict[0],
+                            await client.GetLyricsAsync(chosen,
                                 cancellation.Token);
                         if (lyrics is { Lines.Count: > 0 })
                         {
@@ -474,7 +541,7 @@ public sealed partial class MainWindow
                                 lyrics.ToString(),
                                 null,
                                 (source == CloudLyricsSource.QqMusic
-                                    ? "auto-qq:" : "auto-kugou:") + strict[0].Id,
+                                    ? "auto-qq:" : "auto-kugou:") + chosen.Id,
                                 DateTimeOffset.UtcNow),
                                 cancellation.Token);
                             await QueueLyricOutputSyncAsync(item);
@@ -512,12 +579,14 @@ public sealed partial class MainWindow
                 L("Metadata search finished.", "元数据匹配已结束。"));
         }
 
+        InvalidateLibraryFacetSnapshot();
+
         ShowInfo(
             failures > 0 ? InfoBarSeverity.Warning
                          : InfoBarSeverity.Informational,
             L($"{provider} metadata matching", $"{provider} 元数据匹配"),
             L(
-                $"{updated} matches found by metadata; {ambiguous} ambiguous results skipped; {failures} errors.",
-                $"元数据匹配成功 {updated} 首，跳过歧义结果 {ambiguous} 个，错误 {failures} 个。"));
+                $"{updated} matches ({recognized} by audio); {ambiguous} ambiguous results skipped; {failures} errors.",
+                $"匹配成功 {updated} 首（音频识曲 {recognized} 首），跳过歧义结果 {ambiguous} 个，错误 {failures} 个。"));
     }
 }

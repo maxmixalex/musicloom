@@ -25,6 +25,15 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
     public static readonly DependencyProperty ArtworkSourceProperty =
         DependencyProperty.Register(nameof(ArtworkSource), typeof(ImageSource),
             typeof(LyricsSearchCandidateCard), new PropertyMetadata(null));
+    public static readonly DependencyProperty ExternalUrlProperty =
+        DependencyProperty.Register(nameof(ExternalUrl), typeof(string),
+            typeof(LyricsSearchCandidateCard),
+            new PropertyMetadata(null, OnExternalChanged));
+    public static readonly DependencyProperty ExternalLabelProperty =
+        DependencyProperty.Register(nameof(ExternalLabel), typeof(string),
+            typeof(LyricsSearchCandidateCard),
+            new PropertyMetadata(null, OnExternalChanged));
+
     public static readonly DependencyProperty PreviewTooltipProperty =
         DependencyProperty.Register(nameof(PreviewTooltip), typeof(string),
             typeof(LyricsSearchCandidateCard),
@@ -68,6 +77,40 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
     {
         get => (string)GetValue(PreviewTooltipProperty);
         set => SetValue(PreviewTooltipProperty, value);
+    }
+
+    public string? ExternalUrl
+    {
+        get => (string?)GetValue(ExternalUrlProperty);
+        set => SetValue(ExternalUrlProperty, value);
+    }
+    public string? ExternalLabel
+    {
+        get => (string?)GetValue(ExternalLabelProperty);
+        set => SetValue(ExternalLabelProperty, value);
+    }
+
+    private static void OnExternalChanged(
+        DependencyObject sender, DependencyPropertyChangedEventArgs args)
+    {
+        if (sender is LyricsSearchCandidateCard card)
+            card.UpdateExternalLink();
+    }
+
+    private void UpdateExternalLink()
+    {
+        // Recycling updates bindings without firing Loaded again. Invalidate
+        // the old link before applying the new provider and candidate URL.
+        if (!Uri.TryCreate(ExternalUrl, UriKind.Absolute, out Uri? uri)
+            || uri.Scheme != Uri.UriSchemeHttps
+            || uri.Host is not ("y.qq.com" or "www.kugou.com"))
+        {
+            ExternalLinkButton.NavigateUri = null;
+            ExternalLinkButton.Content = null;
+            ExternalLinkButton.Visibility = Visibility.Collapsed;
+            return;
+        }
+        SetExternalLink(uri, ExternalLabel ?? "");
     }
 
     public bool IsPreviewPlaying

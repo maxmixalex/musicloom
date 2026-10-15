@@ -30,13 +30,18 @@ public sealed class CloudMatchAcceptedEventArgs : EventArgs
 /// </summary>
 internal sealed class CloudCandidateRow : INotifyPropertyChanged
 {
-    public CloudCandidateRow(CloudLyricsCandidate candidate, string previewTooltip)
+    public CloudCandidateRow(CloudLyricsCandidate candidate,
+        string previewTooltip, string linkLabel, string searchLabel)
     {
         Candidate = candidate;
         PreviewTooltip = previewTooltip;
+        _linkLabel = linkLabel;
+        _searchLabel = searchLabel;
         ApplyArtwork(candidate.CoverUrl);
     }
 
+    private readonly string _linkLabel;
+    private readonly string _searchLabel;
     public CloudLyricsCandidate Candidate { get; private set; }
     public string PreviewTooltip { get; }
     public bool PreviewIsPlaying { get; private set; }
@@ -64,6 +69,32 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
     }
     public string DisplayMetadata => string.IsNullOrWhiteSpace(Candidate.Id)
         ? Duration : $"#{Candidate.Id} · {Duration}";
+    public string? ExternalUrl => Candidate.Source switch
+    {
+        CloudLyricsSource.QqMusic
+            when Candidate.SongMid is { Length: > 0 } mid
+            && mid.All(char.IsAsciiLetterOrDigit) =>
+            "https://y.qq.com/n/ryqq/songDetail/" + mid,
+        CloudLyricsSource.QqMusic =>
+            "https://y.qq.com/n/ryqq/search?w=" +
+                Uri.EscapeDataString(Candidate.Artist + " " + Candidate.Title),
+        CloudLyricsSource.KugouMusic
+            when Candidate.Hash is { Length: >= 16 and <= 64 } hash
+            && hash.All(UriHexDigit) =>
+            "https://www.kugou.com/song/#hash=" + hash
+                + (Candidate.AlbumId is { Length: > 0 } id
+                    && id.All(char.IsAsciiDigit)
+                    ? "&album_id=" + id : ""),
+        _ => null,
+    };
+    public string ExternalLabel =>
+        Candidate.Source == CloudLyricsSource.QqMusic
+        && (Candidate.SongMid is not { Length: > 0 } mid
+            || !mid.All(char.IsAsciiLetterOrDigit))
+            ? _searchLabel : _linkLabel;
+    private static bool UriHexDigit(char c) =>
+        c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
+
     public BitmapImage? Artwork { get; private set; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -334,7 +365,11 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             CloudCandidateRow[] ranked = found
                 .OrderByDescending(CandidateScore)
                 .Select(candidate => new CloudCandidateRow(candidate,
-                    L("Play remote preview", "播放远程试听")))
+                    L("Play remote preview", "播放远程试听"),
+                    candidate.Source == CloudLyricsSource.QqMusic
+                        ? L("Open in QQ Music", "在QQ音乐中打开")
+                        : L("Open in KuGou Music", "在酷狗音乐中打开"),
+                    L("Search in QQ Music", "在QQ音乐中搜索")))
                 .ToArray();
             CandidatesList.ItemsSource = ranked;
             ProviderStatus.Text = ranked.Length == 0
@@ -431,25 +466,6 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             ShowPreviewMessage(L(
                 "Could not load lyrics from this provider.",
                 "无法从此歌词源获取歌词。"));
-        }
-    }
-
-    private void CandidateCard_Loaded(object sender, RoutedEventArgs e)
-    {
-        if (sender is not LyricsSearchCandidateCard card
-            || card.DataContext is not CloudCandidateRow row)
-            return;
-
-        // Follow the accepted NetEase right-hand metadata/link layout,
-        // linking only known-valid first-party QQ song MIDs.
-        if (row.Candidate.Source == CloudLyricsSource.QqMusic
-            && row.Candidate.SongMid is string mid
-            && mid.Length > 0
-            && mid.All(static ch => char.IsAsciiLetterOrDigit(ch)))
-        {
-            card.SetExternalLink(
-                new Uri("https://y.qq.com/n/ryqq/songDetail/" + mid),
-                L("Open in QQ Music", "在QQ音乐中打开"));
         }
     }
 
