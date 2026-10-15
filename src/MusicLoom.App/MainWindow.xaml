@@ -411,11 +411,8 @@
                               Visibility="Collapsed">
               <primitives:Thumb.Template>
                 <ControlTemplate TargetType="primitives:Thumb">
-                  <Grid Background="Transparent">
-                    <Border Width="2" HorizontalAlignment="Center"
-                            CornerRadius="1"
-                            Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                  </Grid>
+                  <!-- Transparent 12px grab area: no permanent divider. -->
+                  <Grid Background="Transparent" />
                 </ControlTemplate>
               </primitives:Thumb.Template>
             </primitives:Thumb>

@@ -86,8 +86,8 @@ public sealed partial class PlayingWaveform : UserControl
                 Brighten(accent.B)));
             WaveLine.Stroke = visible;
             WaveArea.Fill = visible;
-            WaveLine.Opacity = 0.68;
-            WaveArea.Opacity = 0.18;
+            WaveLine.Opacity = 0.43;
+            WaveArea.Opacity = 0.085;
         }
         else
         {
