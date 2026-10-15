@@ -108,7 +108,7 @@
             VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
             RowSpacing="16">
         <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
+          <RowDefinition Height="128" />
           <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Grid Grid.Row="0" ColumnSpacing="14">
@@ -145,13 +145,21 @@
         <Grid Grid.Row="1" MinHeight="0">
           <ListView x:Name="ImmersiveLyricsList"
                     SelectionMode="None" Background="Transparent"
+                    Padding="0">
+            <ListView.ItemContainerStyle>
+              <Style TargetType="ListViewItem">
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+              </Style>
+            </ListView.ItemContainerStyle>
                     DoubleTapped="ImmersiveLyricsList_DoubleTapped"
                     HorizontalContentAlignment="Stretch"
                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                     ScrollViewer.VerticalScrollBarVisibility="Hidden">
             <ListView.ItemTemplate>
               <DataTemplate>
-                <StackPanel Padding="2,10" Spacing="7"
+                <StackPanel Padding="0,10" Spacing="7"
                             Opacity="{Binding ImmersiveOpacity}">
                   <TextBlock x:Name="PrimaryLyricText"
                              local:KaraokeLyricText.Line="{Binding}"

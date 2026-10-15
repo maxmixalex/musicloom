@@ -6,7 +6,6 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using MusicLoom.Core.Configuration;
 using Windows.Graphics.Imaging;
 using Windows.Foundation;
-using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Storage.Streams;
 using Windows.System;
 using Windows.UI;
@@ -271,9 +270,9 @@ public sealed partial class ImmersivePlayer : UserControl
 
         Color ink = Color.FromArgb(255, 10, 14, 23);
         Color white = Color.FromArgb(255, 255, 255, 255);
-        ArtworkGradient.GradientStops[0].Color = Blend(ink, primary, 0.47);
-        ArtworkGradient.GradientStops[1].Color = Blend(ink, secondary, 0.36);
-        ArtworkGradient.GradientStops[2].Color = Blend(ink, primary, 0.14);
+        ArtworkGradient.GradientStops[0].Color = Blend(ink, primary, 0.70);
+        ArtworkGradient.GradientStops[1].Color = Blend(ink, secondary, 0.54);
+        ArtworkGradient.GradientStops[2].Color = Blend(ink, primary, 0.26);
         Color accent = Blend(primary, white, 0.30);
         ProgressSlider.Foreground = new SolidColorBrush(accent);
         ProgressSlider.Resources["SliderTrackValueFill"] = new SolidColorBrush(accent);
@@ -324,7 +323,9 @@ public sealed partial class ImmersivePlayer : UserControl
             RenderTargetBitmap bitmap = new();
             await bitmap.RenderAsync(AlbumCover, 32, 32);
             var pixels = await bitmap.GetPixelsAsync();
-            byte[] bgra = pixels.ToArray();
+            byte[] bgra = new byte[(int)pixels.Length];
+            using (DataReader reader = DataReader.FromBuffer(pixels))
+                reader.ReadBytes(bgra);
             if (request != _artworkRequest) return true;
             if (bgra.Length < 4) return false;
             (Color primary, Color secondary) = ExtractPalette(bgra);

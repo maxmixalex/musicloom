@@ -12,20 +12,24 @@ public sealed partial class CloudLyricsMatchTab : UserControl
 {
     private string _provider = "";
     private string _missing = "";
+    private string _selectedText = "";
+    private string _helpText = "";
     private bool _hasLyrics;
 
     public event EventHandler? SearchRequested;
 
     public CloudLyricsMatchTab() => InitializeComponent();
 
-    public void SetProvider(string provider, string search, string missing)
+    public void SetProvider(
+        string provider, string search, string missing,
+        string selectedText, string helpText)
     {
         _provider = provider;
         _missing = missing;
+        _selectedText = selectedText;
+        _helpText = helpText;
         SearchText.Text = search;
-        ProviderHelp.Text = provider + " · " + 
-            "Metadata search / manual lyric selection. " +
-            "NetEase match is unaffected.";
+        ProviderHelp.Text = _helpText;
         UpdateStatus();
     }
 
@@ -43,9 +47,7 @@ public sealed partial class CloudLyricsMatchTab : UserControl
 
     private void UpdateStatus()
     {
-        ProviderStatus.Text = _hasLyrics
-            ? _provider + " · " + "Lyrics saved in local database"
-            : _missing;
+        ProviderStatus.Text = _hasLyrics ? _selectedText : _missing;
     }
 
     private void SearchButton_Click(object sender, RoutedEventArgs e) =>

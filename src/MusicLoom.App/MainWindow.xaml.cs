@@ -6529,13 +6529,13 @@ public sealed partial class MainWindow : Window
             }
         };
 
-        lyricsPreview.ItemsSource =
-        [
+        lyricsPreview.ItemsSource = new[]
+        {
             new LyricDisplayLine(
                 L("Select a result to preview lyrics.",
                   "选择结果后可预览歌词。"),
                 null, LyricsDisplayModes.OriginalOnly),
-        ];
+        };
 
         StackPanel searchPanel = new()
         {
@@ -10225,17 +10225,23 @@ public sealed partial class MainWindow : Window
                 "Use fingerprint recognition or search by artist and title.",
                 "可以使用音频指纹识别，或按艺术家和歌曲名搜索。");
         OpenMatchDialogButtonText.Text =
-            L("Find or change match…", "查找或更改匹配……");
+            L("Find NetEase match…", "查找网易云匹配……");
         QqMatchTab.Header = L("QQ Music", "QQ 音乐");
         KugouMatchTab.Header = L("KuGou Music", "酷狗音乐");
         QqMatchPanel.SetProvider(
             L("QQ Music", "QQ 音乐"),
             L("Search QQ Music", "查找 QQ 音乐歌词"),
-            L("No QQ Music lyrics selected", "尚未采用 QQ 音乐歌词"));
+            L("No QQ Music lyrics selected", "尚未采用 QQ 音乐歌词"),
+            L("QQ Music lyrics saved to SQLite", "QQ 音乐歌词已保存到 SQLite"),
+            L("Select QQ lyrics independently of NetEase matching.",
+              "独立采用 QQ 音乐歌词，不会修改网易云匹配。"));
         KugouMatchPanel.SetProvider(
             L("KuGou Music", "酷狗音乐"),
             L("Search KuGou Music", "查找酷狗音乐歌词"),
-            L("No KuGou lyrics selected", "尚未采用酷狗音乐歌词"));
+            L("No KuGou lyrics selected", "尚未采用酷狗音乐歌词"),
+            L("KuGou lyrics saved to SQLite", "酷狗音乐歌词已保存到 SQLite"),
+            L("Select KuGou lyrics independently of NetEase matching.",
+              "独立采用酷狗音乐歌词，不会修改网易云匹配。"));
         ConfirmMatchButtonText.Text =
             L(
                 "Confirm match",

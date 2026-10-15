@@ -174,8 +174,13 @@ public sealed partial class MainWindow
         LibraryDisplayItem item, bool updatePalette = true)
     {
         int version = ++_immersiveLoadVersion;
-        ImmersiveView.SetTrack(
-            item.Title, item.Artist, item.Album, item.Artwork, []);
+        if (updatePalette)
+        {
+            ImmersiveView.SetTrack(
+                item.Title, item.Artist, item.Album, item.Artwork, []);
+        }
+        // Changing lyric language should not blank/reflow the artwork or
+        // current lyric viewport while the SQLite request is running.
         ImmersiveView.SetMode(_lyricsDisplayMode);
         if (updatePalette)
         {
@@ -218,12 +223,21 @@ public sealed partial class MainWindow
     {
         try
         {
-            byte[]? imageBytes = await Task.Run(() =>
+            // Reuse the already decoded detail-pane artwork when the
+            // selected/playing item is the same. Previously this byte cache
+            // was ignored even when it held the exact displayed image.
+            byte[]? imageBytes = ReferenceEquals(_selectedLibraryItem, item)
+                ? _currentArtworkBytes
+                : null;
+            if (imageBytes is null)
             {
-                if (_settings is not MusicLoomSettings settings)
-                    return null;
-                return TryReadArtworkBytes(settings, item.Entry);
-            });
+                imageBytes = await Task.Run(() =>
+                {
+                    if (_settings is not MusicLoomSettings settings)
+                        return null;
+                    return TryReadArtworkBytes(settings, item.Entry);
+                });
+            }
 
             if (!_immersiveActive || artworkVersion != _immersiveArtworkVersion)
             {
