@@ -6488,33 +6488,53 @@ public sealed partial class MainWindow : Window
             results,
             ScrollBarVisibility.Auto);
 
-        ListView lyricsPreview = new()
-        {
-            SelectionMode =
-                ListViewSelectionMode.Single,
-            IsItemClickEnabled = false,
-            HorizontalContentAlignment =
-                HorizontalAlignment.Stretch,
-            ItemContainerStyle =
-                LyricsList.ItemContainerStyle,
-            ItemTemplate =
-                LyricsList.ItemTemplate,
-        };
+        // One actual lyrics control and template, reused by NetEase,
+        // QQ Music and KuGou. Not just three similar-looking containers.
+        LyricsSearchPreviewView lyricView = new();
+        ListView lyricsPreview = lyricView.LyricsList;
         InstallLyricScrollSuppression(lyricsPreview);
-        _matchLyricsPreviewList =
-            lyricsPreview;
+        _matchLyricsPreviewList = lyricsPreview;
+
+        lyricView.SeekRequested += async timestamp =>
+        {
+            NeteaseMatchCandidate? selectedCandidate = GetSelectedCandidate();
+            if (selectedCandidate is null) return;
+            try
+            {
+                if (_playingPreviewCandidate?.TrackId
+                    != selectedCandidate.TrackId)
+                {
+                    await PlayNetEasePreviewAsync(selectedCandidate, timestamp);
+                }
+                else
+                {
+                    _suppressPlaybackLyricFollow = true;
+                    try
+                    {
+                        await SeekPlayerWhenReadyAsync(timestamp);
+                        _mediaPlayer.Play();
+                    }
+                    finally
+                    {
+                        _suppressPlaybackLyricFollow = false;
+                    }
+                    UpdatePlaybackLyrics();
+                }
+            }
+            catch (Exception error)
+            {
+                AppDiagnostics.LogException(
+                    "Could not seek NetEase preview lyrics.", error);
+            }
+        };
 
         lyricsPreview.ItemsSource =
-            new[]
-            {
-                new LyricDisplayLine(
-                    L(
-                        "Select a result to preview lyrics.",
-                        "选择结果后可预览歌词。"),
-                    null,
-                    LyricsDisplayModes
-                        .OriginalOnly),
-            };
+        [
+            new LyricDisplayLine(
+                L("Select a result to preview lyrics.",
+                  "选择结果后可预览歌词。"),
+                null, LyricsDisplayModes.OriginalOnly),
+        ];
 
         StackPanel searchPanel = new()
         {
@@ -6545,7 +6565,7 @@ public sealed partial class MainWindow : Window
         {
             SearchContent = searchPanel,
             CandidatesContent = results,
-            LyricsContent = lyricsPreview,
+            LyricsContent = lyricView,
             FooterContent = useSelectedButton,
         };
         shell.Localize(L);
@@ -6586,299 +6606,62 @@ public sealed partial class MainWindow : Window
                     : null;
         }
 
-        ListViewItem CreateCandidateRow(
-            NeteaseMatchCandidate
-                candidate)
+        // The same XAML candidate card is instantiated by all providers.
+        // NetEase additionally supplies its stream preview and song link;
+        // QQ/KuGou use the local-track playback delegate.
+        ListViewItem CreateCandidateRow(NeteaseMatchCandidate candidate)
         {
-            BitmapImage? bitmap = null;
-
-            if (!string.IsNullOrWhiteSpace(
-                    candidate.CoverUrl)
-                && Uri.TryCreate(
-                    candidate.CoverUrl,
-                    UriKind.Absolute,
-                    out Uri? coverUri))
+            BitmapImage? artwork = null;
+            if (Uri.TryCreate(candidate.CoverUrl, UriKind.Absolute,
+                out Uri? coverUri)
+                && coverUri.Scheme == Uri.UriSchemeHttps)
             {
-                bitmap = new BitmapImage
+                artwork = new BitmapImage
                 {
-                    DecodePixelWidth = 96,
+                    DecodePixelWidth = 112,
                     UriSource = coverUri,
                 };
             }
 
-            Grid row = new()
+            LyricsSearchCandidateCard card = new()
             {
-                MinHeight = 76,
-                Padding =
-                    new Thickness(
-                        22,
-                        8,
-                        16,
-                        8),
-                ColumnSpacing = 12,
+                SongTitle = candidate.Name,
+                ArtistName = candidate.Artist,
+                AlbumName = candidate.Album,
+                DurationText = candidate.DurationMs is long duration
+                    ? $"#{candidate.TrackId} · {FormatNetEaseDuration(duration)}"
+                    : $"#{candidate.TrackId}",
+                ArtworkSource = artwork,
+                PreviewTooltip = L(
+                    "Play or pause preview", "播放或暂停试听"),
             };
-            row.ColumnDefinitions.Add(
-                new ColumnDefinition
-                {
-                    Width =
-                        new GridLength(52),
-                });
-            row.ColumnDefinitions.Add(
-                new ColumnDefinition
-                {
-                    Width =
-                        new GridLength(
-                            1,
-                            GridUnitType.Star),
-                });
-            row.ColumnDefinitions.Add(
-                new ColumnDefinition
-                {
-                    Width =
-                        new GridLength(220),
-                });
+            card.SetExternalLink(
+                new Uri($"https://music.163.com/#/song?id={candidate.TrackId}"),
+                L("Open in NetEase Music", "在网易云音乐中打开"));
+            _neteasePreviewIcons[candidate.TrackId] = card.PlayingIcon;
 
-            Border cover = new()
+            card.PreviewRequested += async (_, _) =>
             {
-                Width = 52,
-                Height = 52,
-                CornerRadius =
-                    new CornerRadius(6),
-                Background =
-                    Application.Current
-                        .Resources[
-                            "CardBackgroundFillColorSecondaryBrush"]
-                        as Microsoft.UI.Xaml.Media.Brush,
-                Child =
-                    new Image
-                    {
-                        Source = bitmap,
-                        Stretch =
-                            Microsoft.UI.Xaml.Media
-                                .Stretch.Uniform,
-                    },
+                if (_playingPreviewCandidate?.TrackId == candidate.TrackId
+                    && _mediaPlayer.PlaybackSession.PlaybackState
+                        == MediaPlaybackState.Playing)
+                {
+                    _mediaPlayer.Pause();
+                }
+                else
+                {
+                    await PlayNetEasePreviewAsync(candidate);
+                }
+                UpdatePlayerVisualState();
             };
-            row.Children.Add(cover);
-
-            StackPanel text = new()
-            {
-                Spacing = 2,
-                VerticalAlignment =
-                    VerticalAlignment.Center,
-            };
-            text.Children.Add(
-                new TextBlock
-                {
-                    Text = candidate.Name,
-                    FontWeight =
-                        new Windows.UI.Text
-                            .FontWeight
-                        {
-                            Weight = 600,
-                        },
-                    TextTrimming =
-                        TextTrimming
-                            .CharacterEllipsis,
-                });
-            text.Children.Add(
-                new TextBlock
-                {
-                    Text = candidate.Artist,
-                    FontSize = 12,
-                    Foreground =
-                        Application.Current
-                            .Resources[
-                                "TextFillColorSecondaryBrush"]
-                            as Microsoft.UI.Xaml.Media.Brush,
-                    TextTrimming =
-                        TextTrimming
-                            .CharacterEllipsis,
-                });
-            if (!string.IsNullOrWhiteSpace(
-                    candidate.Album))
-            {
-                text.Children.Add(
-                    new TextBlock
-                    {
-                        Text =
-                            candidate.Album,
-                        FontSize = 11,
-                        Foreground =
-                            Application.Current
-                                .Resources[
-                                    "TextFillColorTertiaryBrush"]
-                                as Microsoft.UI.Xaml.Media.Brush,
-                        TextTrimming =
-                            TextTrimming
-                                .CharacterEllipsis,
-                    });
-            }
-
-            Grid.SetColumn(
-                text,
-                1);
-            row.Children.Add(text);
-
-            Grid actions = new()
-            {
-                ColumnSpacing = 8,
-                VerticalAlignment =
-                    VerticalAlignment.Center,
-            };
-            actions.ColumnDefinitions.Add(
-                new ColumnDefinition
-                {
-                    Width =
-                        new GridLength(
-                            1,
-                            GridUnitType.Star),
-                });
-            actions.ColumnDefinitions.Add(
-                new ColumnDefinition
-                {
-                    Width =
-                        GridLength.Auto,
-                });
-
-            StackPanel metadata = new()
-            {
-                Spacing = 2,
-                HorizontalAlignment =
-                    HorizontalAlignment.Right,
-                VerticalAlignment =
-                    VerticalAlignment.Center,
-            };
-
-            metadata.Children.Add(
-                new TextBlock
-                {
-                    Text =
-                        candidate.DurationMs
-                            is long duration
-                                ? $"#{candidate.TrackId} · {FormatNetEaseDuration(duration)}"
-                                : $"#{candidate.TrackId}",
-                    FontSize = 11,
-                    Foreground =
-                        Application.Current
-                            .Resources[
-                                "TextFillColorSecondaryBrush"]
-                            as Microsoft.UI.Xaml.Media.Brush,
-                    HorizontalAlignment =
-                        HorizontalAlignment.Right,
-                });
-
-            StackPanel linkContent = new()
-            {
-                Orientation =
-                    Orientation.Horizontal,
-                Spacing = 4,
-            };
-            linkContent.Children.Add(
-                new TextBlock
-                {
-                    Text =
-                        L(
-                            "Open in NetEase Music",
-                            "在网易云音乐中打开"),
-                    FontSize = 11,
-                });
-            linkContent.Children.Add(
-                new FontIcon
-                {
-                    Glyph = "\uE8A7",
-                    FontSize = 11,
-                });
-
-            metadata.Children.Add(
-                new HyperlinkButton
-                {
-                    Content =
-                        linkContent,
-                    Padding =
-                        new Thickness(0),
-                    HorizontalAlignment =
-                        HorizontalAlignment.Right,
-                    NavigateUri =
-                        new Uri(
-                            $"https://music.163.com/#/song?id={candidate.TrackId}"),
-                });
-
-            actions.Children.Add(
-                metadata);
-
-            SymbolIcon previewIcon = new()
-            {
-                Symbol = Symbol.Play,
-            };
-            _neteasePreviewIcons[
-                candidate.TrackId] =
-                previewIcon;
-
-            Button previewButton = new()
-            {
-                Width = 36,
-                Height = 36,
-                Padding =
-                    new Thickness(0),
-                VerticalAlignment =
-                    VerticalAlignment.Center,
-                Content = previewIcon,
-            };
-            Grid.SetColumn(
-                previewButton,
-                1);
-            ToolTipService.SetToolTip(
-                previewButton,
-                L(
-                    "Play or pause preview",
-                    "播放或暂停试听"));
-
-            previewButton.Click +=
-                async (_, _) =>
-                {
-                    if (_playingPreviewCandidate
-                            ?.TrackId
-                        == candidate.TrackId
-                        && _mediaPlayer
-                            .PlaybackSession
-                            .PlaybackState
-                        == MediaPlaybackState
-                            .Playing)
-                    {
-                        _mediaPlayer.Pause();
-                    }
-                    else
-                    {
-                        await PlayNetEasePreviewAsync(
-                            candidate);
-                    }
-
-                    UpdatePlayerVisualState();
-                };
-
-            actions.Children.Add(
-                previewButton);
-
-            Grid.SetColumn(
-                actions,
-                2);
-            row.Children.Add(
-                actions);
 
             return new ListViewItem
             {
                 Tag = candidate,
-                Content = row,
-                Padding =
-                    new Thickness(0),
-                Margin =
-                    new Thickness(
-                        6,
-                        1,
-                        12,
-                        1),
-                HorizontalContentAlignment =
-                    HorizontalAlignment.Stretch,
+                Content = card,
+                Padding = new Thickness(0),
+                Margin = new Thickness(6, 1, 12, 1),
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
             };
         }
 
@@ -6991,9 +6774,11 @@ public sealed partial class MainWindow : Window
                         albumBox.Text));
             };
 
+        int lyricPreviewRequest = 0;
         results.SelectionChanged +=
             async (_, _) =>
             {
+                int previewRequest = ++lyricPreviewRequest;
                 NeteaseMatchCandidate?
                     candidate =
                         GetSelectedCandidate();
@@ -7031,6 +6816,11 @@ public sealed partial class MainWindow : Window
                     LrcDocument? lyrics =
                         await client.GetLyricsAsync(
                             candidate.TrackId);
+
+                    if (previewRequest != lyricPreviewRequest
+                        || !ReferenceEquals(
+                            _activeMatchDialogCandidate, candidate))
+                        return;
 
                     LyricDisplayLine[] lines =
                         BuildLyricLines(
