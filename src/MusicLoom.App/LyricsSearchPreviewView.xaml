@@ -1,0 +1,29 @@
+<UserControl
+    x:Class="MusicLoom.App.LyricsSearchPreviewView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MusicLoom.App">
+  <ListView x:Name="PreviewList"
+            SelectionMode="Single"
+            IsItemClickEnabled="False"
+            HorizontalContentAlignment="Stretch"
+            Background="Transparent"
+            DoubleTapped="PreviewList_DoubleTapped"
+            ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+    <ListView.ItemTemplate>
+      <DataTemplate>
+        <StackPanel Padding="4,8" Spacing="4">
+          <TextBlock Text="{Binding TimestampText}" FontSize="11"
+                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+          <TextBlock local:KaraokeLyricText.Line="{Binding}"
+                     TextWrapping="WrapWholeWords" FontSize="16"/>
+          <TextBlock local:KaraokeLyricText.Line="{Binding}"
+                     local:KaraokeLyricText.IsSecondary="True"
+                     Visibility="{Binding SecondaryVisibility}"
+                     TextWrapping="WrapWholeWords" FontSize="13"
+                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+        </StackPanel>
+      </DataTemplate>
+    </ListView.ItemTemplate>
+  </ListView>
+</UserControl>

@@ -30,13 +30,15 @@ public sealed class CloudLyricsAcceptedEventArgs : EventArgs
 /// </summary>
 internal sealed class CloudCandidateRow : INotifyPropertyChanged
 {
-    public CloudCandidateRow(CloudLyricsCandidate candidate)
+    public CloudCandidateRow(CloudLyricsCandidate candidate, string previewTooltip)
     {
         Candidate = candidate;
+        PreviewTooltip = previewTooltip;
         ApplyArtwork(candidate.CoverUrl);
     }
 
     public CloudLyricsCandidate Candidate { get; }
+    public string PreviewTooltip { get; }
     public string Title => Candidate.Title;
     public string Artist => Candidate.Artist;
     public string Album => Candidate.Album;
@@ -113,10 +115,12 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
 
     public event EventHandler<CloudLyricsAcceptedEventArgs>? LyricsAccepted;
     public event Action<TimeSpan>? LyricSeekRequested;
+    public event Action<CloudLyricsCandidate>? PreviewRequested;
 
     public CloudLyricsPanel()
     {
         InitializeComponent();
+        LyricsPreview.SeekRequested += time => LyricSeekRequested?.Invoke(time);
     }
 
     public void Localize(Func<string, string, string> translate)
@@ -278,7 +282,8 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
 
             CloudCandidateRow[] ranked = found
                 .OrderByDescending(CandidateScore)
-                .Select(static candidate => new CloudCandidateRow(candidate))
+                .Select(candidate => new CloudCandidateRow(candidate,
+                    L("Play local track", "播放本地曲目")))
                 .ToArray();
             CandidatesList.ItemsSource = ranked;
             ProviderStatus.Text = ranked.Length == 0
@@ -375,16 +380,12 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         }
     }
 
-    private void LyricsPreview_DoubleTapped(
-        object sender, DoubleTappedRoutedEventArgs e)
+    private void CandidateCard_PreviewRequested(object sender, EventArgs e)
     {
-        LyricDisplayLine? line =
-            (e.OriginalSource as FrameworkElement)?.DataContext
-                as LyricDisplayLine;
-        if (line?.Timestamp is TimeSpan time)
+        if (sender is LyricsSearchCandidateCard card
+            && card.DataContext is CloudCandidateRow row)
         {
-            e.Handled = true;
-            LyricSeekRequested?.Invoke(time);
+            PreviewRequested?.Invoke(row.Candidate);
         }
     }
 

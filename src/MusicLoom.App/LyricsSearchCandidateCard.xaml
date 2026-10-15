@@ -1,0 +1,47 @@
+<UserControl
+    x:Class="MusicLoom.App.LyricsSearchCandidateCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    MinHeight="72">
+  <Grid Padding="9,7" ColumnSpacing="12">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="52"/>
+      <ColumnDefinition Width="*"/>
+      <ColumnDefinition Width="Auto"/>
+    </Grid.ColumnDefinitions>
+    <Border Width="52" Height="52" CornerRadius="7"
+            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+      <Grid>
+        <FontIcon Glyph="&#xE8D6;" FontSize="18"
+                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+        <Image Source="{x:Bind ArtworkSource, Mode=OneWay}"
+               Stretch="UniformToFill"/>
+      </Grid>
+    </Border>
+    <StackPanel Grid.Column="1" Spacing="3"
+                VerticalAlignment="Center" MinWidth="0">
+      <TextBlock Text="{x:Bind SongTitle, Mode=OneWay}"
+                 FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+      <TextBlock Text="{x:Bind ArtistName, Mode=OneWay}" FontSize="12"
+                 TextTrimming="CharacterEllipsis"
+                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+      <TextBlock Text="{x:Bind AlbumName, Mode=OneWay}" FontSize="11"
+                 TextTrimming="CharacterEllipsis"
+                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+    </StackPanel>
+    <StackPanel Grid.Column="2" VerticalAlignment="Center"
+                HorizontalAlignment="Right" Spacing="2">
+      <TextBlock Text="{x:Bind DurationText, Mode=OneWay}"
+                 HorizontalAlignment="Right" FontSize="11"
+                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+      <Button x:Name="PreviewButton" Width="34" Height="34" Padding="0"
+              HorizontalAlignment="Right" Click="PreviewButton_Click">
+        <SymbolIcon x:Name="PreviewSymbol" Symbol="Play" />
+      </Button>
+      <HyperlinkButton x:Name="ExternalLinkButton"
+                       FontSize="11" Padding="0"
+                       Visibility="Collapsed"
+                       HorizontalAlignment="Right" />
+    </StackPanel>
+  </Grid>
+</UserControl>

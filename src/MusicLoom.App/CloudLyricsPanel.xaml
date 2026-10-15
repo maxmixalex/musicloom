@@ -30,67 +30,20 @@
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled">
           <ListView.ItemTemplate>
             <DataTemplate>
-              <Grid Margin="3,3,6,3" Padding="9" ColumnSpacing="12"
-                    MinHeight="68">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="52" />
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <Border Width="52" Height="52" CornerRadius="7"
-                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                  <Grid>
-                    <FontIcon Glyph="&#xE8D6;" FontSize="18"
-                              Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                    <Image Source="{Binding Artwork}"
-                           Stretch="UniformToFill" />
-                  </Grid>
-                </Border>
-                <StackPanel Grid.Column="1" Spacing="4"
-                            VerticalAlignment="Center">
-                  <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                             TextTrimming="CharacterEllipsis" />
-                  <TextBlock Text="{Binding Artist}"
-                             FontSize="12"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                             TextTrimming="CharacterEllipsis" />
-                  <TextBlock Text="{Binding Album}"
-                             FontSize="11"
-                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                             TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-                <TextBlock Grid.Column="2" Text="{Binding Duration}"
-                           FontSize="11" VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-              </Grid>
+              <local:LyricsSearchCandidateCard
+                  SongTitle="{Binding Title}"
+                  ArtistName="{Binding Artist}"
+                  AlbumName="{Binding Album}"
+                  DurationText="{Binding Duration}"
+                  ArtworkSource="{Binding Artwork}"
+                  PreviewTooltip="{Binding PreviewTooltip}"
+                  PreviewRequested="CandidateCard_PreviewRequested"/>
             </DataTemplate>
           </ListView.ItemTemplate>
         </ListView>
     </local:LyricsSearchDialogView.CandidatesContent>
     <local:LyricsSearchDialogView.LyricsContent>
-      <ListView x:Name="LyricsPreview"
-                  SelectionMode="None"
-                  DoubleTapped="LyricsPreview_DoubleTapped"
-                  HorizontalContentAlignment="Stretch"
-                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-          <ListView.ItemTemplate>
-            <DataTemplate>
-              <StackPanel Padding="4,8" Spacing="4">
-                <TextBlock Text="{Binding TimestampText}" FontSize="11"
-                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                <TextBlock local:KaraokeLyricText.Line="{Binding}"
-                           TextWrapping="WrapWholeWords"
-                           FontSize="16" />
-                <TextBlock local:KaraokeLyricText.Line="{Binding}"
-                           local:KaraokeLyricText.IsSecondary="True"
-                           Visibility="{Binding SecondaryVisibility}"
-                           TextWrapping="WrapWholeWords"
-                           FontSize="13"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-              </StackPanel>
-            </DataTemplate>
-          </ListView.ItemTemplate>
-        </ListView>
+      <local:LyricsSearchPreviewView x:Name="LyricsPreview"/>
     </local:LyricsSearchDialogView.LyricsContent>
     <local:LyricsSearchDialogView.FooterContent>
       <Button x:Name="UseLyricsButton"
