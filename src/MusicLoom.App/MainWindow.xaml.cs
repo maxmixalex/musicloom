@@ -96,6 +96,10 @@ public sealed partial class MainWindow : Window
     private int _matchArtworkRequestId;
     private string? _netEaseArtworkMatchIdentity;
     private bool _netEaseArtworkRequestPending;
+    // Only used by the explicit Windows UI matching smoke harness.
+    // Ordinary application runs still call the original NeteaseClient.
+    private Func<long, Task<NeteaseMatchCandidate?>>?
+        _netEaseArtworkSmokeResolver;
     private double _playerTargetVolume;
     private string _uiLanguage =
         DetectSystemLanguage();
@@ -7755,11 +7759,16 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            using NeteaseClient client =
-                new();
-            NeteaseMatchCandidate? song =
-                await client.GetSongAsync(
-                    songId);
+            NeteaseMatchCandidate? song;
+            if (_netEaseArtworkSmokeResolver is not null)
+            {
+                song = await _netEaseArtworkSmokeResolver(songId);
+            }
+            else
+            {
+                using NeteaseClient client = new();
+                song = await client.GetSongAsync(songId);
+            }
 
             if (song is null
                 || string.IsNullOrWhiteSpace(
@@ -7782,7 +7791,8 @@ public sealed partial class MainWindow : Window
 
             NeteaseMatchPanel.ShowArtwork(coverUri);
 
-            if (_state is not null
+            if (_netEaseArtworkSmokeResolver is null
+                && _state is not null
                 && _stateStore is not null
                 && _state.Tracks.TryGetValue(
                     item.Entry.SourcePath,
