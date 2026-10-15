@@ -7714,17 +7714,9 @@ public sealed partial class MainWindow : Window
         await SynchronizeMatchedLyricsAsync([item]);
     }
 
-    private void RefreshCurrentMatchCard(
-        LibraryDisplayItem? item)
+    private void RefreshCurrentMatchCard(LibraryDisplayItem? item)
     {
-        int artworkRequest =
-            ++_matchArtworkRequestId;
-
-        CurrentMatchArtworkImage.Source =
-            null;
-        CurrentMatchArtworkPlaceholder.Visibility =
-            Visibility.Visible;
-
+        int artworkRequest = ++_matchArtworkRequestId;
         long? songId = null;
         string? trackName = null;
         string? artist = null;
@@ -7734,8 +7726,7 @@ public sealed partial class MainWindow : Window
 
         if (item is not null
             && _liveNeteaseMatches.TryGetValue(
-                item.Entry.SourcePath,
-                out LiveNeteaseMatch? live))
+                item.Entry.SourcePath, out LiveNeteaseMatch? live))
         {
             songId = live.TrackId;
             trackName = live.Name;
@@ -7746,139 +7737,42 @@ public sealed partial class MainWindow : Window
         else if (item is not null
             && _state is not null
             && _state.Tracks.TryGetValue(
-                item.Entry.SourcePath,
-                out TrackState? state))
+                item.Entry.SourcePath, out TrackState? state))
         {
-            suppressed =
-                state.NeteaseMatchSuppressed;
-
-            if (state.NeteaseSongId
-                is long cachedSongId)
+            suppressed = state.NeteaseMatchSuppressed;
+            if (state.NeteaseSongId is long cachedSongId)
             {
                 songId = cachedSongId;
-                trackName =
-                    state.NeteaseTrackName;
-                artist =
-                    state.NeteaseTrackArtist;
-                album =
-                    state.NeteaseTrackAlbum;
-                coverUrl =
-                    state.NeteaseCoverUrl;
+                trackName = state.NeteaseTrackName;
+                artist = state.NeteaseTrackArtist;
+                album = state.NeteaseTrackAlbum;
+                coverUrl = state.NeteaseCoverUrl;
             }
         }
 
-        TrackSyncWarning? warning =
-            item is null
-                ? null
-                : GetStoredMatchWarning(
-                    item.Entry);
+        TrackSyncWarning? warning = item is null
+            ? null : GetStoredMatchWarning(item.Entry);
+        NeteaseMatchPanel.Present(new MatchTabPresentation(
+            Selected: item is not null,
+            Suppressed: suppressed,
+            Id: songId?.ToString(CultureInfo.InvariantCulture),
+            Title: trackName,
+            Artist: artist,
+            Album: album,
+            CoverUrl: coverUrl,
+            ExternalLink: songId is long id
+                ? new Uri($"https://music.163.com/#/song?id={id}")
+                : null,
+            NeedsConfirmation: warning is not null,
+            CanUpdateLyrics: item is not null
+                && HasCachedMatch(item.Entry.SourcePath),
+            Busy: _busy));
 
-        ConfirmMatchButton.Visibility =
-            warning is null
-                ? Visibility.Collapsed
-                : Visibility.Visible;
-        ConfirmMatchButton.IsEnabled =
-            !_busy
-            && warning is not null;
-        SuppressMatchButton.Visibility =
-            item is null
-                ? Visibility.Collapsed
-                : Visibility.Visible;
-        SuppressMatchButton.IsEnabled =
-            !_busy
-            && item is not null
-            && !suppressed;
-
-        if (item is not null
-            && suppressed)
+        if (item is not null && songId is long matchId
+            && string.IsNullOrWhiteSpace(coverUrl) && !_busy)
         {
-            CurrentMatchTitleText.Text =
-                L(
-                    "No NetEase match",
-                    "没有网易云匹配");
-            CurrentMatchArtistText.Text =
-                L(
-                    "Automatic recognition is disabled for this track.",
-                    "这首歌曲已禁用自动识别。");
-            CurrentMatchAlbumText.Text =
-                string.Empty;
-            CurrentMatchIdText.Text =
-                string.Empty;
-            CurrentMatchOpenLink.Visibility =
-                Visibility.Collapsed;
-            CurrentMatchOpenLink.NavigateUri =
-                null;
-            RefreshMatchedLyricsButton.IsEnabled =
-                false;
-            return;
-        }
-
-        if (item is null
-            || songId is not long id)
-        {
-            CurrentMatchTitleText.Text =
-                L(
-                    "No NetEase match cached.",
-                    "尚未缓存网易云匹配。");
-            CurrentMatchArtistText.Text =
-                string.Empty;
-            CurrentMatchAlbumText.Text =
-                string.Empty;
-            CurrentMatchIdText.Text =
-                string.Empty;
-            CurrentMatchOpenLink.Visibility =
-                Visibility.Collapsed;
-            CurrentMatchOpenLink.NavigateUri =
-                null;
-            RefreshMatchedLyricsButton.IsEnabled =
-                false;
-            return;
-        }
-
-        CurrentMatchTitleText.Text =
-            trackName
-            ?? item.Title;
-        CurrentMatchArtistText.Text =
-            artist
-            ?? item.Artist;
-        CurrentMatchAlbumText.Text =
-            album
-            ?? item.Album;
-        CurrentMatchIdText.Text =
-            $"#{id}";
-        CurrentMatchOpenLink.NavigateUri =
-            new Uri(
-                $"https://music.163.com/#/song?id={id}");
-        CurrentMatchOpenLink.Visibility =
-            Visibility.Visible;
-        RefreshMatchedLyricsButton.IsEnabled =
-            !_busy
-            && HasCachedMatch(
-                item.Entry.SourcePath);
-
-        if (!string.IsNullOrWhiteSpace(
-                coverUrl)
-            && Uri.TryCreate(
-                coverUrl,
-                UriKind.Absolute,
-                out Uri? coverUri))
-        {
-            CurrentMatchArtworkImage.Source =
-                new BitmapImage
-                {
-                    DecodePixelWidth = 108,
-                    UriSource = coverUri,
-                };
-            CurrentMatchArtworkPlaceholder.Visibility =
-                Visibility.Collapsed;
-        }
-        else if (!_busy)
-        {
-            _ =
-                LoadCurrentMatchArtworkAsync(
-                    item,
-                    id,
-                    artworkRequest);
+            _ = LoadCurrentMatchArtworkAsync(
+                item, matchId, artworkRequest);
         }
     }
 
@@ -7914,14 +7808,7 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            CurrentMatchArtworkImage.Source =
-                new BitmapImage
-                {
-                    DecodePixelWidth = 108,
-                    UriSource = coverUri,
-                };
-            CurrentMatchArtworkPlaceholder.Visibility =
-                Visibility.Collapsed;
+            NeteaseMatchPanel.ShowArtwork(coverUri);
 
             if (_state is not null
                 && _stateStore is not null

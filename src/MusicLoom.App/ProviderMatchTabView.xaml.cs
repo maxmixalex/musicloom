@@ -12,6 +12,27 @@ internal enum MatchProviderKind
     KugouMusic,
 }
 
+
+/// <summary>
+/// One shared view-state contract for all three matching services.
+/// Providers supply actual remote metadata and capabilities only.
+/// </summary>
+internal sealed record MatchTabPresentation(
+    bool Selected,
+    bool Suppressed,
+    string? Id,
+    string? Title,
+    string? Artist,
+    string? Album,
+    string? CoverUrl,
+    Uri? ExternalLink,
+    bool NeedsConfirmation,
+    bool CanUpdateLyrics,
+    bool Busy)
+{
+    public bool HasMatch => !Suppressed && !string.IsNullOrWhiteSpace(Id);
+}
+
 /// <summary>
 /// The exact original NetEase match card and commands, now instantiated
 /// three times. Data/state/services are adapters; the view is NOT copied.
@@ -91,29 +112,33 @@ public sealed partial class ProviderMatchTabView : UserControl
         };
     }
 
-    // The provider metadata is the ONLY source of the card. Local title,
-    // artist, album and artwork must never be used to impersonate a match.
-    internal void ShowCloudState(
-        StoredProviderMatch? record, bool selected, bool busy)
+    // The same state machine is used for NetEase, QQ and KuGou. Only
+    // provider adapters build a MatchTabPresentation. This is not merely
+    // three separately managed controls with identical-looking markup.
+    internal void Present(MatchTabPresentation state)
     {
         ArtworkImage.Source = null;
         ArtworkPlaceholder.Visibility = Visibility.Visible;
-        AlbumLabel.Text = string.Empty;
+        TitleLabel.Text = string.Empty;
         ArtistLabel.Text = string.Empty;
+        AlbumLabel.Text = string.Empty;
         IdLabel.Text = string.Empty;
         ExternalLink.NavigateUri = null;
         ExternalLink.Visibility = Visibility.Collapsed;
 
-        FindButton.IsEnabled = selected && !busy;
-        ClearButton.Visibility = selected
+        FindButton.IsEnabled = state.Selected && !state.Busy;
+        ClearButton.Visibility = state.Selected
             ? Visibility.Visible : Visibility.Collapsed;
-        ClearButton.IsEnabled = selected && !busy
-            && record?.Suppressed != true;
-        ConfirmButton.Visibility = Visibility.Collapsed;
-        ConfirmButton.IsEnabled = false;
-        UpdateButton.IsEnabled = false;
+        ClearButton.IsEnabled = state.Selected && !state.Busy
+            && !state.Suppressed;
+        ConfirmButton.Visibility = state.HasMatch && state.NeedsConfirmation
+            ? Visibility.Visible : Visibility.Collapsed;
+        ConfirmButton.IsEnabled = state.Selected && !state.Busy
+            && state.NeedsConfirmation && state.HasMatch;
+        UpdateButton.IsEnabled = state.Selected && !state.Busy
+            && state.HasMatch && state.CanUpdateLyrics;
 
-        if (record?.Suppressed == true)
+        if (state.Suppressed)
         {
             TitleLabel.Text = _translate(
                 $"No {_providerName} match",
@@ -124,7 +149,7 @@ public sealed partial class ProviderMatchTabView : UserControl
             return;
         }
 
-        if (record?.Candidate is not CloudLyricsCandidate candidate)
+        if (!state.HasMatch)
         {
             TitleLabel.Text = _translate(
                 $"No {_providerName} match cached.",
@@ -132,32 +157,52 @@ public sealed partial class ProviderMatchTabView : UserControl
             return;
         }
 
-        TitleLabel.Text = candidate.Title;
-        ArtistLabel.Text = candidate.Artist;
-        AlbumLabel.Text = candidate.Album;
-        IdLabel.Text = "#" + candidate.Id;
-        if (candidate.CoverUrl is string cover
+        // Never display the local file title/artist/cover as an allegedly
+        // matched provider song; missing remote fields remain blank.
+        TitleLabel.Text = string.IsNullOrWhiteSpace(state.Title)
+            ? "#" + state.Id : state.Title;
+        ArtistLabel.Text = state.Artist ?? string.Empty;
+        AlbumLabel.Text = state.Album ?? string.Empty;
+        IdLabel.Text = "#" + state.Id;
+        ExternalLink.NavigateUri = state.ExternalLink;
+        ExternalLink.Visibility = state.ExternalLink is null
+            ? Visibility.Collapsed : Visibility.Visible;
+
+        if (state.CoverUrl is string cover
             && Uri.TryCreate(cover, UriKind.Absolute, out Uri? image)
             && image.Scheme == Uri.UriSchemeHttps)
-        {
-            ArtworkImage.Source = new BitmapImage
-            {
-                DecodePixelWidth = 108,
-                UriSource = image,
-            };
-            ArtworkPlaceholder.Visibility = Visibility.Collapsed;
-        }
+            ShowArtwork(image);
+    }
 
-        Uri? external = SongPage(candidate);
-        if (external is not null)
+    internal void ShowArtwork(Uri? artwork)
+    {
+        if (artwork is null || artwork.Scheme != Uri.UriSchemeHttps)
+            return;
+        ArtworkImage.Source = new BitmapImage
         {
-            ExternalLink.NavigateUri = external;
-            ExternalLink.Visibility = Visibility.Visible;
-        }
-        ConfirmButton.Visibility = record.Confirmed
-            ? Visibility.Collapsed : Visibility.Visible;
-        ConfirmButton.IsEnabled = !busy && !record.Confirmed;
-        UpdateButton.IsEnabled = !busy;
+            DecodePixelWidth = 108,
+            UriSource = artwork,
+        };
+        ArtworkPlaceholder.Visibility = Visibility.Collapsed;
+    }
+
+    internal void ShowCloudState(
+        StoredProviderMatch? record, bool selected, bool busy)
+    {
+        CloudLyricsCandidate? candidate = record?.Candidate;
+        Present(new MatchTabPresentation(
+            Selected: selected,
+            Suppressed: record?.Suppressed == true,
+            Id: candidate?.Id,
+            Title: candidate?.Title,
+            Artist: candidate?.Artist,
+            Album: candidate?.Album,
+            CoverUrl: candidate?.CoverUrl,
+            ExternalLink: candidate is null ? null : SongPage(candidate),
+            NeedsConfirmation: record?.IsMatched == true
+                && record.Confirmed == false,
+            CanUpdateLyrics: record?.IsMatched == true,
+            Busy: busy));
     }
 
     private static Uri? SongPage(CloudLyricsCandidate candidate)
