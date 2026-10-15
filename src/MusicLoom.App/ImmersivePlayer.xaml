@@ -145,7 +145,11 @@
         <Grid Grid.Row="1" MinHeight="0">
           <ListView x:Name="ImmersiveLyricsList"
                     SelectionMode="None" Background="Transparent"
-                    Padding="0">
+                    Padding="0"
+                    DoubleTapped="ImmersiveLyricsList_DoubleTapped"
+                    HorizontalContentAlignment="Stretch"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    ScrollViewer.VerticalScrollBarVisibility="Hidden">
             <ListView.ItemContainerStyle>
               <Style TargetType="ListViewItem">
                 <Setter Property="Padding" Value="0"/>
@@ -153,10 +157,6 @@
                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
               </Style>
             </ListView.ItemContainerStyle>
-                    DoubleTapped="ImmersiveLyricsList_DoubleTapped"
-                    HorizontalContentAlignment="Stretch"
-                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                    ScrollViewer.VerticalScrollBarVisibility="Hidden">
             <ListView.ItemTemplate>
               <DataTemplate>
                 <StackPanel Padding="0,10" Spacing="7"
