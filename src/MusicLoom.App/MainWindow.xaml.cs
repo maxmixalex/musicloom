@@ -4385,6 +4385,7 @@ public sealed partial class MainWindow : Window
 
     private void ResetTrackDetails()
     {
+        ClearCloudMatchPanels();
         StopTitleAutoScroll();
         TrackTitleTranslateTransform.X = 0;
         TrackAlbumTranslateTransform.X = 0;
@@ -9788,6 +9789,7 @@ public sealed partial class MainWindow : Window
                 LibraryDisplayItem selectedMatch
             && HasCachedMatch(
                 selectedMatch.Entry.SourcePath);
+        RenderCloudMatchPanels();
 
         LibraryProgressPanel.Visibility =
             busy
@@ -10604,6 +10606,7 @@ public sealed partial class MainWindow : Window
         RenderLyrics();
         RefreshCurrentMatchCard(
             _selectedLibraryItem);
+        RenderCloudMatchPanels();
         RefreshTrackSyncTab(
             _selectedLibraryItem);
         ConfigureAuxiliaryLongText();
