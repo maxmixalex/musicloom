@@ -10,31 +10,11 @@ namespace MusicLoom.App;
 /// </summary>
 public sealed partial class MainWindow
 {
-    private Image CurrentMatchArtworkImage => NeteaseMatchPanel.ArtworkImage;
-    private FontIcon CurrentMatchArtworkPlaceholder =>
-        NeteaseMatchPanel.ArtworkPlaceholder;
-    private TextBlock CurrentMatchTitleText => NeteaseMatchPanel.TitleLabel;
-    private TextBlock CurrentMatchArtistText => NeteaseMatchPanel.ArtistLabel;
-    private TextBlock CurrentMatchAlbumText => NeteaseMatchPanel.AlbumLabel;
-    private TextBlock CurrentMatchIdText => NeteaseMatchPanel.IdLabel;
-    private HyperlinkButton CurrentMatchOpenLink =>
-        NeteaseMatchPanel.ExternalLink;
-    private TextBlock CurrentMatchOpenLinkText =>
-        NeteaseMatchPanel.ExternalLinkLabel;
-    private TextBlock MatchHelpText => NeteaseMatchPanel.HelpLabel;
     private Button OpenMatchDialogButton => NeteaseMatchPanel.FindButton;
-    private TextBlock OpenMatchDialogButtonText =>
-        NeteaseMatchPanel.FindButtonLabel;
     private Button ConfirmMatchButton => NeteaseMatchPanel.ConfirmButton;
-    private TextBlock ConfirmMatchButtonText =>
-        NeteaseMatchPanel.ConfirmButtonLabel;
     private Button SuppressMatchButton => NeteaseMatchPanel.ClearButton;
-    private TextBlock SuppressMatchButtonText =>
-        NeteaseMatchPanel.ClearButtonLabel;
     private Button RefreshMatchedLyricsButton =>
         NeteaseMatchPanel.UpdateButton;
-    private TextBlock RefreshMatchedLyricsButtonText =>
-        NeteaseMatchPanel.UpdateButtonLabel;
 
     private void InitializeProviderMatchTabs()
     {

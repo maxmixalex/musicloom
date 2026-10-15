@@ -40,27 +40,6 @@ public sealed partial class MainWindow
                 == MediaPlaybackState.Playing);
     }
 
-    private async void FindNeteaseMatchItem_Click(
-        object sender, RoutedEventArgs e)
-    {
-        if (_selectedLibraryItem is LibraryDisplayItem item)
-            await ShowMatchDialogAsync(item);
-    }
-
-    private async void FindQqMatchItem_Click(
-        object sender, RoutedEventArgs e)
-    {
-        if (_selectedLibraryItem is LibraryDisplayItem item)
-            await ShowCloudMatchDialogAsync(item, CloudLyricsSource.QqMusic);
-    }
-
-    private async void FindKugouMatchItem_Click(
-        object sender, RoutedEventArgs e)
-    {
-        if (_selectedLibraryItem is LibraryDisplayItem item)
-            await ShowCloudMatchDialogAsync(item, CloudLyricsSource.KugouMusic);
-    }
-
     private async Task ShowCloudMatchDialogAsync(
         LibraryDisplayItem item, CloudLyricsSource source)
     {

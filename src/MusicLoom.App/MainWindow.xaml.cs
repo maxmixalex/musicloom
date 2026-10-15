@@ -6390,18 +6390,6 @@ public sealed partial class MainWindow : Window
             transparent;
     }
 
-    private async void OpenMatchDialogButton_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        if (_selectedLibraryItem
-            is LibraryDisplayItem item)
-        {
-            await ShowMatchDialogAsync(
-                item);
-        }
-    }
-
     private async Task ShowMatchDialogAsync(
         LibraryDisplayItem item)
     {
@@ -6983,30 +6971,6 @@ public sealed partial class MainWindow : Window
         ReconcileMatchActionRows([item]);
 
         await SynchronizeMatchedLyricsAsync([item]);
-    }
-
-    private async void ConfirmMatchButton_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        if (_selectedLibraryItem
-            is LibraryDisplayItem item)
-        {
-            await ConfirmNeteaseMatchAsync(
-                item);
-        }
-    }
-
-    private async void SuppressMatchButton_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        if (_selectedLibraryItem
-            is LibraryDisplayItem item)
-        {
-            await SuppressNeteaseMatchAsync(
-                item);
-        }
     }
 
     private async Task ConfirmNeteaseMatchAsync(
@@ -7696,22 +7660,6 @@ public sealed partial class MainWindow : Window
         {
             SyncButton.IsEnabled = true;
         }
-    }
-
-    private async void RefreshMatchedLyricsButton_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        if (_busy
-            || _selectedLibraryItem is not LibraryDisplayItem item
-            || !HasCachedMatch(item.Entry.SourcePath))
-        {
-            return;
-        }
-
-        // No status mutation. The canonical SQLite lyric is committed
-        // before any optional destination materialization.
-        await SynchronizeMatchedLyricsAsync([item]);
     }
 
     private void RefreshCurrentMatchCard(LibraryDisplayItem? item)
@@ -10069,29 +10017,6 @@ public sealed partial class MainWindow : Window
             L(
                 "Properties",
                 "属性");
-        MatchHelpText.Text =
-            L(
-                "Use fingerprint recognition or search by artist and title.",
-                "可以使用音频指纹识别，或按艺术家和歌曲名搜索。");
-        OpenMatchDialogButtonText.Text =
-            L("Find NetEase match…", "查找网易云匹配……");
-        ConfirmMatchButtonText.Text =
-            L(
-                "Confirm match",
-                "确认匹配");
-        SuppressMatchButtonText.Text =
-            L(
-                "No NetEase match",
-                "置空网易云匹配");
-        RefreshMatchedLyricsButtonText.Text =
-            L(
-                "Update lyrics",
-                "更新歌词");
-        CurrentMatchOpenLinkText.Text =
-            L(
-                "Open in NetEase Music",
-                "在网易云音乐中打开");
-
         SourcePathHeadingText.Text =
             L("Source", "源文件");
         DestinationPathHeadingText.Text =
