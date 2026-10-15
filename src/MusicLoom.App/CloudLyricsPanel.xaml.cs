@@ -9,10 +9,10 @@ using MusicLoom.LyricsProviders;
 
 namespace MusicLoom.App;
 
-public sealed class CloudLyricsAcceptedEventArgs : EventArgs
+public sealed class CloudMatchAcceptedEventArgs : EventArgs
 {
-    public CloudLyricsAcceptedEventArgs(
-        string sourcePath, CloudLyricsCandidate candidate, LrcDocument document)
+    public CloudMatchAcceptedEventArgs(
+        string sourcePath, CloudLyricsCandidate candidate, LrcDocument? document)
     {
         SourcePath = sourcePath;
         Candidate = candidate;
@@ -21,7 +21,7 @@ public sealed class CloudLyricsAcceptedEventArgs : EventArgs
 
     public string SourcePath { get; }
     public CloudLyricsCandidate Candidate { get; }
-    public LrcDocument Document { get; }
+    public LrcDocument? Document { get; }
 }
 
 /// <summary>
@@ -131,7 +131,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         }
     }
 
-    public event EventHandler<CloudLyricsAcceptedEventArgs>? LyricsAccepted;
+    public event EventHandler<CloudMatchAcceptedEventArgs>? MatchAccepted;
     public event Action<TimeSpan>? LyricSeekRequested;
     public event Action<CloudLyricsCandidate>? PreviewRequested;
 
@@ -182,7 +182,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         SearchButton.Content = L("Search by metadata", "按元数据搜索");
         AudioRecognizeButton.Content = L(
             "Recognize from audio", "通过音频识别");
-        UseLyricsButton.Content = L("Use selected", "使用所选");
+        UseMatchButton.Content = L("Use selected", "使用所选");
         if (CandidatesList.ItemsSource is null)
         {
             ProviderStatus.Text = L(
@@ -229,7 +229,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
                     "可通过音频识别，或按艺术家与歌名搜索。")
                 : L("Search by artist and title. QQ audio recognition is not available.",
                     "按艺术家和歌名搜索；QQ 音乐音频识别暂不可用。");
-        UseLyricsButton.IsEnabled = false;
+        UseMatchButton.IsEnabled = false;
         AudioRecognizeButton.IsEnabled = path is not null
             && Source == CloudLyricsSource.KugouMusic;
     }
@@ -314,7 +314,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         _busy = true;
         SearchButton.IsEnabled = false;
         AudioRecognizeButton.IsEnabled = false;
-        UseLyricsButton.IsEnabled = false;
+        UseMatchButton.IsEnabled = false;
         _previewCandidate = null;
         _previewDocument = null;
         CandidatesList.ItemsSource = null;
@@ -380,7 +380,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             (CandidatesList.SelectedItem as CloudCandidateRow)?.Candidate;
         _previewCandidate = candidate;
         _previewDocument = null;
-        UseLyricsButton.IsEnabled = false;
+        UseMatchButton.IsEnabled = false;
         if (candidate is null)
         {
             ShowPreviewMessage(L(
@@ -389,6 +389,9 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             return;
         }
 
+        // Matching is independent of lyrics availability, just as it is
+        // for NetEase. A song can be selected even if lyrics are absent.
+        UseMatchButton.IsEnabled = true;
         CancellationToken ct = NewRequest();
         ShowPreviewMessage(L("Loading lyrics…", "正在加载歌词……"));
         try
@@ -414,7 +417,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
                     LyricsDisplayModes.PreferOriginal,
                     line.Timestamp, line.OriginalWords, line.TranslationWords))
                 .ToArray();
-            UseLyricsButton.IsEnabled = true;
+            UseMatchButton.IsEnabled = true;
         }
         catch (OperationCanceledException)
         {
@@ -442,15 +445,15 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         }
     }
 
-    private void UseLyricsButton_Click(object sender, RoutedEventArgs e)
+    private void UseMatchButton_Click(object sender, RoutedEventArgs e)
     {
         if (_sourcePath is string path
-            && _previewCandidate is CloudLyricsCandidate candidate
-            && _previewDocument is LrcDocument document)
+            && _previewCandidate is CloudLyricsCandidate candidate)
         {
-            UseLyricsButton.IsEnabled = false;
-            LyricsAccepted?.Invoke(this,
-                new CloudLyricsAcceptedEventArgs(path, candidate, document));
+            UseMatchButton.IsEnabled = false;
+            MatchAccepted?.Invoke(this,
+                new CloudMatchAcceptedEventArgs(
+                    path, candidate, _previewDocument));
         }
     }
 

@@ -31,11 +31,11 @@
       <local:LyricsSearchPreviewView x:Name="LyricsPreview"/>
     </local:LyricsSearchDialogView.LyricsContent>
     <local:LyricsSearchDialogView.FooterContent>
-      <Button x:Name="UseLyricsButton"
+      <Button x:Name="UseMatchButton"
             HorizontalAlignment="Right"
             Content="Use selected"
             Style="{ThemeResource AccentButtonStyle}"
-            Click="UseLyricsButton_Click"
+            Click="UseMatchButton_Click"
             IsEnabled="False" />
     </local:LyricsSearchDialogView.FooterContent>
   </local:LyricsSearchDialogView>

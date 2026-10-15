@@ -78,7 +78,7 @@ public sealed partial class MainWindow
                     .DecodeAsync(path, token);
         }
 
-        panel.LyricsAccepted += CloudLyricsPanel_LyricsAccepted;
+        panel.MatchAccepted += CloudLyricsPanel_MatchAccepted;
         panel.PreviewRequested += async candidate =>
             await PlayCloudPreviewAsync(candidate, panel);
         panel.LyricSeekRequested += async timestamp =>
@@ -108,8 +108,8 @@ public sealed partial class MainWindow
         UpdateCloudPreviewVisualState();
         ShowAppOverlay(
             source == CloudLyricsSource.QqMusic
-                ? L("Find QQ Music lyrics", "查找 QQ 音乐歌词")
-                : L("Find KuGou Music lyrics", "查找酷狗音乐歌词"),
+                ? L("Find QQ Music match", "查找QQ音乐匹配")
+                : L("Find KuGou Music match", "查找酷狗音乐匹配"),
             panel,
             maxWidth: 1200,
             maxHeight: 640,
@@ -287,8 +287,8 @@ public sealed partial class MainWindow
         }
     }
 
-    private async void CloudLyricsPanel_LyricsAccepted(
-        object? sender, CloudLyricsAcceptedEventArgs e)
+    private async void CloudLyricsPanel_MatchAccepted(
+        object? sender, CloudMatchAcceptedEventArgs e)
     {
         if (_busy || _lyricsEditInProgress
             || _selectedLibraryItem is not LibraryDisplayItem item
@@ -300,26 +300,40 @@ public sealed partial class MainWindow
 
         try
         {
-            // The explicit choice is canonical in SQLite; NO destination
-            // audio/tag/sidecar changes occur before the next sync.
-            LibraryLyricsRecord manual = new(
-                e.SourcePath,
-                LibraryLyricsOrigin.ManualEdited,
-                e.Document.ToString(),
-                null,
-                e.Candidate.Source == CloudLyricsSource.QqMusic
-                    ? "manual-qq:" + e.Candidate.Id
-                    : "manual-kugou:" + e.Candidate.Id,
-                DateTimeOffset.UtcNow);
-            await SaveManualLyricsAsync(item, manual);
+            // One provider-specific selection persists independently of all
+            // lyric documents and of the other two providers' match records.
+            // An explicit selection is confirmed, even without timed lyrics.
+            SqliteProviderMatchStore matches = new(DatabasePath);
+            await matches.SaveMatchAsync(
+                e.SourcePath, e.Candidate, confirmed: true);
+
+            if (e.Document is { Lines.Count: > 0 } document)
+            {
+                // Only the canonical database changes. Actual destination
+                // tags/sidecars are controlled by synchronization.
+                LibraryLyricsRecord manual = new(
+                    e.SourcePath,
+                    LibraryLyricsOrigin.ManualEdited,
+                    document.ToString(),
+                    null,
+                    e.Candidate.Source == CloudLyricsSource.QqMusic
+                        ? "manual-qq:" + e.Candidate.Id
+                        : "manual-kugou:" + e.Candidate.Id,
+                    DateTimeOffset.UtcNow);
+                await SaveManualLyricsAsync(item, manual);
+            }
+
             CloseMatchOverlay();
             await ShowTrackDetailsAsync(item);
             await RefreshCloudMatchTabsAsync(item);
 
             ShowInfo(InfoBarSeverity.Success,
-                L("Lyrics selected", "已采用歌词"),
-                L("Lyrics saved to SQLite. Synchronize to update destination files.",
-                  "歌词已写入 SQLite。执行同步后才会更新目标文件。"));
+                L("Match selected", "已采用匹配"),
+                e.Document is { Lines.Count: > 0 }
+                    ? L("The match and lyrics have been saved.",
+                        "匹配及歌词已保存。")
+                    : L("The match is saved; timed lyrics are not available yet.",
+                        "匹配已保存，暂未找到时间轴歌词。"));
         }
         catch (Exception error)
         {
@@ -405,6 +419,8 @@ public sealed partial class MainWindow
         {
             using CloudLyricsClient client = new();
             SqliteLyricsCache cache = new(DatabasePath);
+            SqliteProviderMatchStore matchStore = new(DatabasePath);
+            int lyricsUpdated = 0;
 
             for (int i = 0; i < snapshot.Length; i++)
             {
@@ -417,16 +433,19 @@ public sealed partial class MainWindow
 
                 try
                 {
+                    // An explicit empty state or a previously selected
+                    // match is independent of the canonical lyric source.
+                    // Never re-match a provider after "No match".
+                    StoredProviderMatch? previousMatch =
+                        await matchStore.GetAsync(
+                            item.Entry.SourcePath, source, cancellation.Token);
+                    if (previousMatch?.Suppressed == true
+                        || previousMatch?.IsMatched == true)
+                        continue;
+
                     LibraryLyricsRecord? canonical =
                         await cache.GetLibraryAsync(
                             item.Entry.SourcePath, cancellation.Token);
-                    // Never overwrite manual choices, local lyrics, or any
-                    // existing canonical document during an automatic search.
-                    if (canonical?.HasLyrics == true
-                        || canonical?.Origin == LibraryLyricsOrigin.ManualEmpty)
-                    {
-                        continue;
-                    }
 
                     if (string.IsNullOrWhiteSpace(item.Title)
                         || string.IsNullOrWhiteSpace(item.Artist))
@@ -448,31 +467,45 @@ public sealed partial class MainWindow
                         continue;
                     }
 
-                    LrcDocument? lyrics =
-                        await client.GetLyricsAsync(strict[0],
-                            cancellation.Token);
-                    if (lyrics?.Lines.Count is not > 0)
-                        continue;
-
-                    await cache.SaveLibraryAsync(new LibraryLyricsRecord(
-                        item.Entry.SourcePath,
-                        source == CloudLyricsSource.QqMusic
-                            ? LibraryLyricsOrigin.AutoQq
-                            : LibraryLyricsOrigin.AutoKugou,
-                        lyrics.ToString(),
-                        null,
-                        (source == CloudLyricsSource.QqMusic
-                            ? "auto-qq:" : "auto-kugou:") + strict[0].Id,
-                        DateTimeOffset.UtcNow),
-                        cancellation.Token);
-                    await QueueLyricOutputSyncAsync(item);
+                    // Auto-matching records actual provider metadata,
+                    // even if the track has no downloadable lyrics.
+                    await matchStore.SaveMatchAsync(
+                        item.Entry.SourcePath, strict[0],
+                        confirmed: false, cancellation.Token);
                     updated++;
 
-                    if (ReferenceEquals(item, _selectedLibraryItem))
+                    // The lyrics are independent: preserve source-embedded,
+                    // sidecar and user-edited canonical documents.
+                    if (canonical?.HasLyrics != true
+                        && canonical?.Origin != LibraryLyricsOrigin.ManualEmpty)
                     {
-                        _currentLyricsRaw = lyrics.ToString();
-                        RenderLyrics();
+                        LrcDocument? lyrics =
+                            await client.GetLyricsAsync(strict[0],
+                                cancellation.Token);
+                        if (lyrics is { Lines.Count: > 0 })
+                        {
+                            await cache.SaveLibraryAsync(new LibraryLyricsRecord(
+                                item.Entry.SourcePath,
+                                source == CloudLyricsSource.QqMusic
+                                    ? LibraryLyricsOrigin.AutoQq
+                                    : LibraryLyricsOrigin.AutoKugou,
+                                lyrics.ToString(),
+                                null,
+                                (source == CloudLyricsSource.QqMusic
+                                    ? "auto-qq:" : "auto-kugou:") + strict[0].Id,
+                                DateTimeOffset.UtcNow),
+                                cancellation.Token);
+                            await QueueLyricOutputSyncAsync(item);
+                            lyricsUpdated++;
+                            if (ReferenceEquals(item, _selectedLibraryItem))
+                            {
+                                _currentLyricsRaw = lyrics.ToString();
+                                RenderLyrics();
+                            }
+                        }
                     }
+                    if (ReferenceEquals(item, _selectedLibraryItem))
+                        await RefreshCloudMatchTabsAsync(item);
                 }
                 catch (OperationCanceledException)
                 {
@@ -503,7 +536,7 @@ public sealed partial class MainWindow
                          : InfoBarSeverity.Informational,
             L($"{provider} metadata matching", $"{provider} 元数据匹配"),
             L(
-                $"{updated} lyrics selected with exact metadata; {ambiguous} ambiguous matches skipped; {failures} errors. No audio fingerprint was used.",
-                $"精确元数据匹配成功 {updated} 首，跳过歧义结果 {ambiguous} 个，错误 {failures} 个。没有使用音频指纹识别。"));
+                $"{updated} matches found by metadata; {ambiguous} ambiguous results skipped; {failures} errors.",
+                $"元数据匹配成功 {updated} 首，跳过歧义结果 {ambiguous} 个，错误 {failures} 个。"));
     }
 }
