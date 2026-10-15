@@ -200,13 +200,13 @@ public sealed partial class MainWindow
             LyricsSearchPreviewView preview = new();
             preview.LyricsList.ItemTemplate = LyricsList.ItemTemplate;
             preview.LyricsList.ItemContainerStyle = LyricsList.ItemContainerStyle;
-            preview.ItemsSource =
-            [
+            preview.ItemsSource = new LyricDisplayLine[]
+            {
                 new LyricDisplayLine("First original line", "第一句翻译",
                     "preferOriginal", TimeSpan.FromSeconds(12)),
                 new LyricDisplayLine("Second original line", "第二句翻译",
                     "preferOriginal", TimeSpan.FromSeconds(16)),
-            ];
+            };
             LyricsSearchDialogView search = new()
             {
                 SearchContent = new LyricsSearchFormView(),
