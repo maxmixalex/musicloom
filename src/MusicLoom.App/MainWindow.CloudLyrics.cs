@@ -36,6 +36,51 @@ public sealed partial class MainWindow
             await ShowCloudMatchDialogAsync(item, CloudLyricsSource.KugouMusic);
     }
 
+    private async void QqMatchPanel_SearchRequested(object sender, EventArgs e)
+    {
+        if (_selectedLibraryItem is LibraryDisplayItem item)
+            await ShowCloudMatchDialogAsync(item, CloudLyricsSource.QqMusic);
+    }
+
+    private async void KugouMatchPanel_SearchRequested(object sender, EventArgs e)
+    {
+        if (_selectedLibraryItem is LibraryDisplayItem item)
+            await ShowCloudMatchDialogAsync(item, CloudLyricsSource.KugouMusic);
+    }
+
+    private async Task RefreshCloudMatchTabsAsync(LibraryDisplayItem item)
+    {
+        LibraryLyricsRecord? record = null;
+        try
+        {
+            record = await new SqliteLyricsCache(DatabasePath)
+                .GetLibraryAsync(item.Entry.SourcePath);
+        }
+        catch (Exception error)
+        {
+            AppDiagnostics.LogException(
+                "Could not refresh provider lyric summaries.", error);
+        }
+
+        if (!ReferenceEquals(item, _selectedLibraryItem)) return;
+        bool isQq = record is not null && (
+            record.Origin == LibraryLyricsOrigin.AutoQq
+            || record.SourceSignature.StartsWith(
+                "manual-qq:", StringComparison.OrdinalIgnoreCase)
+            || record.SourceSignature.StartsWith(
+                "auto-qq:", StringComparison.OrdinalIgnoreCase));
+        bool isKugou = record is not null && (
+            record.Origin == LibraryLyricsOrigin.AutoKugou
+            || record.SourceSignature.StartsWith(
+                "manual-kugou:", StringComparison.OrdinalIgnoreCase)
+            || record.SourceSignature.StartsWith(
+                "auto-kugou:", StringComparison.OrdinalIgnoreCase));
+        QqMatchPanel.SetTrack(item.Title, item.Artist, item.Album,
+            item.Artwork, isQq && record?.HasLyrics == true);
+        KugouMatchPanel.SetTrack(item.Title, item.Artist, item.Album,
+            item.Artwork, isKugou && record?.HasLyrics == true);
+    }
+
     private async Task ShowCloudMatchDialogAsync(
         LibraryDisplayItem item, CloudLyricsSource source)
     {
@@ -54,6 +99,32 @@ public sealed partial class MainWindow
         }
 
         panel.LyricsAccepted += CloudLyricsPanel_LyricsAccepted;
+        panel.PreviewRequested += async _ =>
+        {
+            try
+            {
+                if (ReferenceEquals(_playingLibraryItem, item)
+                    && _mediaPlayer.PlaybackSession.PlaybackState ==
+                        Windows.Media.Playback.MediaPlaybackState.Playing)
+                {
+                    _mediaPlayer.Pause();
+                }
+                else
+                {
+                    // QQ and KuGou searches provide lyrics metadata but not
+                    // an authenticated preview audio URL. This deliberately
+                    // previews the corresponding local file, never a fake
+                    // provider stream, while sharing the NetEase play button.
+                    await PlayLibraryItemAsync(item);
+                }
+                UpdatePlayerVisualState();
+            }
+            catch (Exception error)
+            {
+                AppDiagnostics.LogException(
+                    "Could not preview local track in lyric search.", error);
+            }
+        };
         panel.LyricSeekRequested += async timestamp =>
         {
             try
@@ -128,6 +199,7 @@ public sealed partial class MainWindow
             await SaveManualLyricsAsync(item, manual);
             CloseMatchOverlay();
             await ShowTrackDetailsAsync(item);
+            await RefreshCloudMatchTabsAsync(item);
 
             ShowInfo(InfoBarSeverity.Success,
                 L("Lyrics selected", "已采用歌词"),

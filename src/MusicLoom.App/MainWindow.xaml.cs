@@ -4307,6 +4307,7 @@ public sealed partial class MainWindow : Window
         UpdatePlayerVisualState();
         ShowDetailPane();
         await ShowTrackDetailsAsync(item);
+        await RefreshCloudMatchTabsAsync(item);
     }
 
     private void ShowDetailPane()
@@ -10225,12 +10226,16 @@ public sealed partial class MainWindow : Window
                 "可以使用音频指纹识别，或按艺术家和歌曲名搜索。");
         OpenMatchDialogButtonText.Text =
             L("Find or change match…", "查找或更改匹配……");
-        FindNeteaseMatchItem.Text = L(
-            "NetEase Music…", "网易云音乐……");
-        FindQqMatchItem.Text = L(
-            "QQ Music lyrics…", "QQ 音乐歌词……");
-        FindKugouMatchItem.Text = L(
-            "KuGou Music lyrics…", "酷狗音乐歌词……");
+        QqMatchTab.Header = L("QQ Music", "QQ 音乐");
+        KugouMatchTab.Header = L("KuGou Music", "酷狗音乐");
+        QqMatchPanel.SetProvider(
+            L("QQ Music", "QQ 音乐"),
+            L("Search QQ Music", "查找 QQ 音乐歌词"),
+            L("No QQ Music lyrics selected", "尚未采用 QQ 音乐歌词"));
+        KugouMatchPanel.SetProvider(
+            L("KuGou Music", "酷狗音乐"),
+            L("Search KuGou Music", "查找酷狗音乐歌词"),
+            L("No KuGou lyrics selected", "尚未采用酷狗音乐歌词"));
         ConfirmMatchButtonText.Text =
             L(
                 "Confirm match",

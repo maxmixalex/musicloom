@@ -879,25 +879,14 @@
                       <StackPanel
                           Orientation="Horizontal"
                           Spacing="8">
-                        <DropDownButton x:Name="OpenMatchDialogButton">
+                        <Button x:Name="OpenMatchDialogButton"
+                                Click="OpenMatchDialogButton_Click">
                           <StackPanel Orientation="Horizontal" Spacing="7">
                             <SymbolIcon Symbol="Find" />
-                            <TextBlock x:Name="OpenMatchDialogButtonText" Text="Find or change match…" />
+                            <TextBlock x:Name="OpenMatchDialogButtonText"
+                                       Text="Find NetEase match…" />
                           </StackPanel>
-                          <DropDownButton.Flyout>
-                            <MenuFlyout>
-                              <MenuFlyoutItem x:Name="FindNeteaseMatchItem"
-                                              Text="NetEase Music…"
-                                              Click="FindNeteaseMatchItem_Click" />
-                              <MenuFlyoutItem x:Name="FindQqMatchItem"
-                                              Text="QQ Music…"
-                                              Click="FindQqMatchItem_Click" />
-                              <MenuFlyoutItem x:Name="FindKugouMatchItem"
-                                              Text="KuGou Music…"
-                                              Click="FindKugouMatchItem_Click" />
-                            </MenuFlyout>
-                          </DropDownButton.Flyout>
-                        </DropDownButton>
+                        </Button>
                         <Button
                             x:Name="ConfirmMatchButton"
                             Visibility="Collapsed"
@@ -926,6 +915,17 @@
                         </Button>
                       </StackPanel>
                     </StackPanel>
+                  </TabViewItem>
+
+                  <!-- Three independent providers, deliberately parallel
+                       rather than QQ/KuGou actions inside the NetEase tab. -->
+                  <TabViewItem x:Name="QqMatchTab" Header="QQ Music" IsClosable="False">
+                    <local:CloudLyricsMatchTab x:Name="QqMatchPanel"
+                        SearchRequested="QqMatchPanel_SearchRequested" />
+                  </TabViewItem>
+                  <TabViewItem x:Name="KugouMatchTab" Header="KuGou Music" IsClosable="False">
+                    <local:CloudLyricsMatchTab x:Name="KugouMatchPanel"
+                        SearchRequested="KugouMatchPanel_SearchRequested" />
                   </TabViewItem>
 
                   <TabViewItem x:Name="SyncTab" Header="Sync" IsClosable="False">

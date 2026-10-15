@@ -1,0 +1,47 @@
+<UserControl x:Class="MusicLoom.App.CloudLyricsMatchTab"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ScrollViewer Padding="4,14,4,4">
+    <StackPanel Spacing="12">
+      <Border Padding="10" CornerRadius="8" BorderThickness="1"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+        <Grid ColumnSpacing="10">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="54" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Border Width="54" Height="54" CornerRadius="6"
+              Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+            <Grid>
+              <FontIcon Glyph="&#xE8D6;" FontSize="20"
+                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+              <Image x:Name="LocalArtwork" Stretch="UniformToFill" />
+            </Grid>
+          </Border>
+          <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+            <TextBlock x:Name="TrackTitle" FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis"/>
+            <TextBlock x:Name="TrackArtist" FontSize="12"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextTrimming="CharacterEllipsis"/>
+            <TextBlock x:Name="TrackAlbum" FontSize="11"
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+      <TextBlock x:Name="ProviderStatus" TextWrapping="Wrap"
+          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+      <Button x:Name="SearchButton" HorizontalAlignment="Left"
+              Click="SearchButton_Click">
+        <StackPanel Orientation="Horizontal" Spacing="7">
+          <SymbolIcon Symbol="Find"/>
+          <TextBlock x:Name="SearchText" Text="Find lyrics…"/>
+        </StackPanel>
+      </Button>
+      <TextBlock x:Name="ProviderHelp" TextWrapping="Wrap" FontSize="12"
+          Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
