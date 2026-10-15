@@ -2,8 +2,11 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using MusicLoom.Core.Configuration;
 using Windows.Graphics.Imaging;
+using Windows.Foundation;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Storage.Streams;
 using Windows.System;
 using Windows.UI;
@@ -36,6 +39,17 @@ public sealed partial class ImmersivePlayer : UserControl
     {
         InitializeComponent();
         LyricModeBox.SelectedIndex = 2;
+        AlbumCover.ImageOpened += async (_, _) =>
+            await ApplyDisplayedCoverPaletteAsync();
+        ImmersiveLyricsList.Loaded += (_, _) =>
+        {
+            HookLyricScroller();
+            DispatcherQueue.TryEnqueue(UpdateLyricEdgeOpacity);
+        };
+        ImmersiveLyricsList.SizeChanged += (_, _) =>
+            DispatcherQueue.TryEnqueue(UpdateLyricEdgeOpacity);
+        ImmersiveLyricsList.ContainerContentChanging += (_, _) =>
+            DispatcherQueue.TryEnqueue(UpdateLyricEdgeOpacity);
         _initialized = true;
     }
 
@@ -69,11 +83,13 @@ public sealed partial class ImmersivePlayer : UserControl
 
     internal void SetTrack(
         string title,
+        string artist,
         string album,
         ImageSource? cover,
         IEnumerable<LyricDisplayLine> lines)
     {
         TrackHeading.Text = title;
+        ArtistHeading.Text = artist;
         AlbumHeading.Text = album;
         AlbumCover.Source = cover;
         LyricDisplayLine[] display = lines.ToArray();
@@ -81,6 +97,7 @@ public sealed partial class ImmersivePlayer : UserControl
         LyricModeBox.Visibility = display.Any(
             static line => !string.IsNullOrWhiteSpace(line.Translation))
             ? Visibility.Visible : Visibility.Collapsed;
+        DispatcherQueue.TryEnqueue(UpdateLyricEdgeOpacity);
     }
 
     internal void SetProgress(
@@ -111,8 +128,15 @@ public sealed partial class ImmersivePlayer : UserControl
         int request = ++_artworkRequest;
         if (artwork is null || artwork.Length == 0)
         {
-            SetPalette(Color.FromArgb(255, 64, 108, 148),
-                       Color.FromArgb(255, 50, 82, 111));
+            // Album art can already exist in the UI bitmap cache when
+            // neither its original audio tag nor a cover file is readable.
+            // Sample what the user is ACTUALLY seeing instead of resetting
+            // every album to the same default blue.
+            if (await TryApplyDisplayedCoverPaletteAsync(request))
+                return;
+            if (request == _artworkRequest)
+                SetPalette(Color.FromArgb(255, 64, 108, 148),
+                           Color.FromArgb(255, 50, 82, 111));
             return;
         }
 
@@ -141,7 +165,8 @@ public sealed partial class ImmersivePlayer : UserControl
         catch (Exception error)
         {
             AppDiagnostics.LogException("Could not decode immersive artwork palette.", error);
-            if (request == _artworkRequest)
+            if (request == _artworkRequest
+                && !await TryApplyDisplayedCoverPaletteAsync(request))
             {
                 SetPalette(Color.FromArgb(255, 64, 108, 148),
                            Color.FromArgb(255, 50, 82, 111));
@@ -255,24 +280,113 @@ public sealed partial class ImmersivePlayer : UserControl
         ProgressSlider.Resources["SliderTrackValueFillPointerOver"] =
             new SolidColorBrush(Blend(primary, white, 0.45));
         ProgressSlider.Resources["SliderThumbBackground"] = new SolidColorBrush(accent);
-        // The lyric fade must match the new background rather than retain
-        // its previous album's background color.
-        Color fadeBase = ArtworkGradient.GradientStops[2].Color;
-        LyricsFadeGradient.GradientStops[0].Color =
-            Color.FromArgb(0, fadeBase.R, fadeBase.G, fadeBase.B);
-        LyricsFadeGradient.GradientStops[1].Color = fadeBase;
+        // The list fades via item opacity, not a dark overlay. All gradient
+        // stops remain dedicated to the actual album-driven background.
         PaletteChanged?.Invoke(ArtworkGradient.GradientStops[0].Color);
     }
 
-    private void LeftPanel_SizeChanged(
-        object sender, SizeChangedEventArgs args)
+    // Both columns have exactly the same viewport height. Neither image
+    // aspect ratio nor lyric list desired size participates in measuring it.
+    private void ImmersiveLayoutRoot_SizeChanged(
+        object sender, SizeChangedEventArgs e)
     {
-        // Both columns share the exact visual vertical span at every
-        // window size, rather than anchoring lyrics higher than the cover.
-        if (args.NewSize.Height > 0
-            && Math.Abs(RightPanel.Height - args.NewSize.Height) > 0.5)
+        double width = Math.Min(1160, Math.Max(0, e.NewSize.Width - 68));
+        if (Math.Abs(PlayerColumns.Width - width) > 0.5)
+            PlayerColumns.Width = width;
+    }
+
+    private void PlayerColumns_SizeChanged(
+        object sender, SizeChangedEventArgs e)
+    {
+        double width = Math.Max(0, (e.NewSize.Width - 38) / 2);
+        double height = Math.Max(0, e.NewSize.Height - 146);
+        double size = Math.Max(0, Math.Min(480, Math.Min(width, height)));
+        if (Math.Abs(ImmersiveArtworkFrame.Width - size) > 0.5)
+            ImmersiveArtworkFrame.Width = size;
+        if (Math.Abs(ImmersiveArtworkFrame.Height - size) > 0.5)
+            ImmersiveArtworkFrame.Height = size;
+    }
+
+    private async Task ApplyDisplayedCoverPaletteAsync()
+    {
+        int current = _artworkRequest;
+        await TryApplyDisplayedCoverPaletteAsync(current);
+    }
+
+    private async Task<bool> TryApplyDisplayedCoverPaletteAsync(int request)
+    {
+        if (!IsLoaded || AlbumCover.Source is null
+            || AlbumCover.ActualWidth < 1 || AlbumCover.ActualHeight < 1)
+            return false;
+
+        try
         {
-            RightPanel.Height = args.NewSize.Height;
+            RenderTargetBitmap bitmap = new();
+            await bitmap.RenderAsync(AlbumCover, 32, 32);
+            var pixels = await bitmap.GetPixelsAsync();
+            byte[] bgra = pixels.ToArray();
+            if (request != _artworkRequest) return true;
+            if (bgra.Length < 4) return false;
+            (Color primary, Color secondary) = ExtractPalette(bgra);
+            SetPalette(primary, secondary);
+            return true;
+        }
+        catch (Exception error)
+        {
+            AppDiagnostics.LogException(
+                "Could not sample visible album cover palette.", error);
+            return false;
+        }
+    }
+
+    // WinUI ListView has no WPF-style OpacityMask. Applying opacity to
+    // realized item containers gives a true alpha fade top AND bottom,
+    // independent of background hues and without darkening the lyrics.
+    private void HookLyricScroller()
+    {
+        if (_lyricScroller is not null) return;
+        _lyricScroller = FindScroller(ImmersiveLyricsList);
+        if (_lyricScroller is not null)
+            _lyricScroller.ViewChanged += (_, _) => UpdateLyricEdgeOpacity();
+    }
+
+    private ScrollViewer? _lyricScroller;
+
+    private static ScrollViewer? FindScroller(DependencyObject root)
+    {
+        if (root is ScrollViewer viewer) return viewer;
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            ScrollViewer? found = FindScroller(VisualTreeHelper.GetChild(root, i));
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    private void UpdateLyricEdgeOpacity()
+    {
+        Panel? panel = ImmersiveLyricsList.ItemsPanelRoot;
+        if (panel is null) return;
+
+        double viewport = ImmersiveLyricsList.ActualHeight;
+        if (viewport <= 0) return;
+        double edge = Math.Min(88, viewport * 0.23);
+        foreach (UIElement element in panel.Children)
+        {
+            if (element is not ListViewItem item) continue;
+            try
+            {
+                Point origin = item.TransformToVisual(ImmersiveLyricsList)
+                    .TransformPoint(new Point(0, 0));
+                double middle = origin.Y + item.ActualHeight / 2;
+                double upper = Math.Clamp(middle / edge, 0, 1);
+                double lower = Math.Clamp((viewport - middle) / edge, 0, 1);
+                item.Opacity = Math.Clamp(Math.Min(upper, lower), 0, 1);
+            }
+            catch (ArgumentException)
+            {
+                // A recycled item may detach during a layout pass.
+            }
         }
     }
 

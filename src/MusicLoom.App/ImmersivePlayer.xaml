@@ -6,7 +6,8 @@
     IsTabStop="True"
     KeyDown="ImmersivePlayer_KeyDown">
   <!-- Immersive overlays the app client area, NOT the system monitor. -->
-  <Grid Padding="34,24,34,20">
+  <Grid x:Name="ImmersiveLayoutRoot" Padding="34,24,34,20"
+        SizeChanged="ImmersiveLayoutRoot_SizeChanged">
     <Grid.Background>
       <LinearGradientBrush x:Name="ArtworkGradient"
                            StartPoint="0,0" EndPoint="1,1">
@@ -23,31 +24,34 @@
     <!-- The window's real, theme-aware MusicLoom title bar remains visible
          above this content. Never duplicate it inside the player. -->
 
-    <Grid Grid.Row="0" MaxWidth="1160" HorizontalAlignment="Center"
-          VerticalAlignment="Center" ColumnSpacing="38">
+    <Grid x:Name="PlayerColumns" Grid.Row="0" MaxWidth="1160"
+          HorizontalAlignment="Center" VerticalAlignment="Stretch"
+          SizeChanged="PlayerColumns_SizeChanged"
+          ColumnSpacing="38">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="1*" />
         <ColumnDefinition Width="1*" />
       </Grid.ColumnDefinitions>
 
       <Grid x:Name="LeftPanel" Grid.Column="0"
-            MaxWidth="480" VerticalAlignment="Center"
-            HorizontalAlignment="Center" RowSpacing="15"
-            SizeChanged="LeftPanel_SizeChanged">
+            VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+            RowSpacing="15">
         <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
           <RowDefinition Height="Auto" />
           <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" x:Name="ImmersiveArtworkFrame"
+                Width="360" Height="360"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
                 CornerRadius="17" BorderThickness="0"
                 Translation="0,0,14">
           <Border.Shadow>
             <ThemeShadow />
           </Border.Shadow>
           <Image x:Name="AlbumCover"
-                 MaxWidth="460" MaxHeight="460"
+                 HorizontalAlignment="Center" VerticalAlignment="Center"
                  Stretch="Uniform" />
         </Border>
 
@@ -101,8 +105,8 @@
       </Grid>
 
       <Grid x:Name="RightPanel" Grid.Column="1"
-            MaxWidth="530" VerticalAlignment="Center"
-            HorizontalAlignment="Stretch" RowSpacing="20">
+            VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+            RowSpacing="16">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />
           <RowDefinition Height="*" />
@@ -112,15 +116,20 @@
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
-          <StackPanel Grid.Column="0" Spacing="7"
-                      VerticalAlignment="Center">
+          <!-- Track, artist and album share one left alignment and
+               a bounded header, independent of lyric count. -->
+          <StackPanel Grid.Column="0" Spacing="5"
+                      VerticalAlignment="Center" HorizontalAlignment="Stretch">
             <TextBlock x:Name="TrackHeading" Text="Nothing playing"
                        FontSize="25" FontWeight="SemiBold"
                        Foreground="White" MaxLines="2"
                        TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="ArtistHeading" Text=""
+                       Foreground="#E0FFFFFF"
+                       FontSize="16" TextTrimming="CharacterEllipsis" />
             <TextBlock x:Name="AlbumHeading" Text=""
-                       Foreground="#BFFFFFFF"
-                       FontSize="15" TextTrimming="CharacterEllipsis" />
+                       Foreground="#A8FFFFFF"
+                       FontSize="13" TextTrimming="CharacterEllipsis" />
           </StackPanel>
           <ComboBox x:Name="LyricModeBox" Grid.Column="1"
                     MinWidth="125" VerticalAlignment="Center"
@@ -133,7 +142,7 @@
             <ComboBoxItem x:Name="PreferOriginalChoice" Tag="preferOriginal" Content="Prefer original" />
           </ComboBox>
         </Grid>
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="1" MinHeight="0">
           <ListView x:Name="ImmersiveLyricsList"
                     SelectionMode="None" Background="Transparent"
                     DoubleTapped="ImmersiveLyricsList_DoubleTapped"
@@ -159,17 +168,9 @@
               </DataTemplate>
             </ListView.ItemTemplate>
           </ListView>
-          <Border x:Name="LyricsBottomFade"
-                  Height="94" VerticalAlignment="Bottom"
-                  IsHitTestVisible="False">
-            <Border.Background>
-              <LinearGradientBrush x:Name="LyricsFadeGradient"
-                                   StartPoint="0,0" EndPoint="0,1">
-                <GradientStop Color="#00183A55" Offset="0" />
-                <GradientStop Color="#FF183A55" Offset="1" />
-              </LinearGradientBrush>
-            </Border.Background>
-          </Border>
+          <!-- Edge fade is applied to realized ListViewItem opacity
+               on BOTH ends. No black/colored gradient can paint over text. -->
+
         </Grid>
       </Grid>
     </Grid>

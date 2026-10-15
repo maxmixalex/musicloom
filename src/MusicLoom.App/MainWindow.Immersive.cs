@@ -105,6 +105,10 @@ public sealed partial class MainWindow
             }
 
             _immersiveActive = true;
+            // The WinUI title and OS window title must both survive an
+            // immersive view switch; do not rely on decorative in-view text.
+            AppTitleBar.Title = "MusicLoom";
+            AppWindow.Title = "MusicLoom";
             AppTitleBar.RequestedTheme = ElementTheme.Dark;
             ImmersiveHost.Visibility = Visibility.Visible;
             ImmersiveView.SetMode(_lyricsDisplayMode);
@@ -122,7 +126,8 @@ public sealed partial class MainWindow
             else
             {
                 ImmersiveView.SetTrack(
-                    L("Nothing playing", "尚未播放"), string.Empty, null, []);
+                    L("Nothing playing", "尚未播放"),
+                    string.Empty, string.Empty, null, []);
                 await ImmersiveView.ApplyArtworkColorsAsync(null);
             }
         }
@@ -169,10 +174,8 @@ public sealed partial class MainWindow
         LibraryDisplayItem item, bool updatePalette = true)
     {
         int version = ++_immersiveLoadVersion;
-        string label = string.IsNullOrWhiteSpace(item.Artist)
-            ? item.Title
-            : item.Artist + " - " + item.Title;
-        ImmersiveView.SetTrack(label, item.Album, item.Artwork, []);
+        ImmersiveView.SetTrack(
+            item.Title, item.Artist, item.Album, item.Artwork, []);
         ImmersiveView.SetMode(_lyricsDisplayMode);
         if (updatePalette)
         {
@@ -195,7 +198,8 @@ public sealed partial class MainWindow
 
             LyricDisplayLine[] lines = BuildLyricLines(
                 record?.Text, _lyricsDisplayMode);
-            ImmersiveView.SetTrack(label, item.Album, item.Artwork, lines);
+            ImmersiveView.SetTrack(
+                item.Title, item.Artist, item.Album, item.Artwork, lines);
             _activePlaybackLyric?.IsActive = false;
             _activePlaybackLyric = null;
             _lastAutoScrolledLyric = null;
@@ -218,13 +222,37 @@ public sealed partial class MainWindow
             {
                 if (_settings is not MusicLoomSettings settings)
                     return null;
-                return TryReadEmbeddedArtwork(item.Entry)
-                    ?? TryReadExternalArtwork(settings, item.Entry);
+                return TryReadArtworkBytes(settings, item.Entry);
             });
 
             if (!_immersiveActive || artworkVersion != _immersiveArtworkVersion)
             {
                 return;
+            }
+            if (imageBytes is null && item.Artwork is not null)
+            {
+                // Library browsing groups tracks with the same artwork.
+                // Another song in that group may own the embedded bytes.
+                var companions = _allLibraryItems
+                    .Where(candidate => !ReferenceEquals(candidate, item)
+                        && (ReferenceEquals(candidate.Artwork, item.Artwork)
+                            || string.Equals(ArtworkKey(candidate), ArtworkKey(item),
+                                StringComparison.OrdinalIgnoreCase)))
+                    .Take(24)
+                    .Select(candidate => candidate.Entry)
+                    .ToArray();
+                imageBytes = await Task.Run(() =>
+                {
+                    if (_settings is not MusicLoomSettings saved) return null;
+                    foreach (var entry in companions)
+                    {
+                        byte[]? bytes = TryReadArtworkBytes(saved, entry);
+                        if (bytes is { Length: > 0 }) return bytes;
+                    }
+                    return null;
+                });
+                if (!_immersiveActive || artworkVersion != _immersiveArtworkVersion)
+                    return;
             }
             await ImmersiveView.ApplyArtworkColorsAsync(imageBytes);
         }
