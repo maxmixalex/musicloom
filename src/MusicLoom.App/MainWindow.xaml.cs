@@ -4322,6 +4322,10 @@ public sealed partial class MainWindow : Window
         }
 
         _selectedLibraryItem = item;
+        // Clear both provider cards synchronously. A previous song's match
+        // must never masquerade as the newly selected song while SQLite
+        // is still loading.
+        ClearCloudMatchPanels();
         OpenMatchDialogButton.IsEnabled = !_busy;
         UpdatePlayerVisualState();
         ShowDetailPane();

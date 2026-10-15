@@ -37,7 +37,7 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
         ApplyArtwork(candidate.CoverUrl);
     }
 
-    public CloudLyricsCandidate Candidate { get; }
+    public CloudLyricsCandidate Candidate { get; private set; }
     public string PreviewTooltip { get; }
     public bool PreviewIsPlaying { get; private set; }
     public void SetPreviewPlaying(bool playing)
@@ -76,6 +76,7 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
             return;
         }
 
+        Candidate = Candidate with { CoverUrl = address };
         Artwork = new BitmapImage
         {
             DecodePixelWidth = 112,
@@ -186,8 +187,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         if (CandidatesList.ItemsSource is null)
         {
             ProviderStatus.Text = L(
-                "Search this provider; your NetEase match remains unchanged.",
-                "从此歌词源搜索，不会改变已有网易云匹配记录。");
+                "Search for a match.", "搜索以查找匹配。");
         }
         if (LyricsPreview.ItemsSource is null)
         {
@@ -448,12 +448,12 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     private void UseMatchButton_Click(object sender, RoutedEventArgs e)
     {
         if (_sourcePath is string path
-            && _previewCandidate is CloudLyricsCandidate candidate)
+            && CandidatesList.SelectedItem is CloudCandidateRow selected)
         {
             UseMatchButton.IsEnabled = false;
             MatchAccepted?.Invoke(this,
                 new CloudMatchAcceptedEventArgs(
-                    path, candidate, _previewDocument));
+                    path, selected.Candidate, _previewDocument));
         }
     }
 

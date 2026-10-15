@@ -420,7 +420,6 @@ public sealed partial class MainWindow
             using CloudLyricsClient client = new();
             SqliteLyricsCache cache = new(DatabasePath);
             SqliteProviderMatchStore matchStore = new(DatabasePath);
-            int lyricsUpdated = 0;
 
             for (int i = 0; i < snapshot.Length; i++)
             {
@@ -471,7 +470,7 @@ public sealed partial class MainWindow
                     // even if the track has no downloadable lyrics.
                     await matchStore.SaveMatchAsync(
                         item.Entry.SourcePath, strict[0],
-                        confirmed: false, cancellation.Token);
+                        confirmed: false, ct: cancellation.Token);
                     updated++;
 
                     // The lyrics are independent: preserve source-embedded,
@@ -496,7 +495,6 @@ public sealed partial class MainWindow
                                 DateTimeOffset.UtcNow),
                                 cancellation.Token);
                             await QueueLyricOutputSyncAsync(item);
-                            lyricsUpdated++;
                             if (ReferenceEquals(item, _selectedLibraryItem))
                             {
                                 _currentLyricsRaw = lyrics.ToString();
