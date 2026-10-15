@@ -175,7 +175,7 @@ public sealed partial class CloudLyricsClient
             || !Uri.TryCreate(root, relative, out Uri? result))
             return null;
 
-        return NormalizeStreamUrl(result, CloudLyricsSource.QqMusic);
+        return NormalizeStreamUrl(result.AbsoluteUri, CloudLyricsSource.QqMusic);
     }
 
     private async Task<CloudAudioPreviewResult> GetKugouAudioPreviewAsync(
