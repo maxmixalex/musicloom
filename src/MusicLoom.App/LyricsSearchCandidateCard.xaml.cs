@@ -29,6 +29,15 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
         DependencyProperty.Register(nameof(PreviewTooltip), typeof(string),
             typeof(LyricsSearchCandidateCard),
             new PropertyMetadata("Play or pause"));
+    public static readonly DependencyProperty IsPreviewPlayingProperty =
+        DependencyProperty.Register(nameof(IsPreviewPlaying), typeof(bool),
+            typeof(LyricsSearchCandidateCard),
+            new PropertyMetadata(false, (sender, _) =>
+            {
+                if (sender is LyricsSearchCandidateCard card)
+                    card.PlayingIcon.Symbol = card.IsPreviewPlaying
+                        ? Symbol.Pause : Symbol.Play;
+            }));
 
     public string SongTitle
     {
@@ -59,6 +68,12 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
     {
         get => (string)GetValue(PreviewTooltipProperty);
         set => SetValue(PreviewTooltipProperty, value);
+    }
+
+    public bool IsPreviewPlaying
+    {
+        get => (bool)GetValue(IsPreviewPlayingProperty);
+        set => SetValue(IsPreviewPlayingProperty, value);
     }
 
     public SymbolIcon PlayingIcon => PreviewSymbol;

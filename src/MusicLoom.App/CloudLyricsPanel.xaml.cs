@@ -39,6 +39,15 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
 
     public CloudLyricsCandidate Candidate { get; }
     public string PreviewTooltip { get; }
+    public bool PreviewIsPlaying { get; private set; }
+    public void SetPreviewPlaying(bool playing)
+    {
+        if (PreviewIsPlaying == playing) return;
+        PreviewIsPlaying = playing;
+        PropertyChanged?.Invoke(this,
+            new PropertyChangedEventArgs(nameof(PreviewIsPlaying)));
+    }
+
     public string Title => Candidate.Title;
     public string Artist => Candidate.Artist;
     public string Album => Candidate.Album;
@@ -125,6 +134,34 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     public event EventHandler<CloudLyricsAcceptedEventArgs>? LyricsAccepted;
     public event Action<TimeSpan>? LyricSeekRequested;
     public event Action<CloudLyricsCandidate>? PreviewRequested;
+
+    // Used by the host to keep the shared remote preview and lyric seek
+    // locked to the same selected provider candidate.
+    public CloudLyricsCandidate? SelectedCandidate => _previewCandidate;
+    public ListView PreviewLyricsList => LyricsPreview.LyricsList;
+
+    public void SetPreviewStatus(string message)
+    {
+        if (!_disposed)
+            ProviderStatus.Text = message;
+    }
+
+    public void UpdatePreviewPlaying(
+        CloudLyricsCandidate? activeCandidate, bool isPlaying)
+    {
+        if (_disposed || CandidatesList.ItemsSource
+            is not IEnumerable<CloudCandidateRow> rows)
+            return;
+        foreach (CloudCandidateRow row in rows)
+        {
+            row.SetPreviewPlaying(isPlaying && activeCandidate is not null
+                && row.Candidate.Source == activeCandidate.Source
+                && string.Equals(row.Candidate.Id, activeCandidate.Id,
+                    StringComparison.Ordinal)
+                && string.Equals(row.Candidate.SongMid,
+                    activeCandidate.SongMid, StringComparison.Ordinal));
+        }
+    }
 
     public CloudLyricsPanel()
     {
@@ -295,7 +332,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             CloudCandidateRow[] ranked = found
                 .OrderByDescending(CandidateScore)
                 .Select(candidate => new CloudCandidateRow(candidate,
-                    L("Play local track", "播放本地曲目")))
+                    L("Play remote preview", "播放远程试听")))
                 .ToArray();
             CandidatesList.ItemsSource = ranked;
             ProviderStatus.Text = ranked.Length == 0
@@ -397,6 +434,10 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         if (sender is LyricsSearchCandidateCard card
             && card.DataContext is CloudCandidateRow row)
         {
+            // Clicking a play icon also selects that candidate so its lyrics
+            // and seek targets cannot point to the previous search result.
+            if (!ReferenceEquals(CandidatesList.SelectedItem, row))
+                CandidatesList.SelectedItem = row;
             PreviewRequested?.Invoke(row.Candidate);
         }
     }

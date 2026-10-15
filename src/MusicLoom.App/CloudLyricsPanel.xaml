@@ -21,6 +21,7 @@
                   DurationText="{Binding Duration}"
                   ArtworkSource="{Binding Artwork}"
                   PreviewTooltip="{Binding PreviewTooltip}"
+                  IsPreviewPlaying="{Binding PreviewIsPlaying, Mode=OneWay}"
                   PreviewRequested="CandidateCard_PreviewRequested"/>
             </DataTemplate>
           </ListView.ItemTemplate>
