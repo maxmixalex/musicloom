@@ -27,7 +27,8 @@ public sealed record CloudLyricsCandidate(
     string? Hash = null,
     string? SongMid = null,
     string? CoverUrl = null,
-    string? AlbumId = null);
+    string? AlbumId = null,
+    string? MediaMid = null);
 
 public sealed partial class CloudLyricsClient : IDisposable
 {
@@ -344,7 +345,9 @@ public sealed partial class CloudLyricsClient : IDisposable
             entries.Add(new CloudLyricsCandidate(
                 CloudLyricsSource.QqMusic, id, title, artist,
                 album, checked(seconds * 1000), SongMid: mid,
-                CoverUrl: cover, AlbumId: albumId));
+                CoverUrl: cover, AlbumId: albumId,
+                MediaMid: Find(song, "file", out JsonElement fileInfo)
+                    ? Str(fileInfo, "media_mid", "mediaMid") : null));
         }
         return entries;
     }
