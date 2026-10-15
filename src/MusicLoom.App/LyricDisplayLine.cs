@@ -11,6 +11,7 @@ internal sealed class LyricDisplayLine :
 {
     private bool _isActive;
     private TimeSpan _playbackPosition;
+    private double _immersiveScale = 1.0;
 
     public LyricDisplayLine(
         string original,
@@ -102,7 +103,19 @@ internal sealed class LyricDisplayLine :
     }
 
     public double ImmersiveOpacity => IsActive ? 1.0 : 0.48;
-    public double ImmersiveFontSize => IsActive ? 28.0 : 22.0;
+    public double ImmersiveFontSize =>
+        (IsActive ? 28.0 : 22.0) * _immersiveScale;
+    public double ImmersiveSecondaryFontSize => 16.0 * _immersiveScale;
+
+    public void SetImmersiveScale(double scale)
+    {
+        scale = Math.Clamp(scale, 0.6, 1.3);
+        if (Math.Abs(_immersiveScale - scale) < 0.005)
+            return;
+        _immersiveScale = scale;
+        OnPropertyChanged(nameof(ImmersiveFontSize));
+        OnPropertyChanged(nameof(ImmersiveSecondaryFontSize));
+    }
 
     public double PrimaryFontSize =>
         IsActive ? 20 : 16;
@@ -179,9 +192,23 @@ internal sealed class LyricDisplayLine :
             _ => null,
         };
 
+    private static bool HasRuby(IReadOnlyList<LrcWord>? words) =>
+        words is { Count: > 0 }
+        && words.Any(static word => !string.IsNullOrWhiteSpace(word.Ruby));
+
+    public Visibility PrimaryRubyVisibility =>
+        HasRuby(PrimaryWords) ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility PrimaryPlainVisibility =>
+        HasRuby(PrimaryWords) ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility SecondaryRubyVisibility =>
+        SecondaryText is not null && HasRuby(SecondaryWords)
+            ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility SecondaryPlainVisibility =>
+        SecondaryText is not null && !HasRuby(SecondaryWords)
+            ? Visibility.Visible : Visibility.Collapsed;
+
     public Visibility SecondaryVisibility =>
-        string.IsNullOrWhiteSpace(
-            SecondaryText)
+        string.IsNullOrWhiteSpace(SecondaryText)
             ? Visibility.Collapsed
             : Visibility.Visible;
 

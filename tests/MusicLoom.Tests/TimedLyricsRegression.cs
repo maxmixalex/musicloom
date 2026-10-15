@@ -32,6 +32,7 @@ internal static class TimedLyricsRegression
     private static async Task RunAsync()
     {
         VerifyQrcWordTiming();
+        VerifyQqRubyAnnotation();
         VerifyKrcWordTiming();
         await VerifyUnofficialTransportAsync();
     }
@@ -72,6 +73,32 @@ internal static class TimedLyricsRegression
             "Output-only offset must not modify canonical words.");
     }
 
+    private static void VerifyQqRubyAnnotation()
+    {
+        string qrcRoma = "<QrcInfos><LyricInfo><Lyric_1 LyricType=\"1\" LyricContent=\""
+            + "[500,900]he(500,400)rō(900,500)\n"
+            + "[1900,900]world(1900,900)"
+            + "\" /></LyricInfo></QrcInfos>";
+        string response = JsonSerializer.Serialize(new
+        {
+            lyric = QrcXml,
+            roma = qrcRoma,
+            trans = "",
+        });
+        LrcDocument? merged = CloudLyricsClient.ParseQqLyrics(response);
+        Assert(merged?.Lines.Count == 2
+            && merged.Lines[0].Words is { Count: 2 } words
+            && words[0].Ruby == "he" && words[1].Ruby == "rō",
+            "QQ's romaji QRC should align to the original words, not appear as a third lyric row.");
+        LrcDocument roundtrip = LrcDocument.Parse(merged!.ToString());
+        Assert(roundtrip.Lines[0].Words![1].Ruby == "rō"
+            && roundtrip.Lines[1].Words![0].Ruby == "world",
+            "QQ roma annotations must survive the canonical enhanced-LRC cache.");
+        Assert(roundtrip.ToStandardLrcString().Contains("Hello")
+            && !roundtrip.ToStandardLrcString().Contains("ml-ruby"),
+            "Export must preserve ordinary lyric text without private ruby annotations.");
+    }
+
     private static void VerifyKrcWordTiming()
     {
         string romanization = """
@@ -87,8 +114,8 @@ internal static class TimedLyricsRegression
         Assert(actual == input, "KuGou XOR/zlib roundtrip failed.");
 
         LrcDocument decoded = TimedLyricsCodec.ParseKrc(actual);
-        Assert(decoded.Lines.Count == 6,
-            "KRC original/romanization/translation should all survive.");
+        Assert(decoded.Lines.Count == 4,
+            "KRC must keep two originals and two translations; romanization belongs in ruby, not extra lyric lines.");
         LrcLine original = decoded.Lines.First(
             line => line.Words is { Count: > 0 });
         Assert(original.Text == "Hello"
@@ -99,17 +126,29 @@ internal static class TimedLyricsRegression
             "KuGou word times must be relative to line start.");
         Assert(decoded.Lines.Any(line => line.Text == "你好"),
             "KRC line translation is missing.");
-        Assert(decoded.Lines.Any(line => line.Text == "Herō"
-            && line.Words is null),
-            "KRC aligned romanization is missing.");
+        Assert(original.Words![0].Ruby == "He"
+            && original.Words![1].Ruby == "rō",
+            "KRC romanization must align to the two original timed words.");
+        Assert(decoded.Lines.Any(line => line.Text == "World"
+            && line.Words is { Count: 1 } w && w[0].Ruby == "Wōrudo"),
+            "The following KRC line must retain its own ruby annotation.");
+        Assert(!decoded.Lines.Any(line => line.Text == "Herō"),
+            "Romanization must not leak into a translated lyric row.");
         Assert(decoded.Metadata["ar"] == "Artist",
             "KRC album/artist tags should be preserved.");
 
         LrcDocument persistence = LrcDocument.Parse(decoded.ToString());
         Assert(persistence.Lines.Count == decoded.Lines.Count
             && persistence.Lines.First(line => line.Words is not null)
-                .Words![1].End == TimeSpan.FromMilliseconds(1400),
-            "KRC timed words were lost through SQLite-style serialization.");
+                .Words![1].End == TimeSpan.FromMilliseconds(1400)
+            && persistence.Lines.First(line => line.Words is not null)
+                .Words![1].Ruby == "rō",
+            "KRC word times or ruby annotations were lost through canonical serialization.");
+        Assert(!decoded.ToStandardLrcString().Contains("[ml-ruby:",
+            StringComparison.Ordinal),
+            "Private ruby metadata must never be written to destination LRC/audio tags.");
+        Assert(LrcPresentation.Project(persistence).Count == 2,
+            "Ruby annotations must not invent additional scrolled lyric rows.");
 
         bool rejected = false;
         try

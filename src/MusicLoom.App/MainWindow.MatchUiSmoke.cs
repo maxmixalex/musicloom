@@ -4,6 +4,8 @@ using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using MusicLoom.Core.Configuration;
+using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.Scanning;
 using MusicLoom.Core.State;
 using MusicLoom.LyricsProviders;
@@ -287,6 +289,86 @@ public sealed partial class MainWindow
             Assert(new FileInfo(immersivePng).Length > 1800,
                 "Immersive: actual WinUI viewport with long bilingual lyrics rendered");
 
+            StackPanel transport = immersive.FindName("TransportControls") as StackPanel
+                ?? throw new InvalidOperationException("Transport footer not found");
+            Button modeCycle = immersive.FindName("LyricModeButton") as Button
+                ?? throw new InvalidOperationException("Mode cycling button not found");
+            Slider playerSlider = immersive.FindName("ProgressSlider") as Slider
+                ?? throw new InvalidOperationException("Immersive slider not found");
+            TextBlock playerTime = immersive.FindName("PlaybackTime") as TextBlock
+                ?? throw new InvalidOperationException("Player timestamp not found");
+            Assert(transport.Parent is Grid footer
+                && Grid.GetRow(footer) == 1
+                && Grid.GetRow(playerTime) == 0
+                && playerTime.HorizontalAlignment == HorizontalAlignment.Center
+                && playerSlider.Height >= 36,
+                "Immersive: controls in footer; centered time above non-clipping slider");
+            string? originalMode = null;
+            immersive.ModeChanged += selected => originalMode = selected;
+            Invoke(modeCycle);
+            Assert(originalMode == LyricsDisplayModes.PreferTranslation,
+                "Immersive: three-state lyric display button cycles first mode");
+            Invoke(modeCycle);
+            Assert(originalMode == LyricsDisplayModes.OriginalOnly,
+                "Immersive: three-state lyric display button cycles second mode");
+            Invoke(modeCycle);
+            Assert(originalMode == LyricsDisplayModes.PreferOriginal,
+                "Immersive: three-state lyric display button wraps to preferred original");
+            BitmapImage wideCover = await FixtureArtworkAsync(
+                Color.FromArgb(255, 90, 130, 170), width: 120, height: 64);
+            immersive.SetTrack("Wide artwork", "Artist", "Album", wideCover,
+                [new LyricDisplayLine("Text", "译文", "preferOriginal")]);
+            await Task.Delay(170);
+            Border coverSurface = immersive.FindName("AlbumCoverSurface") as Border
+                ?? throw new InvalidOperationException("Cover surface not found");
+            Assert(coverSurface.Width > coverSurface.Height
+                && coverSurface.CornerRadius.TopLeft > 0,
+                "Immersive: rectangular cover has correctly bounded rounded/shadowed surface");
+            immersive.Width = 650;
+            immersive.Height = 430;
+            await Task.Delay(130);
+            TextBlock heading = immersive.FindName("TrackHeading") as TextBlock
+                ?? throw new InvalidOperationException("Track heading not found");
+            Assert(heading.FontSize < 25
+                && Math.Abs(leftColumn.ActualHeight - rightColumn.ActualHeight) < 1,
+                "Immersive: reducing window size scales text without unequal columns");
+
+            host.Children.Clear();
+            LrcWord[] firstWords =
+            [
+                new(TimeSpan.Zero, TimeSpan.FromSeconds(1), "君", "kimi"),
+                new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), "が", "ga"),
+            ];
+            RubyLyricView rubyView = new()
+            {
+                Width = 560,
+                MinHeight = 110,
+                FontSize = 23,
+                Line = new LyricDisplayLine("君が", null, "preferOriginal",
+                    TimeSpan.Zero, firstWords),
+            };
+            host.Children.Add(rubyView);
+            await Task.Delay(110);
+            Assert(rubyView.Content is RichTextBlock firstRuby
+                && firstRuby.Blocks.Count == 1
+                && firstRuby.Blocks[0] is Microsoft.UI.Xaml.Documents.Paragraph paragraph
+                && paragraph.Inlines.Count == 2,
+                "Ruby: real RichTextBlock contains two timed ruby/base inline atoms");
+            rubyView.Line = new LyricDisplayLine("春", null, "preferOriginal",
+                TimeSpan.FromSeconds(4),
+                [new LrcWord(TimeSpan.FromSeconds(4),
+                    TimeSpan.FromSeconds(5), "春", "haru")]);
+            await Task.Delay(80);
+            Assert(rubyView.Content is RichTextBlock secondRuby
+                && secondRuby.Blocks.Count == 1
+                && secondRuby.Blocks[0] is Microsoft.UI.Xaml.Documents.Paragraph next
+                && next.Inlines.Count == 1,
+                "Ruby: changing the lyric line rebuilds inline layout without losing the next line");
+            string rubyPng = marker + ".RubyViewport.png";
+            await SavePanelScreenshotAsync(rubyView, rubyPng);
+            Assert(new FileInfo(rubyPng).Length > 1800,
+                "Ruby: real WinUI annotation renderer produced screenshot");
+
             host.Children.Clear();
             AppRoot.Children.Remove(host);
             host = null;
@@ -417,10 +499,10 @@ public sealed partial class MainWindow
         ((IInvokeProvider)peer).Invoke();
     }
 
-    private static async Task<BitmapImage> FixtureArtworkAsync(Color tint)
+    private static async Task<BitmapImage> FixtureArtworkAsync(
+        Color tint, uint width = 64, uint height = 64)
     {
-        const uint edge = 64;
-        byte[] pixels = new byte[edge * edge * 4];
+        byte[] pixels = new byte[width * height * 4];
         for (int i = 0; i < pixels.Length; i += 4)
         {
             pixels[i] = tint.B;
@@ -434,7 +516,7 @@ public sealed partial class MainWindow
             BitmapEncoder.PngEncoderId, stream);
         encoder.SetPixelData(BitmapPixelFormat.Bgra8,
             BitmapAlphaMode.Premultiplied,
-            edge, edge, 96, 96, pixels);
+            width, height, 96, 96, pixels);
         await encoder.FlushAsync();
         stream.Seek(0);
         BitmapImage image = new();

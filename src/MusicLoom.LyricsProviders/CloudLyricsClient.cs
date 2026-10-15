@@ -433,30 +433,32 @@ public sealed partial class CloudLyricsClient : IDisposable
 
         if (romanized.Lines.Count > 0)
         {
-            // QQ romaji timestamps normally match the original QRC lines.
-            // Keep them separate for a later choice of display modes.
+            // QQ roma QRC is an annotation over the same original timed
+            // words, not an independent translation to append/flatten.
             foreach (LrcLine roma in romanized.Lines)
             {
                 LrcLine? aligned = primary.Lines
                     .OrderBy(line =>
                         (line.Timestamp - roma.Timestamp).Duration())
                     .FirstOrDefault();
-                if (aligned is not null
-                    && (aligned.Timestamp - roma.Timestamp).Duration()
-                        <= TimeSpan.FromMilliseconds(600)
-                    && !string.Equals(aligned.Text, roma.Text,
-                        StringComparison.Ordinal))
+                if (aligned is null
+                    || (aligned.Timestamp - roma.Timestamp).Duration()
+                        > TimeSpan.FromMilliseconds(600)
+                    || aligned.Words is not { Count: > 0 } originalWords
+                    || roma.Words is not { Count: > 0 } romanWords
+                    || originalWords.Count != romanWords.Count)
+                    continue;
+
+                int index = merged.Lines.FindIndex(line =>
+                    line.Timestamp == aligned.Timestamp
+                    && line.Text == aligned.Text);
+                if (index < 0) continue;
+                merged.Lines[index] = aligned with
                 {
-                    merged.Lines.Add(roma with
-                    {
-                        Timestamp = aligned.Timestamp,
-                    });
-                }
+                    Words = originalWords.Select((word, i) =>
+                        word with { Ruby = romanWords[i].Text.Trim() }).ToArray(),
+                };
             }
-            LrcLine[] ordered = merged.Lines
-                .OrderBy(static line => line.Timestamp).ToArray();
-            merged.Lines.Clear();
-            merged.Lines.AddRange(ordered);
         }
         return merged;
     }

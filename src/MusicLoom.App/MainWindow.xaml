@@ -15,7 +15,8 @@
       <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
-    <TitleBar x:Name="AppTitleBar" Grid.Row="0" Title="MusicLoom" />
+    <TitleBar x:Name="AppTitleBar" Grid.Row="0" Title="MusicLoom"
+              BorderThickness="0" />
     <NavigationView
       Grid.Row="1"
       x:Name="Navigation"
@@ -811,24 +812,32 @@
                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                   VerticalAlignment="Top" />
                               <StackPanel Grid.Column="1" Spacing="3">
-                                <TextBlock
-                                    x:Name="PrimaryLyricText"
+                                <TextBlock x:Name="PrimaryLyricText"
                                     local:KaraokeLyricText.Line="{Binding}"
+                                    Visibility="{Binding PrimaryPlainVisibility}"
                                     FontSize="{Binding PrimaryFontSize}"
                                     Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                    LineHeight="23"
-                                    TextWrapping="WrapWholeWords"
+                                    LineHeight="23" TextWrapping="WrapWholeWords"
                                     IsTextSelectionEnabled="False" />
-                                <TextBlock
-                                    x:Name="SecondaryLyricText"
+                                <local:RubyLyricView
+                                    Line="{Binding}"
+                                    Visibility="{Binding PrimaryRubyVisibility}"
+                                    FontSize="{Binding PrimaryFontSize}"
+                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                <TextBlock x:Name="SecondaryLyricText"
                                     local:KaraokeLyricText.Line="{Binding}"
                                     local:KaraokeLyricText.IsSecondary="True"
-                                    Visibility="{Binding SecondaryVisibility}"
+                                    Visibility="{Binding SecondaryPlainVisibility}"
                                     FontSize="{Binding SecondaryFontSize}"
                                     LineHeight="20"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     TextWrapping="WrapWholeWords"
                                     IsTextSelectionEnabled="False" />
+                                <local:RubyLyricView
+                                    Line="{Binding}" IsSecondary="True"
+                                    Visibility="{Binding SecondaryRubyVisibility}"
+                                    FontSize="{Binding SecondaryFontSize}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                               </StackPanel>
                             </Grid>
                           </DataTemplate>

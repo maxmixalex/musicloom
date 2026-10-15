@@ -18,6 +18,9 @@ public sealed partial class MainWindow
     private ElementTheme _previousImmersiveTitleTheme;
     private Brush? _previousImmersiveTitleBackground;
     private Brush? _previousImmersiveTitleForeground;
+    private Brush? _previousImmersiveTitleBorder;
+    private Thickness _previousImmersiveTitleBorderThickness;
+    private Brush? _previousImmersiveRootBackground;
     private Color? _previousCaptionButtonBackground;
     private Color? _previousCaptionButtonForeground;
     private bool _captionColorsSupported;
@@ -73,6 +76,11 @@ public sealed partial class MainWindow
         // solid title/caption color. Both are advanced on the SAME animation
         // tick so no dark horizontal seam appears while switching songs.
         AppTitleBar.Background = new SolidColorBrush(background);
+        AppTitleBar.BorderThickness = new Thickness(0);
+        AppTitleBar.BorderBrush = new SolidColorBrush(background);
+        // Cover the one-pixel client seam if Windows draws a transparent
+        // gap between the custom title bar and the immersive content.
+        AppRoot.Background = new SolidColorBrush(background);
         AppTitleBar.Foreground = new SolidColorBrush(
             Color.FromArgb(255, 255, 255, 255));
         if (_captionColorsSupported)
@@ -98,6 +106,9 @@ public sealed partial class MainWindow
             _previousImmersiveTitleTheme = AppTitleBar.RequestedTheme;
             _previousImmersiveTitleBackground = AppTitleBar.Background;
             _previousImmersiveTitleForeground = AppTitleBar.Foreground;
+            _previousImmersiveTitleBorder = AppTitleBar.BorderBrush;
+            _previousImmersiveTitleBorderThickness = AppTitleBar.BorderThickness;
+            _previousImmersiveRootBackground = AppRoot.Background;
             _captionColorsSupported =
                 Microsoft.UI.Windowing.AppWindowTitleBar
                     .IsCustomizationSupported();
@@ -160,6 +171,9 @@ public sealed partial class MainWindow
         AppTitleBar.RequestedTheme = _previousImmersiveTitleTheme;
         AppTitleBar.Background = _previousImmersiveTitleBackground;
         AppTitleBar.Foreground = _previousImmersiveTitleForeground;
+        AppTitleBar.BorderBrush = _previousImmersiveTitleBorder;
+        AppTitleBar.BorderThickness = _previousImmersiveTitleBorderThickness;
+        AppRoot.Background = _previousImmersiveRootBackground;
         if (_captionColorsSupported)
         {
             AppWindow.TitleBar.ButtonBackgroundColor =

@@ -292,9 +292,34 @@ public static partial class TimedLyricsCodec
                     {
                         continue;
                     }
+                    if (kind == 0
+                        && original.Words is { Count: > 0 } words)
+                    {
+                        // KRC type 0 carries one romanization cell for each
+                        // original timed word. It is RUBY, not a second
+                        // translation row and must never be concatenated.
+                        string?[] annotation = lines[index].EnumerateArray()
+                            .Select(static cell =>
+                                cell.ValueKind == JsonValueKind.String
+                                    ? cell.GetString() : null)
+                            .ToArray();
+                        if (annotation.Length == words.Count)
+                        {
+                            result.Lines[i] = original with
+                            {
+                                Words = words.Select((word, j) =>
+                                    word with { Ruby = annotation[j] }).ToArray(),
+                            };
+                            continue;
+                        }
+                        // Inexact alignment cannot safely be attached to
+                        // individual glyphs; avoid inventing a bad mapping.
+                        continue;
+                    }
+
                     string translation = kind switch
                     {
-                        0 => string.Concat(lines[index].EnumerateArray()
+                        0 => string.Join(" ", lines[index].EnumerateArray()
                             .Where(static word => word.ValueKind == JsonValueKind.String)
                             .Select(static word => word.GetString())),
                         1 => lines[index].GetArrayLength() > 0

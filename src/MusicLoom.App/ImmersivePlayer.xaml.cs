@@ -20,7 +20,9 @@ public sealed partial class ImmersivePlayer : UserControl
 {
     private bool _initialized;
     private bool _updatingProgress;
-    private bool _updatingMode;
+    private string _lyricMode = LyricsDisplayModes.PreferOriginal;
+    private Func<string, string, string> _translate = (english, _) => english;
+    private double _immersiveScale = 1;
     private int _artworkRequest;
 
     // One shared animation clock drives the client gradient, progress accent,
@@ -34,6 +36,8 @@ public sealed partial class ImmersivePlayer : UserControl
     private readonly SolidColorBrush _progressAccent =
         new(Color.FromArgb(255, 232, 255, 255));
     private readonly SolidColorBrush _progressAccentHover =
+        new(Color.FromArgb(255, 255, 255, 255));
+    private readonly SolidColorBrush _progressAccentPressed =
         new(Color.FromArgb(255, 255, 255, 255));
 
     internal Color CurrentTopColor => ArtworkGradient.GradientStops[0].Color;
@@ -51,9 +55,12 @@ public sealed partial class ImmersivePlayer : UserControl
     public ImmersivePlayer()
     {
         InitializeComponent();
-        LyricModeBox.SelectedIndex = 2;
+        UpdateLyricModeButton();
         AlbumCover.ImageOpened += async (_, _) =>
+        {
+            UpdateCoverSurfaceSize();
             await ApplyDisplayedCoverPaletteAsync();
+        };
         ImmersiveLyricsList.Loaded += (_, _) =>
             DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
         ImmersiveLyricsList.SizeChanged += (_, _) =>
@@ -66,36 +73,42 @@ public sealed partial class ImmersivePlayer : UserControl
         ProgressSlider.Resources["SliderTrackValueFill"] = _progressAccent;
         ProgressSlider.Resources["SliderTrackValueFillPointerOver"] =
             _progressAccentHover;
+        ProgressSlider.Resources["SliderTrackValueFillPressed"] =
+            _progressAccentPressed;
         ProgressSlider.Resources["SliderThumbBackground"] = _progressAccent;
+        ProgressSlider.Resources["SliderThumbBackgroundPointerOver"] =
+            _progressAccentHover;
+        ProgressSlider.Resources["SliderThumbBackgroundPressed"] =
+            _progressAccentPressed;
         _initialized = true;
     }
 
     internal void Localize(Func<string, string, string> translate)
     {
-        OriginalOnlyChoice.Content = translate("Original only", "仅原文");
-        PreferTranslationChoice.Content = translate("Prefer translation", "优先翻译");
-        PreferOriginalChoice.Content = translate("Prefer original", "优先原文");
+        _translate = translate;
+        UpdateLyricModeButton();
         ToolTipService.SetToolTip(ExitButton,
             translate("Exit fullscreen", "退出全屏"));
     }
 
+    private void UpdateLyricModeButton()
+    {
+        LyricModeButton.Content = _lyricMode switch
+        {
+            LyricsDisplayModes.OriginalOnly =>
+                _translate("Original only", "仅原文"),
+            LyricsDisplayModes.PreferTranslation =>
+                _translate("Prefer translation", "优先翻译"),
+            _ => _translate("Prefer original", "优先原文"),
+        };
+        ToolTipService.SetToolTip(LyricModeButton,
+            _translate("Cycle lyric display mode", "切换歌词显示模式"));
+    }
+
     internal void SetMode(string displayMode)
     {
-        _updatingMode = true;
-        try
-        {
-            LyricModeBox.SelectedIndex =
-                LyricsDisplayModes.Normalize(displayMode) switch
-                {
-                    LyricsDisplayModes.OriginalOnly => 0,
-                    LyricsDisplayModes.PreferTranslation => 1,
-                    _ => 2,
-                };
-        }
-        finally
-        {
-            _updatingMode = false;
-        }
+        _lyricMode = LyricsDisplayModes.Normalize(displayMode);
+        UpdateLyricModeButton();
     }
 
     internal void SetTrack(
@@ -109,9 +122,12 @@ public sealed partial class ImmersivePlayer : UserControl
         ArtistHeading.Text = artist;
         AlbumHeading.Text = album;
         AlbumCover.Source = cover;
+        UpdateCoverSurfaceSize();
         LyricDisplayLine[] display = lines.ToArray();
+        foreach (LyricDisplayLine line in display)
+            line.SetImmersiveScale(_immersiveScale);
         ImmersiveLyricsList.ItemsSource = display;
-        LyricModeBox.Visibility = display.Any(
+        LyricModeButton.Visibility = display.Any(
             static line => !string.IsNullOrWhiteSpace(line.Translation))
             ? Visibility.Visible : Visibility.Collapsed;
         DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
@@ -324,6 +340,9 @@ public sealed partial class ImmersivePlayer : UserControl
         _progressAccentHover.Color = Blend(
             _progressAccent.Color,
             Color.FromArgb(255, 255, 255, 255), 0.20);
+        _progressAccentPressed.Color = Blend(
+            _progressAccent.Color,
+            Color.FromArgb(255, 255, 255, 255), 0.07);
         UpdateLyricFadeColors();
         PaletteChanged?.Invoke(CurrentTopColor);
 
@@ -342,13 +361,28 @@ public sealed partial class ImmersivePlayer : UserControl
     {
         double width = Math.Max(0, e.NewSize.Width - 68) * 0.88;
         // 24 + 20: root padding; 38: the exit-button row.
-        double height = Math.Max(0, e.NewSize.Height - 82) * 0.88;
+        double height = Math.Max(0, e.NewSize.Height - 100) * 0.88;
         if (!double.IsFinite(PlayerColumns.Width)
             || Math.Abs(PlayerColumns.Width - width) > 0.5)
             PlayerColumns.Width = width;
         if (!double.IsFinite(PlayerColumns.Height)
             || Math.Abs(PlayerColumns.Height - height) > 0.5)
             PlayerColumns.Height = height;
+        double scale = Math.Clamp(
+            Math.Min(e.NewSize.Width / 1260, e.NewSize.Height / 770),
+            0.62, 1.22);
+        if (Math.Abs(scale - _immersiveScale) > 0.005)
+        {
+            _immersiveScale = scale;
+            TrackHeading.FontSize = 25 * scale;
+            ArtistHeading.FontSize = 16 * scale;
+            AlbumHeading.FontSize = 13 * scale;
+            LyricModeButton.FontSize = 13 * scale;
+            PlaybackTime.FontSize = 12 * scale;
+            if (ImmersiveLyricsList.ItemsSource is LyricDisplayLine[] lines)
+                foreach (LyricDisplayLine line in lines)
+                    line.SetImmersiveScale(scale);
+        }
         DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
     }
 
@@ -357,13 +391,34 @@ public sealed partial class ImmersivePlayer : UserControl
     {
         double panelWidth = Math.Max(0, (e.NewSize.Width - 38) / 2);
         // Reserve the progress/time rows, buttons and row spacing.
-        double panelHeight = Math.Max(0, e.NewSize.Height - 142);
+        double panelHeight = Math.Max(0, e.NewSize.Height - 82);
         double side = Math.Min(panelWidth, panelHeight);
         if (Math.Abs(ImmersiveArtworkFrame.Width - side) > 0.5)
             ImmersiveArtworkFrame.Width = side;
         if (Math.Abs(ImmersiveArtworkFrame.Height - side) > 0.5)
             ImmersiveArtworkFrame.Height = side;
+        UpdateCoverSurfaceSize();
         DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
+    }
+
+    private void UpdateCoverSurfaceSize()
+    {
+        double slot = Math.Max(0, Math.Min(
+            ImmersiveArtworkFrame.Width,
+            ImmersiveArtworkFrame.Height));
+        double ratio = AlbumCover.Source is BitmapImage bitmap
+            && bitmap.PixelWidth > 0 && bitmap.PixelHeight > 0
+                ? (double)bitmap.PixelWidth / bitmap.PixelHeight : 1;
+        if (!double.IsFinite(ratio) || ratio <= 0) ratio = 1;
+        double width = ratio >= 1 ? slot : slot * ratio;
+        double height = ratio >= 1 ? slot / ratio : slot;
+        if (Math.Abs(AlbumCoverSurface.Width - width) > 0.5)
+            AlbumCoverSurface.Width = width;
+        if (Math.Abs(AlbumCoverSurface.Height - height) > 0.5)
+            AlbumCoverSurface.Height = height;
+        AlbumCoverSurface.CornerRadius =
+            new CornerRadius(Math.Min(16 * _immersiveScale,
+                Math.Min(width, height) * 0.1));
     }
 
     private async Task ApplyDisplayedCoverPaletteAsync()
@@ -481,15 +536,18 @@ public sealed partial class ImmersivePlayer : UserControl
         }
     }
 
-    private void LyricModeBox_SelectionChanged(
-        object sender, SelectionChangedEventArgs e)
+    private void LyricModeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_initialized && !_updatingMode &&
-            LyricModeBox.SelectedItem is ComboBoxItem choice
-            && choice.Tag is string mode)
+        _lyricMode = _lyricMode switch
         {
-            ModeChanged?.Invoke(mode);
-        }
+            LyricsDisplayModes.PreferOriginal =>
+                LyricsDisplayModes.PreferTranslation,
+            LyricsDisplayModes.PreferTranslation =>
+                LyricsDisplayModes.OriginalOnly,
+            _ => LyricsDisplayModes.PreferOriginal,
+        };
+        UpdateLyricModeButton();
+        ModeChanged?.Invoke(_lyricMode);
     }
 
     private void ExitButton_Click(object sender, RoutedEventArgs e) =>

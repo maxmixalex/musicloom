@@ -39,29 +39,36 @@
         <Grid.RowDefinitions>
           <RowDefinition Height="*" />
           <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!-- The square is a layout slot only. The inner surface carries
+             the actual non-square cover's rounded clip and shadow. -->
         <Border Grid.Row="0" x:Name="ImmersiveArtworkFrame"
                 Width="0" Height="0"
                 HorizontalAlignment="Center" VerticalAlignment="Center"
-                CornerRadius="17" BorderThickness="0"
-                Translation="0,0,14">
-          <Border.Shadow>
-            <ThemeShadow />
-          </Border.Shadow>
-          <Image x:Name="AlbumCover"
-                 HorizontalAlignment="Center" VerticalAlignment="Center"
-                 Stretch="Uniform" />
+                Background="Transparent" BorderThickness="0">
+          <Border x:Name="AlbumCoverSurface"
+                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                  Width="0" Height="0" CornerRadius="16"
+                  BorderThickness="0" Translation="0,0,14">
+            <Border.Shadow><ThemeShadow /></Border.Shadow>
+            <Image x:Name="AlbumCover" Stretch="UniformToFill"/>
+          </Border>
         </Border>
 
-        <Grid Grid.Row="1" RowSpacing="3">
+        <Grid Grid.Row="1" RowSpacing="2" Margin="0,0,0,1">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
-          <Slider x:Name="ProgressSlider" Grid.Row="0"
-                  Height="23" Margin="0" Padding="0"
+          <TextBlock x:Name="PlaybackTime" Grid.Row="0"
+                     Foreground="#D9FFFFFF"
+                     HorizontalAlignment="Center"
+                     FontSize="12" Text="0:00 / 0:00" />
+          <!-- A 38px track viewport prevents the native thumb from being
+               clipped during pointer-over and dragging. -->
+          <Slider x:Name="ProgressSlider" Grid.Row="1"
+                  Height="38" Margin="0" Padding="0"
                   Minimum="0" Maximum="1"
                   ValueChanged="ProgressSlider_ValueChanged">
             <Slider.ThumbToolTipValueConverter>
@@ -69,39 +76,17 @@
             </Slider.ThumbToolTipValueConverter>
             <Slider.Resources>
               <SolidColorBrush x:Key="SliderTrackFill" Color="#42FFFFFF" />
+              <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#54FFFFFF" />
+              <SolidColorBrush x:Key="SliderTrackFillPressed" Color="#54FFFFFF" />
               <SolidColorBrush x:Key="SliderTrackValueFill" Color="#E8FFFFFF" />
               <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="#FFFFFFFF" />
+              <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="#FFFFFFFF" />
               <SolidColorBrush x:Key="SliderThumbBackground" Color="#FFFFFFFF" />
+              <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#FFFFFFFF" />
+              <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#FFFFFFFF" />
             </Slider.Resources>
           </Slider>
-          <TextBlock x:Name="PlaybackTime" Grid.Row="1"
-                     Foreground="#D9FFFFFF"
-                     HorizontalAlignment="Right"
-                     FontSize="12" Text="0:00 / 0:00" />
         </Grid>
-
-        <StackPanel Grid.Row="2" Orientation="Horizontal"
-                    HorizontalAlignment="Center" Spacing="18">
-          <Button Width="40" Height="40" Padding="0"
-                  BorderThickness="0" Background="Transparent"
-                  Click="PreviousButton_Click"
-                  ToolTipService.ToolTip="Previous">
-            <FontIcon Glyph="&#xE892;" FontSize="18" Foreground="White" />
-          </Button>
-          <Button Width="50" Height="50" Padding="0"
-                  BorderThickness="0" Background="Transparent"
-                  Click="PlayPauseButton_Click"
-                  ToolTipService.ToolTip="Play or pause">
-            <SymbolIcon x:Name="PlayPauseIcon" Symbol="Play"
-                        Foreground="White" />
-          </Button>
-          <Button Width="40" Height="40" Padding="0"
-                  BorderThickness="0" Background="Transparent"
-                  Click="NextButton_Click"
-                  ToolTipService.ToolTip="Next">
-            <FontIcon Glyph="&#xE893;" FontSize="18" Foreground="White" />
-          </Button>
-        </StackPanel>
       </Grid>
 
       <Grid x:Name="RightPanel" Grid.Column="1"
@@ -131,16 +116,13 @@
                        Foreground="#A8FFFFFF"
                        FontSize="13" TextTrimming="CharacterEllipsis" />
           </StackPanel>
-          <ComboBox x:Name="LyricModeBox" Grid.Column="1"
-                    MinWidth="125" VerticalAlignment="Center"
-                    BorderThickness="0" Padding="9,5"
-                    Background="#20FFFFFF"
-                    Foreground="White"
-                    SelectionChanged="LyricModeBox_SelectionChanged">
-            <ComboBoxItem x:Name="OriginalOnlyChoice" Tag="originalOnly" Content="Original only" />
-            <ComboBoxItem x:Name="PreferTranslationChoice" Tag="preferTranslation" Content="Prefer translation" />
-            <ComboBoxItem x:Name="PreferOriginalChoice" Tag="preferOriginal" Content="Prefer original" />
-          </ComboBox>
+          <!-- One compact action cycles through all three lyric modes. -->
+          <Button x:Name="LyricModeButton" Grid.Column="1"
+                  MinWidth="88" VerticalAlignment="Center"
+                  Padding="12,7" BorderThickness="0"
+                  Background="#20FFFFFF" Foreground="White"
+                  Click="LyricModeButton_Click"
+                  Content="Prefer original"/>
         </Grid>
         <Grid Grid.Row="1" MinHeight="0">
           <ListView x:Name="ImmersiveLyricsList"
@@ -163,15 +145,26 @@
                             Opacity="{Binding ImmersiveOpacity}">
                   <TextBlock x:Name="PrimaryLyricText"
                              local:KaraokeLyricText.Line="{Binding}"
+                             Visibility="{Binding PrimaryPlainVisibility}"
                              FontSize="{Binding ImmersiveFontSize}"
                              FontWeight="SemiBold" Foreground="White"
                              TextWrapping="WrapWholeWords" />
+                  <local:RubyLyricView Line="{Binding}"
+                             Visibility="{Binding PrimaryRubyVisibility}"
+                             FontSize="{Binding ImmersiveFontSize}"
+                             FontWeight="SemiBold" Foreground="White"/>
                   <TextBlock x:Name="SecondaryLyricText"
                              local:KaraokeLyricText.Line="{Binding}"
                              local:KaraokeLyricText.IsSecondary="True"
-                             Visibility="{Binding SecondaryVisibility}"
-                             FontSize="16" Foreground="#CBFFFFFF"
+                             Visibility="{Binding SecondaryPlainVisibility}"
+                             FontSize="{Binding ImmersiveSecondaryFontSize}"
+                             Foreground="#CBFFFFFF"
                              TextWrapping="WrapWholeWords" />
+                  <local:RubyLyricView Line="{Binding}"
+                             IsSecondary="True"
+                             Visibility="{Binding SecondaryRubyVisibility}"
+                             FontSize="{Binding ImmersiveSecondaryFontSize}"
+                             Foreground="#CBFFFFFF"/>
                 </StackPanel>
               </DataTemplate>
             </ListView.ItemTemplate>
@@ -205,12 +198,36 @@
       </Grid>
     </Grid>
 
-    <Button x:Name="ExitButton" Grid.Row="1"
+    <!-- Transport controls belong to the shared footer, not the left
+         column. Exit remains on the same vertical center line at right. -->
+    <Grid Grid.Row="1" HorizontalAlignment="Stretch" MinHeight="52">
+      <StackPanel x:Name="TransportControls" Orientation="Horizontal"
+                  VerticalAlignment="Center" HorizontalAlignment="Center"
+                  Spacing="18">
+        <Button Width="40" Height="40" Padding="0"
+                BorderThickness="0" Background="Transparent"
+                Click="PreviousButton_Click" ToolTipService.ToolTip="Previous">
+          <FontIcon Glyph="&#xE892;" FontSize="18" Foreground="White" />
+        </Button>
+        <Button Width="50" Height="50" Padding="0"
+                BorderThickness="0" Background="Transparent"
+                Click="PlayPauseButton_Click" ToolTipService.ToolTip="Play or pause">
+          <SymbolIcon x:Name="PlayPauseIcon" Symbol="Play" Foreground="White" />
+        </Button>
+        <Button Width="40" Height="40" Padding="0"
+                BorderThickness="0" Background="Transparent"
+                Click="NextButton_Click" ToolTipService.ToolTip="Next">
+          <FontIcon Glyph="&#xE893;" FontSize="18" Foreground="White" />
+        </Button>
+      </StackPanel>
+
+    <Button x:Name="ExitButton"
             HorizontalAlignment="Right"
             Width="40" Height="38" Padding="0"
             BorderThickness="0" Background="Transparent"
             Click="ExitButton_Click" ToolTipService.ToolTip="Exit immersive view">
       <FontIcon Glyph="&#xE8A7;" FontSize="18" Foreground="White" />
     </Button>
+    </Grid>
   </Grid>
 </UserControl>
