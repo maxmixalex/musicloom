@@ -33,6 +33,7 @@ internal static class TimedLyricsRegression
     {
         VerifyQrcWordTiming();
         VerifyQqRubyAnnotation();
+        VerifyUnequalRubySyllables();
         VerifyKrcWordTiming();
         await VerifyUnofficialTransportAsync();
     }
@@ -107,6 +108,46 @@ internal static class TimedLyricsRegression
             && exportedWords.All(static word => word.Ruby is null)
             && !exported.Contains("[ml-ruby:", StringComparison.Ordinal),
             "Export must preserve word-timed lyric text without private ruby annotations.");
+    }
+
+    private static void VerifyUnequalRubySyllables()
+    {
+        LrcWord[] originals =
+        [
+            new(TimeSpan.FromMilliseconds(500),
+                TimeSpan.FromMilliseconds(900), "Hel"),
+            new(TimeSpan.FromMilliseconds(900),
+                TimeSpan.FromMilliseconds(1400), "lo"),
+        ];
+        LrcWord[] romaji =
+        [
+            new(TimeSpan.FromMilliseconds(500),
+                TimeSpan.FromMilliseconds(680), "he"),
+            new(TimeSpan.FromMilliseconds(680),
+                TimeSpan.FromMilliseconds(900), "r"),
+            new(TimeSpan.FromMilliseconds(900),
+                TimeSpan.FromMilliseconds(1400), "ō"),
+        ];
+        IReadOnlyList<LrcWord>? result =
+            RubyWordAlignment.Attach(originals, romaji);
+        Assert(result is { Count: 2 }
+            && result[0].Ruby == "her"
+            && result[1].Ruby == "ō",
+            "Unequal original/romanization syllable counts must use word timestamps, not drop ruby.");
+        Assert(originals.All(static word => word.Ruby is null),
+            "Ruby alignment must not mutate the source word timings or annotations.");
+
+        LrcWord[] unrelated =
+        [
+            new(TimeSpan.FromSeconds(10),
+                TimeSpan.FromSeconds(11), "different"),
+            new(TimeSpan.FromSeconds(12),
+                TimeSpan.FromSeconds(13), "song"),
+            new(TimeSpan.FromSeconds(14),
+                TimeSpan.FromSeconds(15), "line"),
+        ];
+        Assert(RubyWordAlignment.Attach(originals, unrelated) is null,
+            "Unrelated romanization must not be attached across distant timestamps.");
     }
 
     private static void VerifyKrcWordTiming()

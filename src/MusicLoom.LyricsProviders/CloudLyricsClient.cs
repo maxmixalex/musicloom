@@ -445,19 +445,18 @@ public sealed partial class CloudLyricsClient : IDisposable
                     || (aligned.Timestamp - roma.Timestamp).Duration()
                         > TimeSpan.FromMilliseconds(600)
                     || aligned.Words is not { Count: > 0 } originalWords
-                    || roma.Words is not { Count: > 0 } romanWords
-                    || originalWords.Count != romanWords.Count)
+                    || roma.Words is not { Count: > 0 } romanWords)
                     continue;
+
+                IReadOnlyList<LrcWord>? annotated =
+                    RubyWordAlignment.Attach(originalWords, romanWords);
+                if (annotated is null) continue;
 
                 int index = merged.Lines.FindIndex(line =>
                     line.Timestamp == aligned.Timestamp
                     && line.Text == aligned.Text);
                 if (index < 0) continue;
-                merged.Lines[index] = aligned with
-                {
-                    Words = originalWords.Select((word, i) =>
-                        word with { Ruby = romanWords[i].Text.Trim() }).ToArray(),
-                };
+                merged.Lines[index] = aligned with { Words = annotated };
             }
         }
         return merged;

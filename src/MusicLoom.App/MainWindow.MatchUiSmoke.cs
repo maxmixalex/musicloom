@@ -32,6 +32,7 @@ public sealed partial class MainWindow
         StackPanel? host = null;
         LibraryDisplayItem? previousSelection = _selectedLibraryItem;
         StateDocument? previousState = _state;
+        Windows.Graphics.SizeInt32 previousWindowSize = AppWindow.Size;
 
         void Assert(bool condition, string description)
         {
@@ -45,11 +46,15 @@ public sealed partial class MainWindow
             string? directory = Path.GetDirectoryName(marker);
             if (!string.IsNullOrWhiteSpace(directory))
                 Directory.CreateDirectory(directory);
-            await Task.Delay(140);
+            // CI-only: make the entire three-column matching dialog fit
+            // inside the *visible* window before capturing it. Earlier
+            // 686px hosts silently clipped the entire lyrics preview rail.
+            AppWindow.Resize(new Windows.Graphics.SizeInt32(1360, 900));
+            await Task.Delay(400);
             host = new StackPanel
             {
                 Padding = new Thickness(18),
-                Width = Math.Min(940, Math.Max(600, AppRoot.ActualWidth - 30)),
+                Width = Math.Min(1220, Math.Max(600, AppRoot.ActualWidth - 30)),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 Background = new SolidColorBrush(
@@ -309,6 +314,9 @@ public sealed partial class MainWindow
 
             string searchPng = marker + ".SearchDialog.png";
             await SavePanelScreenshotAsync(search, searchPng);
+            Assert(search.ActualWidth > 1050
+                && await CountRenderedTextPixelsAsync(search, minX: 850) > 500,
+                "Search dialog: actual third lyric column painted inside visible window");
             Assert(new FileInfo(searchPng).Length > 1800,
                 "Search dialog: actual WinUI candidate and bilingual lyric columns rendered");
 
@@ -357,6 +365,8 @@ public sealed partial class MainWindow
                 "Immersive: stationary, non-intercepting edge fades outside scrolling items");
             string immersivePng = marker + ".ImmersiveViewport.png";
             await SavePanelScreenshotAsync(immersive, immersivePng);
+            Assert(await CountRenderedTextPixelsAsync(immersive, minX: 740) > 100,
+                "Immersive: right-side lyric viewport actually painted without parent clipping");
             Assert(new FileInfo(immersivePng).Length > 1800,
                 "Immersive: actual WinUI viewport with long bilingual lyrics rendered");
 
@@ -412,8 +422,8 @@ public sealed partial class MainWindow
             ];
             RubyLyricView rubyView = new()
             {
-                Width = 560,
-                MinHeight = 110,
+                Width = 420,
+                MinHeight = 180,
                 FontSize = 23,
                 Foreground = new SolidColorBrush(
                     Color.FromArgb(255, 255, 255, 255)),
@@ -440,7 +450,7 @@ public sealed partial class MainWindow
             // Render many ruby+base atoms so the browser-style reading
             // row must wrap naturally. A one-character transparent PNG may
             // compress below 1.8 KB despite being correctly rendered.
-            LrcWord[] flow = Enumerable.Range(0, 24)
+            LrcWord[] flow = Enumerable.Range(0, 60)
                 .Select(i => new LrcWord(
                     TimeSpan.FromSeconds(i), TimeSpan.FromSeconds(i + 1),
                     "春", "haru"))
@@ -457,8 +467,9 @@ public sealed partial class MainWindow
             string rubyPng = marker + ".RubyViewport.png";
             await SavePanelScreenshotAsync(rubyView, rubyPng);
             int brightPixels = await CountRenderedTextPixelsAsync(rubyView);
-            Assert(brightPixels > 120,
-                $"Ruby: WinUI must render actual visible annotation glyphs ({brightPixels} bright pixels)");
+            int wrappedPixels = await CountRenderedTextPixelsAsync(rubyView, minY: 60);
+            Assert(brightPixels > 120 && wrappedPixels > 120,
+                $"Ruby: annotated syllables must paint AFTER line wrap ({brightPixels} total, {wrappedPixels} below y=60)");
             Assert(new FileInfo(rubyPng).Length > 500,
                 "Ruby: nonempty real WinUI annotated text screenshot captured");
 
@@ -576,6 +587,7 @@ public sealed partial class MainWindow
         {
             if (host is not null)
                 AppRoot.Children.Remove(host);
+            AppWindow.Resize(previousWindowSize);
             _netEaseArtworkSmokeResolver = null;
             _state = previousState;
             _selectedLibraryItem = previousSelection;
@@ -618,7 +630,7 @@ public sealed partial class MainWindow
     }
 
     private static async Task<int> CountRenderedTextPixelsAsync(
-        FrameworkElement view)
+        FrameworkElement view, int minX = 0, int minY = 0)
     {
         // A repeated short lyric can compress into a tiny PNG. Inspect the
         // actual RenderTargetBitmap pixels instead of treating ZIP/PNG byte
@@ -631,8 +643,11 @@ public sealed partial class MainWindow
             reader.ReadBytes(bgra);
 
         int bright = 0;
+        int width = bitmap.PixelWidth;
         for (int i = 0; i + 3 < bgra.Length; i += 4)
         {
+            int pixel = i / 4;
+            if (pixel % width < minX || pixel / width < minY) continue;
             if (bgra[i + 3] > 50
                 && Math.Max(bgra[i], Math.Max(bgra[i + 1], bgra[i + 2])) > 125)
                 bright++;
