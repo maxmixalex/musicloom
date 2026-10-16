@@ -43,7 +43,10 @@ internal static class TimedLyricsRegression
     {
         string ciphertext = BuildQrcCipher(QrcXml);
         string decrypted = TimedLyricsCodec.DecryptQrc(ciphertext);
-        Assert(decrypted == QrcXml, "QRC 3DES/zlib roundtrip failed.");
+        Assert(decrypted == QrcXml, "QRC standard 3DES/zlib roundtrip failed.");
+        string qqCompat = BuildBuggyQrcCipher(QrcXml);
+        Assert(TimedLyricsCodec.DecryptQrc(qqCompat) == QrcXml,
+            "Real QQ Music's historical DES S-box variant must decrypt QRC.");
 
         LrcDocument doc = TimedLyricsCodec.ParseQrc(decrypted);
         Assert(doc.Lines.Count == 2, "QRC line count wrong.");
@@ -245,7 +248,7 @@ internal static class TimedLyricsRegression
     {
         string lyricKrc = Convert.ToBase64String(
             BuildKrcCipher(KrcText));
-        string encryptedQrc = BuildQrcCipher(QrcXml);
+        string encryptedQrc = BuildBuggyQrcCipher(QrcXml);
         FakeLyricsTransport mock = new(encryptedQrc, lyricKrc);
         using HttpClient http = new(mock);
         using CloudLyricsClient client = new(http);
@@ -292,6 +295,32 @@ internal static class TimedLyricsRegression
         triple.Mode = CipherMode.ECB;
         return Convert.ToHexString(
             triple.EncryptEcb(padded, PaddingMode.None));
+    }
+
+    private static string BuildBuggyQrcCipher(string plaintext)
+    {
+        byte[] compressed = Deflate(plaintext);
+        byte[] padded = new byte[(compressed.Length + 7) / 8 * 8];
+        compressed.CopyTo(padded, 0);
+        byte[][][] schedule = new byte[3][][];
+        for (int k = 0; k < 3; k++)
+        {
+            schedule[k] = new byte[16][];
+            for (int j = 0; j < 16; j++) schedule[k][j] = new byte[6];
+        }
+        QqMusicBuggyDes.TripleDESKeySetup(
+            Encoding.ASCII.GetBytes("!@#)(*$%123ZXC!@!@#)(NHL"),
+            schedule, QqMusicBuggyDes.ENCRYPT);
+        byte[] encrypted = new byte[padded.Length];
+        byte[] input = new byte[8];
+        byte[] output = new byte[8];
+        for (int i = 0; i < padded.Length; i += 8)
+        {
+            Buffer.BlockCopy(padded, i, input, 0, 8);
+            QqMusicBuggyDes.TripleDESCrypt(input, output, schedule);
+            Buffer.BlockCopy(output, 0, encrypted, i, 8);
+        }
+        return Convert.ToHexString(encrypted);
     }
 
     private static byte[] BuildKrcCipher(string plaintext)
@@ -382,6 +411,15 @@ internal static class TimedLyricsRegression
                     Assert(request.Contains("\"songID\":98123",
                         StringComparison.Ordinal),
                         "QRC must request numeric songID rather than MID.");
+                    Assert(request.Contains("\"songMID\":\"mid-123\"",
+                        StringComparison.Ordinal)
+                        && request.Contains("\"type\":-1",
+                            StringComparison.Ordinal)
+                        && request.Contains("\"trans\":1",
+                            StringComparison.Ordinal)
+                        && request.Contains("\"roma\":1",
+                            StringComparison.Ordinal),
+                        "QQ lyric request must ask for all three QRC/translation/romanization channels and include the stable song MID.");
                     payload = "{\"code\":0,\"request\":{\"code\":0,"
                         + "\"data\":{\"qrc_t\":1,\"lyric\":\""
                         + _qrc + "\",\"trans\":\"\",\"roma\":\"\"}}}";

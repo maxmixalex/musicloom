@@ -1882,7 +1882,8 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <StackPanel Spacing="3">
+              <StackPanel x:Name="PlayerMainMetadata" Spacing="3"
+                          MinHeight="40" VerticalAlignment="Center">
                 <ScrollViewer
                     x:Name="PlayerTitleViewport"
                     HorizontalContentAlignment="Stretch"
@@ -1924,18 +1925,24 @@
                   </TextBlock>
                 </ScrollViewer>
               </StackPanel>
-              <StackPanel Grid.Column="1" Orientation="Vertical"
-                          Spacing="3" HorizontalAlignment="Right"
-                          VerticalAlignment="Center">
-                <TextBlock x:Name="PlayerSourceText"
+              <Grid x:Name="PlayerSourceMetadata" Grid.Column="1"
+                    MinHeight="40" VerticalAlignment="Center"
+                    HorizontalAlignment="Right">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="*"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="PlayerSourceText" Grid.Row="0"
                            Text="" FontSize="12"
                            HorizontalAlignment="Right"
+                           VerticalAlignment="Top"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                <TextBlock x:Name="PlayerTimeText"
+                <TextBlock x:Name="PlayerTimeText" Grid.Row="1"
                            Text="0:00 / 0:00" FontSize="12"
                            HorizontalAlignment="Right"
+                           VerticalAlignment="Bottom"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-              </StackPanel>
+              </Grid>
             </Grid>
 
             <Slider

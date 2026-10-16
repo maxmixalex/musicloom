@@ -186,7 +186,7 @@ public sealed partial class CloudLyricsClient : IDisposable
         string artist = Convert.ToBase64String(Encoding.UTF8.GetBytes(track.Artist));
         string album = Convert.ToBase64String(Encoding.UTF8.GetBytes(track.Album));
         string parameters = $$"""
-            {"albumName":{{J(album)}},"crypt":1,"ct":19,"cv":2111,"interval":{{Math.Max(0,track.DurationMilliseconds/1000)}},"lrc_t":0,"qrc":1,"qrc_t":0,"roma":1,"roma_t":0,"singerName":{{J(artist)}},"songID":{{songId}},"songName":{{J(title)}},"trans":1,"trans_t":0,"type":0}
+            {"albumName":{{J(album)}},"crypt":1,"ct":19,"cv":2111,"format":"json","interval":{{Math.Max(0,track.DurationMilliseconds/1000)}},"lrc_t":0,"qrc":1,"qrc_t":0,"roma":1,"roma_t":0,"singerName":{{J(artist)}},"songID":{{songId}},"songMID":{{J(track.SongMid ?? "")}},"songName":{{J(title)}},"trans":1,"trans_t":0,"type":-1,"platform":0,"needNew":1}
             """;
         try
         {

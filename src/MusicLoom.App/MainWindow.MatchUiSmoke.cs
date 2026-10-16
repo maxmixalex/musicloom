@@ -43,6 +43,11 @@ public sealed partial class MainWindow
 
         try
         {
+            Assert(PlayerSourceText.FontSize == PlayerTimeText.FontSize
+                && PlayerSourceMetadata.MinHeight
+                    == PlayerMainMetadata.MinHeight
+                && PlayerSourceMetadata.MinHeight >= 38,
+                "Player: source name and timestamp use identical typography and align vertically with track metadata");
             Assert(LibraryFacetsButton.Flyout is Flyout
                 && LibrarySortMenuButton.Flyout is Flyout
                 && LibraryLyricsFacetBox is not null

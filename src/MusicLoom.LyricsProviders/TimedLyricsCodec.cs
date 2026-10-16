@@ -38,11 +38,46 @@ public static partial class TimedLyricsCodec
             throw new InvalidDataException("Invalid QRC ciphertext length.");
         }
 
-        using TripleDES cipher = TripleDES.Create();
-        cipher.Key = QrcKey;
-        cipher.Mode = CipherMode.ECB;
-        byte[] plain = cipher.DecryptEcb(ciphertext, PaddingMode.None);
-        return Inflate(plain);
+        // QQ Music's historical QRC uses a non-standard DES S-box, so
+        // .NET's TripleDES returns invalid zlib bytes for real QQ tracks.
+        // Decode with the MIT-licensed compatibility algorithm first.
+        // The standard fallback remains for legacy self-encoded archives.
+        try
+        {
+            return Inflate(DecryptQqCompat(ciphertext));
+        }
+        catch (InvalidDataException)
+        {
+            using TripleDES cipher = TripleDES.Create();
+            cipher.Key = QrcKey;
+            cipher.Mode = CipherMode.ECB;
+            byte[] plain = cipher.DecryptEcb(ciphertext, PaddingMode.None);
+            return Inflate(plain);
+        }
+    }
+
+    private static byte[] DecryptQqCompat(ReadOnlySpan<byte> input)
+    {
+        byte[][][] schedule = new byte[3][][];
+        for (int key = 0; key < schedule.Length; key++)
+        {
+            schedule[key] = new byte[16][];
+            for (int round = 0; round < 16; round++)
+                schedule[key][round] = new byte[6];
+        }
+        QqMusicBuggyDes.TripleDESKeySetup(
+            QrcKey, schedule, QqMusicBuggyDes.DECRYPT);
+
+        byte[] output = new byte[input.Length];
+        byte[] block = new byte[8];
+        byte[] decoded = new byte[8];
+        for (int i = 0; i < input.Length; i += 8)
+        {
+            input.Slice(i, 8).CopyTo(block);
+            QqMusicBuggyDes.TripleDESCrypt(block, decoded, schedule);
+            decoded.CopyTo(output, i);
+        }
+        return output;
     }
 
     /// <summary>Decrypt a binary KRC1 with fixed-key XOR and zlib.</summary>
