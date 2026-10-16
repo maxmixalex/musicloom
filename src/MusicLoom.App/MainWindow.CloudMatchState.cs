@@ -13,14 +13,23 @@ public sealed partial class MainWindow
     private int _providerMatchLoadVersion;
     private StoredProviderMatch? _visibleQqMatch;
     private StoredProviderMatch? _visibleKugouMatch;
+    private StoredProviderMatch? _visibleMiguMatch;
+    private StoredProviderMatch? _visibleAppleMatch;
+    private StoredProviderMatch? _visibleSpotifyMatch;
 
     private void ClearCloudMatchPanels()
     {
         ++_providerMatchLoadVersion;
         _visibleQqMatch = null;
         _visibleKugouMatch = null;
+        _visibleMiguMatch = null;
+        _visibleAppleMatch = null;
+        _visibleSpotifyMatch = null;
         QqMatchPanel.ShowCloudState(null, selected: false, busy: _busy);
         KugouMatchPanel.ShowCloudState(null, selected: false, busy: _busy);
+        MiguMatchPanel.ShowCloudState(null, selected: false, busy: _busy);
+        AppleMatchPanel.ShowCloudState(null, selected: false, busy: _busy);
+        SpotifyMatchPanel.ShowCloudState(null, selected: false, busy: _busy);
     }
 
     private void RenderCloudMatchPanels()
@@ -28,6 +37,9 @@ public sealed partial class MainWindow
         bool selected = _selectedLibraryItem is not null;
         QqMatchPanel.ShowCloudState(_visibleQqMatch, selected, _busy);
         KugouMatchPanel.ShowCloudState(_visibleKugouMatch, selected, _busy);
+        MiguMatchPanel.ShowCloudState(_visibleMiguMatch, selected, _busy);
+        AppleMatchPanel.ShowCloudState(_visibleAppleMatch, selected, _busy);
+        SpotifyMatchPanel.ShowCloudState(_visibleSpotifyMatch, selected, _busy);
     }
 
     private async Task RefreshCloudMatchTabsAsync(LibraryDisplayItem item)
@@ -42,12 +54,21 @@ public sealed partial class MainWindow
                 item.Entry.SourcePath, CloudLyricsSource.QqMusic);
             StoredProviderMatch? kugou = await matches.GetAsync(
                 item.Entry.SourcePath, CloudLyricsSource.KugouMusic);
+            StoredProviderMatch? migu = await matches.GetAsync(
+                item.Entry.SourcePath, CloudLyricsSource.MiguMusic);
+            StoredProviderMatch? apple = await matches.GetAsync(
+                item.Entry.SourcePath, CloudLyricsSource.AppleMusic);
+            StoredProviderMatch? spotify = await matches.GetAsync(
+                item.Entry.SourcePath, CloudLyricsSource.Spotify);
             if (version != _providerMatchLoadVersion
                 || !ReferenceEquals(_selectedLibraryItem, item))
                 return;
 
             _visibleQqMatch = qq;
             _visibleKugouMatch = kugou;
+            _visibleMiguMatch = migu;
+            _visibleAppleMatch = apple;
+            _visibleSpotifyMatch = spotify;
             RenderCloudMatchPanels();
         }
         catch (Exception exception)
@@ -92,8 +113,7 @@ public sealed partial class MainWindow
     private static bool IsProviderOwnedLyrics(
         LibraryLyricsRecord canonical, CloudLyricsSource provider)
     {
-        string prefix = provider == CloudLyricsSource.QqMusic
-            ? "qq:" : "kugou:";
+        string prefix = CloudLyricsSourceNames.Slug(provider) + ":";
         return canonical.SourceSignature.StartsWith(
                 "manual-" + prefix, StringComparison.OrdinalIgnoreCase)
             || canonical.SourceSignature.StartsWith(
@@ -185,8 +205,8 @@ public sealed partial class MainWindow
                 LibraryLyricsOrigin.ManualEdited,
                 lyrics.ToString(),
                 null,
-                (provider == CloudLyricsSource.QqMusic
-                    ? "manual-qq:" : "manual-kugou:") + selected.Id,
+                "manual-" + CloudLyricsSourceNames.Slug(provider)
+                    + ":" + selected.Id,
                 DateTimeOffset.UtcNow));
 
             if (ReferenceEquals(item, _selectedLibraryItem))

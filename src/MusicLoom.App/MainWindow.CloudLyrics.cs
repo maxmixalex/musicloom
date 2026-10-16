@@ -90,9 +90,10 @@ public sealed partial class MainWindow
         _activeCloudLyricsPanel = panel;
         UpdateCloudPreviewVisualState();
         ShowAppOverlay(
-            source == CloudLyricsSource.QqMusic
-                ? L("Find QQ Music match", "查找QQ音乐匹配")
-                : L("Find KuGou Music match", "查找酷狗音乐匹配"),
+            L("Find ", "查找")
+                + L(CloudLyricsSourceNames.English(source),
+                    CloudLyricsSourceNames.Chinese(source))
+                + L(" match", "匹配"),
             panel,
             maxWidth: 1200,
             maxHeight: 640,
@@ -310,9 +311,8 @@ public sealed partial class MainWindow
                     LibraryLyricsOrigin.ManualEdited,
                     document.ToString(),
                     null,
-                    e.Candidate.Source == CloudLyricsSource.QqMusic
-                        ? "manual-qq:" + e.Candidate.Id
-                        : "manual-kugou:" + e.Candidate.Id,
+                    "manual-" + CloudLyricsSourceNames.Slug(
+                        e.Candidate.Source) + ":" + e.Candidate.Id,
                     DateTimeOffset.UtcNow);
                 await SaveManualLyricsAsync(item, manual);
             }

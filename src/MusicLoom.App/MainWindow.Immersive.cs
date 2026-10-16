@@ -287,6 +287,9 @@ public sealed partial class MainWindow
             {
                 CloudLyricsSource.QqMusic => L("QQ Music", "QQ音乐"),
                 CloudLyricsSource.KugouMusic => L("KuGou Music", "酷狗音乐"),
+                CloudLyricsSource.MiguMusic => L("Migu Music", "咪咕音乐"),
+                CloudLyricsSource.AppleMusic => "Apple Music",
+                CloudLyricsSource.Spotify => "Spotify",
                 _ => "",
             };
         if (PlayerSourceText.Text != next)
