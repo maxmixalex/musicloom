@@ -74,7 +74,12 @@ public static class AncillaryPlanner
             {
                 if (candidate.IsEmbedded)
                 {
-                    if (group.Any(static track =>
+                    // A destination album folder may hold both tracks
+                    // with and without embedded artwork. Only omit its
+                    // shared sidecar when EVERY track has embedded art;
+                    // otherwise the untagged tracks still need MusicBee's
+                    // next-ranked external candidate.
+                    if (group.All(static track =>
                         track.Metadata?.HasEmbeddedArt == true))
                     {
                         embeddedWins = true;
