@@ -18,13 +18,22 @@ public sealed partial class MainWindow
     private DateTimeOffset _libraryFacetFetchedAt = DateTimeOffset.MinValue;
     private int _libraryFacetItemCount = -1;
     private bool _libraryFacetLoading;
+    private bool _libraryFacetLoaded;
+    private bool _libraryFacetRefreshPending;
 
     private static string FacetValue(ComboBox? box) =>
         (box?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "all";
 
+    private bool AnyLibraryFacetActive() =>
+        FacetValue(LibraryLyricsFacetBox) != "all"
+        || FacetValue(LibraryNeteaseFacetBox) != "all"
+        || FacetValue(LibraryQqFacetBox) != "all"
+        || FacetValue(LibraryKugouFacetBox) != "all";
+
     private void EnsureLibraryFacetSnapshot()
     {
-        if (_libraryFacetLoading || _allLibraryItems.Count == 0)
+        if (_libraryFacetLoading || _allLibraryItems.Count == 0
+            || !AnyLibraryFacetActive())
             return;
         if (_libraryFacetItemCount == _allLibraryItems.Count
             && DateTimeOffset.UtcNow - _libraryFacetFetchedAt
@@ -39,8 +48,17 @@ public sealed partial class MainWindow
     {
         _libraryFacetFetchedAt = DateTimeOffset.MinValue;
         _libraryFacetItemCount = -1;
-        if (!_libraryFacetLoading)
+        if (_libraryFacetLoading)
+        {
+            // A match/lyric change may arrive while the two SQLite
+            // snapshots are being read; never publish those stale values
+            // as the final state.
+            _libraryFacetRefreshPending = true;
+        }
+        else
+        {
             EnsureLibraryFacetSnapshot();
+        }
     }
 
     private async Task LoadLibraryFacetSnapshotAsync()
@@ -55,6 +73,7 @@ public sealed partial class MainWindow
                 .LoadSnapshotAsync();
             _libraryFacetLyrics = lyrics;
             _libraryFacetMatches = matches;
+            _libraryFacetLoaded = true;
             // Keep the selection when the snapshot arrives asynchronously.
             if (LibraryLyricsFacetBox is not null)
                 ApplyLibraryFilter();
@@ -66,11 +85,20 @@ public sealed partial class MainWindow
         finally
         {
             _libraryFacetLoading = false;
+            if (_libraryFacetRefreshPending)
+            {
+                _libraryFacetRefreshPending = false;
+                EnsureLibraryFacetSnapshot();
+            }
         }
     }
 
     private bool MatchesLibraryFacets(LibraryDisplayItem item)
     {
+        // On the first selection, display existing rows until the bulk DB
+        // snapshot resolves instead of temporarily reporting everything
+        // unmatched and tearing down the currently selected detail pane.
+        if (!_libraryFacetLoaded) return true;
         string lyricFilter = FacetValue(LibraryLyricsFacetBox);
         string path = item.Entry.SourcePath;
         if (lyricFilter != "all")
