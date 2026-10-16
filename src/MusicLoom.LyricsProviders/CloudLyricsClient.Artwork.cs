@@ -208,6 +208,8 @@ public sealed partial class CloudLyricsClient
     public async Task<string?> ResolveArtworkAsync(
         CloudLyricsCandidate candidate, CancellationToken ct = default)
     {
+        if (CloudLyricsSourceNames.IsExternal(candidate.Source))
+            return await GetExternalArtworkAsync(candidate, ct);
         if (candidate.CoverUrl is string cover)
             return NormalizeArtworkUrl(cover);
 

@@ -39,6 +39,9 @@ public sealed partial class CloudLyricsClient
                 GetQqAudioPreviewAsync(candidate, cancellationToken),
             CloudLyricsSource.KugouMusic =>
                 GetKugouAudioPreviewAsync(candidate, cancellationToken),
+            CloudLyricsSource.MiguMusic or CloudLyricsSource.AppleMusic
+                or CloudLyricsSource.Spotify =>
+                GetExternalAudioPreviewAsync(candidate, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(candidate)),
         };
 
@@ -316,13 +319,20 @@ public sealed partial class CloudLyricsClient
             host.Equals(root, StringComparison.OrdinalIgnoreCase)
             || host.EndsWith("." + root, StringComparison.OrdinalIgnoreCase);
 
-        return source == CloudLyricsSource.QqMusic
-            ? Domain(host, "qqmusic.qq.com")
-                || Domain(host, "gtimg.cn")
-            : source == CloudLyricsSource.KugouMusic
-                && (Domain(host, "kugou.com")
-                    || Domain(host, "kugou.net")
-                    || Domain(host, "kgmusic.com")
-                    || Domain(host, "kgimg.com"));
+        return source switch
+        {
+            CloudLyricsSource.QqMusic => Domain(host, "qqmusic.qq.com")
+                || Domain(host, "gtimg.cn"),
+            CloudLyricsSource.KugouMusic => Domain(host, "kugou.com")
+                || Domain(host, "kugou.net")
+                || Domain(host, "kgmusic.com")
+                || Domain(host, "kgimg.com"),
+            CloudLyricsSource.MiguMusic => uri.Scheme == Uri.UriSchemeHttps
+                && Domain(host, "migu.cn"),
+            CloudLyricsSource.AppleMusic => uri.Scheme == Uri.UriSchemeHttps
+                && (Domain(host, "itunes.apple.com")
+                    || Domain(host, "mzstatic.com")),
+            _ => false, // Spotify Connect grants no direct audio stream.
+        };
     }
 }
