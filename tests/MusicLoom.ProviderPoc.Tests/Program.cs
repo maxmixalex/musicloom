@@ -162,7 +162,7 @@ static async Task MiguListenGrant()
         {
             return Ok("""
                 {"code":"000000","resource":[{
-                  "contentId":"cid-1","copyrightId":"copyright-2",
+                  "contentId":"cid-1",
                   "name":"Track without a detail stream"
                 }]}
                 """);
