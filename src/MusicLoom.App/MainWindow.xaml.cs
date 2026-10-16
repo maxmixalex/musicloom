@@ -5654,7 +5654,8 @@ public sealed partial class MainWindow : Window
         // details, the immersive full-size image and sync planning.
         MusicBeeArtworkPreferences preferences =
             MusicBeeArtworkPreferences.Load(
-                settings.Path.SourcePlaylistDirectory);
+                settings.Path.SourcePlaylistDirectory,
+                settings.Path.SourceDirectory);
         LibraryDisplayItem[] snapshot = _allLibraryItems.ToArray();
         Dictionary<string, BitmapImage> decoded = new(
             StringComparer.OrdinalIgnoreCase);
@@ -5663,7 +5664,11 @@ public sealed partial class MainWindow : Window
         foreach (LibraryDisplayItem item in snapshot)
         {
             if (generation != _artworkGeneration) return;
-            if (item.Entry.Metadata is not TrackMetadata metadata) continue;
+            // Legacy cached snapshots may not carry parsed tags yet.
+            // Album-independent rules (Cover, Folder, <Filename>, Embedded)
+            // should still work rather than leaving those tracks blank.
+            TrackMetadata metadata = item.Entry.Metadata
+                ?? new TrackMetadata(null, null, null, HasEmbeddedArt: false);
 
             foreach (MusicBeeArtworkCandidate candidate in
                 MusicBeeArtworkResolver.Enumerate(
@@ -5728,16 +5733,16 @@ public sealed partial class MainWindow : Window
     {
         MusicBeeArtworkPreferences preferences =
             MusicBeeArtworkPreferences.Load(
-                settings.Path.SourcePlaylistDirectory);
-        if (entry.Metadata is TrackMetadata metadata)
+                settings.Path.SourcePlaylistDirectory,
+                settings.Path.SourceDirectory);
+        TrackMetadata metadata = entry.Metadata
+            ?? new TrackMetadata(null, null, null, HasEmbeddedArt: false);
+        foreach (MusicBeeArtworkCandidate candidate in
+            MusicBeeArtworkResolver.Enumerate(
+                entry.SourcePath, metadata, preferences))
         {
-            foreach (MusicBeeArtworkCandidate candidate in
-                MusicBeeArtworkResolver.Enumerate(
-                    entry.SourcePath, metadata, preferences))
-            {
-                byte[]? bytes = ReadArtworkCandidateBytes(entry, candidate);
-                if (bytes is { Length: > 0 }) return bytes;
-            }
+            byte[]? bytes = ReadArtworkCandidateBytes(entry, candidate);
+            if (bytes is { Length: > 0 }) return bytes;
         }
         // Old cached entries can have missing tag metadata. Even in that
         // case, never make a destination cache beat a readable source file.

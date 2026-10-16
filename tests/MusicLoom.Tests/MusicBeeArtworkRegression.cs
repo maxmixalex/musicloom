@@ -111,6 +111,21 @@ internal static class MusicBeeArtworkRegression
                 throw new InvalidOperationException(
                     "Portable MusicBee cover priority was ignored.");
 
+            // A portable installation can also be discovered from the
+            // configured music source when playlists are outside its root.
+            string portableMusic = Path.Combine(portable, "Library", "Music");
+            Directory.CreateDirectory(portableMusic);
+            Environment.SetEnvironmentVariable("MUSICBEE_SETTINGS_PATH", null);
+            MusicBeeArtworkPreferences fromSource =
+                MusicBeeArtworkPreferences.Load(null, portableMusic);
+            if (!fromSource.LoadedFromMusicBee
+                || fromSource.Filters.FirstOrDefault() != "Folder.jpg")
+                throw new InvalidOperationException(
+                    "Portable MusicBee artwork settings were missed when the playlist path is unconfigured.");
+            Environment.SetEnvironmentVariable(
+                "MUSICBEE_SETTINGS_PATH",
+                Path.Combine(portableAppData, "MusicBee3Settings.ini"));
+
             // Explicit MusicBee order wins, including when a user has
             // intentionally enabled Folder.jpg. The legacy WMP-cache
             // suppression applies ONLY to MusicLoom's fallback defaults.

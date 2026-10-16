@@ -412,11 +412,26 @@ public sealed partial class MainWindow
                 && upperFade.Visibility == Visibility.Collapsed
                 && lowerFade.Visibility == Visibility.Visible,
                 "Immersive: top lyric is crisp and only the bottom edge fades");
-            lyricScroll.ChangeView(null, lyricScroll.ScrollableHeight, null, true);
-            await Task.Delay(150);
-            Assert(upperFade.Visibility == Visibility.Visible
+            // VirtualizingStackPanel estimates the scroll extent while
+            // realizing the last hundred items. Changing to the FIRST
+            // reported maximum does not necessarily reach the real tail.
+            // Scroll until both the extent and offset converge, then test
+            // the actual last line instead of testing an intermediate row.
+            for (int attempt = 0; attempt < 16; attempt++)
+            {
+                lyricScroll.ChangeView(null, lyricScroll.ScrollableHeight,
+                    null, disableAnimation: true);
+                await Task.Delay(110);
+                if (Math.Abs(lyricScroll.ScrollableHeight
+                    - lyricScroll.VerticalOffset) < 1.5)
+                    break;
+            }
+            double tailDistance = lyricScroll.ScrollableHeight
+                - lyricScroll.VerticalOffset;
+            Assert(tailDistance < 1.5
+                && upperFade.Visibility == Visibility.Visible
                 && lowerFade.Visibility == Visibility.Collapsed,
-                "Immersive: bottom lyric is crisp and only the top edge fades");
+                $"Immersive: bottom lyric is crisp only when at the real end (offset={lyricScroll.VerticalOffset:0.#}, max={lyricScroll.ScrollableHeight:0.#}, distance={tailDistance:0.#}, top={upperFade.Visibility}, bottom={lowerFade.Visibility})");
             lyricScroll.ChangeView(null, 0, null, true);
             await Task.Delay(90);
             string immersivePng = marker + ".ImmersiveViewport.png";

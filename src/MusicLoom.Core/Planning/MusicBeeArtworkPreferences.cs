@@ -22,9 +22,11 @@ public sealed record MusicBeeArtworkPreferences(
     private static MusicBeeArtworkPreferences? _cached;
 
     public static MusicBeeArtworkPreferences Load(
-        string? musicBeePlaylistDirectory = null)
+        string? musicBeePlaylistDirectory = null,
+        string? sourceLibraryDirectory = null)
     {
-        foreach (string path in CandidateSettingsPaths(musicBeePlaylistDirectory))
+        foreach (string path in CandidateSettingsPaths(
+            musicBeePlaylistDirectory, sourceLibraryDirectory))
         {
             try
             {
@@ -98,7 +100,8 @@ public sealed record MusicBeeArtworkPreferences(
         }
     }
 
-    private static IEnumerable<string> CandidateSettingsPaths(string? playlists)
+    private static IEnumerable<string> CandidateSettingsPaths(
+        string? playlists, string? library)
     {
         HashSet<string> visited = new(StringComparer.OrdinalIgnoreCase);
         List<string> paths = [];
@@ -119,27 +122,20 @@ public sealed record MusicBeeArtworkPreferences(
         // Documented opt-in override for nonstandard portable installations.
         Add(Environment.GetEnvironmentVariable("MUSICBEE_SETTINGS_PATH"));
 
-        // Installer edition: %APPDATA%/MusicBee/MusicBee3Settings.ini.
-        string roaming = Environment.GetFolderPath(
-            Environment.SpecialFolder.ApplicationData);
-        if (!string.IsNullOrEmpty(roaming))
+        // Resolve the explicitly configured portable MusicBee first. A
+        // different installed MusicBee profile must not silently override
+        // the library's own portable settings.
+        foreach (string? root in new[] { playlists, library })
         {
-            Add(Path.Combine(roaming, "MusicBee", "MusicBee3Settings.ini"));
-            Add(Path.Combine(roaming, "MusicBee", "MusicBee3Settings.xml"));
-        }
-
-        // Portable edition: <MusicBee>/AppData/MusicBee3Settings.ini.
-        // Its playlist folder often lives within the same portable root.
-        if (!string.IsNullOrWhiteSpace(playlists))
-        {
+            if (string.IsNullOrWhiteSpace(root)) continue;
             DirectoryInfo? parent;
-            try { parent = new DirectoryInfo(Path.GetFullPath(playlists)); }
+            try { parent = new DirectoryInfo(Path.GetFullPath(root)); }
             catch (Exception e) when (e is ArgumentException
                 or NotSupportedException or PathTooLongException)
             {
                 parent = null;
             }
-            for (int level = 0; parent is not null && level < 5;
+            for (int level = 0; parent is not null && level < 6;
                  level++, parent = parent.Parent)
             {
                 Add(Path.Combine(parent.FullName, "AppData",
@@ -147,6 +143,16 @@ public sealed record MusicBeeArtworkPreferences(
                 Add(Path.Combine(parent.FullName, "AppData",
                     "MusicBee3Settings.xml"));
             }
+        }
+
+        // Installed edition remains the fallback when no matching portable
+        // settings file was found in either configured location.
+        string roaming = Environment.GetFolderPath(
+            Environment.SpecialFolder.ApplicationData);
+        if (!string.IsNullOrEmpty(roaming))
+        {
+            Add(Path.Combine(roaming, "MusicBee", "MusicBee3Settings.ini"));
+            Add(Path.Combine(roaming, "MusicBee", "MusicBee3Settings.xml"));
         }
 
         return paths;

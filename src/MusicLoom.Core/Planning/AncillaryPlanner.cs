@@ -23,7 +23,8 @@ public static class AncillaryPlanner
 
         MusicBeeArtworkPreferences artworkPreferences =
             MusicBeeArtworkPreferences.Load(
-                settings.Path.SourcePlaylistDirectory);
+                settings.Path.SourcePlaylistDirectory,
+                settings.Path.SourceDirectory);
         List<CoverPlanEntry> covers = BuildCovers(
             entries, destinationRoot, artworkPreferences);
 

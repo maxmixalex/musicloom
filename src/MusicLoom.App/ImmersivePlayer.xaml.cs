@@ -24,6 +24,7 @@ public sealed partial class ImmersivePlayer : UserControl
     private Func<string, string, string> _translate = (english, _) => english;
     private double _immersiveScale = 1;
     private int _artworkRequest;
+    private bool _paletteOwnedBySourceBytes;
     private ScrollViewer? _lyricScrollViewer;
 
     // One shared animation clock drives the client gradient, progress accent,
@@ -62,7 +63,11 @@ public sealed partial class ImmersivePlayer : UserControl
         AlbumCover.ImageOpened += async (_, _) =>
         {
             UpdateCoverSurfaceSize();
-            await ApplyDisplayedCoverPaletteAsync();
+            // Original file bytes give a more reliable palette than a
+            // 32px RenderTarget sample. ImageOpened must not restart
+            // the crossfade after that original palette was applied.
+            if (!_paletteOwnedBySourceBytes)
+                await ApplyDisplayedCoverPaletteAsync();
         };
         ImmersiveLyricsList.Loaded += (_, _) =>
             DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
@@ -141,6 +146,8 @@ public sealed partial class ImmersivePlayer : UserControl
     internal void SetCover(ImageSource? cover)
     {
         if (ReferenceEquals(AlbumCover.Source, cover)) return;
+        ++_artworkRequest; // Cancel any pending palette sample for the old image.
+        _paletteOwnedBySourceBytes = false;
         AlbumCover.Source = cover;
         UpdateCoverSurfaceSize();
     }
@@ -191,6 +198,7 @@ public sealed partial class ImmersivePlayer : UserControl
     internal async Task ApplyArtworkColorsAsync(byte[]? artwork)
     {
         int request = ++_artworkRequest;
+        _paletteOwnedBySourceBytes = artwork is { Length: > 0 };
         if (artwork is null || artwork.Length == 0)
         {
             // Album art can already exist in the UI bitmap cache when
@@ -229,6 +237,7 @@ public sealed partial class ImmersivePlayer : UserControl
         }
         catch (Exception error)
         {
+            _paletteOwnedBySourceBytes = false;
             AppDiagnostics.LogException("Could not decode immersive artwork palette.", error);
             if (request == _artworkRequest
                 && !await TryApplyDisplayedCoverPaletteAsync(request))
