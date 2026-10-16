@@ -232,6 +232,33 @@ internal static class CloudLyricsProviderRegression
                 "QQ legacy supplementation dropped the translation, romanization or word timings.");
         }
 
+        // The QRC service strips whitespace while the legacy MID
+        // endpoint may retain spaces and Japanese punctuation. They still
+        // represent the SAME timestamped lyric, not different songs.
+        string spacedLegacy = BuildQqFixture(
+            "[00:01.080]晴 天！",
+            "[00:01.080]Fine weather",
+            "[00:01.080]qing tian");
+        LrcDocument? spacedDocument =
+            CloudLyricsClient.ParseQqLyrics(spacedLegacy);
+        if (spacedDocument is null)
+            throw new InvalidOperationException(
+                "QQ spaced legacy fixture failed to parse.");
+        LrcDocument normalizedSupplement =
+            CloudLyricsClient.MergeQqSupplementalLyrics(
+                modernDocument, spacedDocument);
+        LrcPresentationLine[] normalizedLines =
+            LrcPresentation.Project(normalizedSupplement).ToArray();
+        if (normalizedLines.Length != 1
+            || normalizedLines[0].Original != "晴天"
+            || normalizedLines[0].Translation != "Fine weather"
+            || normalizedLines[0].Romanization != "qing tian"
+            || normalizedLines[0].OriginalWords is not { Count: 2 })
+        {
+            throw new InvalidOperationException(
+                "QQ spaced/full-width-punctuation legacy lyrics were not joined to the original QRC line.");
+        }
+
         var kgLyrics = CloudLyricsClient.ParseKugouLyrics(
             "{\"content\":\"" + base64 + "\"}");
         if (kgLyrics?.Lines.Count != 1 || kgLyrics.Lines[0].Text != "Original")

@@ -245,21 +245,37 @@ public sealed partial class CloudLyricsClient : IDisposable
     {
         LrcDocument output = LrcDocument.Parse(main.ToString());
         var originals = LrcPresentation.Project(main);
-        var alternatives = LrcPresentation.Project(supplemental);
+        LrcPresentationLine[] alternatives =
+            LrcPresentation.Project(supplemental).ToArray();
+        // The modern QRC and legacy LRC services often serialize the same
+        // Japanese sentence with different spacing/full-width punctuation.
+        // A strict ordinal comparison loses otherwise valid translations
+        // and readings. Compare normalized letters/numbers instead, but
+        // still require nearby timing and a ONE-TO-ONE supplemental row.
+        string[] normalizedAlternatives = alternatives
+            .Select(static line => NormalizeQqLyricMatchKey(line.Original))
+            .ToArray();
+        HashSet<int> claimed = [];
         foreach (LrcPresentationLine line in originals)
         {
             if (!line.Timestamp.HasValue) continue;
-            LrcPresentationLine? extra = alternatives
-                .Where(candidate =>
-                    string.Equals(candidate.Original, line.Original,
-                        StringComparison.Ordinal)
-                    && candidate.Timestamp is TimeSpan timestamp
+            string identity = NormalizeQqLyricMatchKey(line.Original);
+            if (identity.Length == 0) continue;
+            int extraIndex = Enumerable.Range(0, alternatives.Length)
+                .Where(index => !claimed.Contains(index)
+                    && string.Equals(normalizedAlternatives[index],
+                        identity, StringComparison.Ordinal)
+                    && alternatives[index].Timestamp is TimeSpan timestamp
                     && (timestamp - line.Timestamp.Value).Duration()
                         <= TimeSpan.FromMilliseconds(750))
-                .OrderBy(candidate =>
-                    (candidate.Timestamp!.Value - line.Timestamp.Value).Duration())
-                .FirstOrDefault();
-            if (extra is null) continue;
+                .OrderBy(index =>
+                    (alternatives[index].Timestamp!.Value
+                        - line.Timestamp.Value).Duration())
+                .DefaultIfEmpty(-1)
+                .First();
+            if (extraIndex < 0) continue;
+            claimed.Add(extraIndex);
+            LrcPresentationLine extra = alternatives[extraIndex];
             int primaryIndex = output.Lines.FindIndex(candidate =>
                 candidate.Timestamp == line.Timestamp.Value
                 && candidate.Text == line.Original);
@@ -286,6 +302,12 @@ public sealed partial class CloudLyricsClient : IDisposable
         output.Lines.AddRange(stable);
         return output;
     }
+
+    private static string NormalizeQqLyricMatchKey(string text) =>
+        new(text.Normalize(NormalizationForm.FormKC)
+            .Where(static character => char.IsLetterOrDigit(character))
+            .Select(static character => char.ToLowerInvariant(character))
+            .ToArray());
 
     private async Task<LrcDocument?> GetQqLegacyLyricsAsync(
         CloudLyricsCandidate track, CancellationToken ct)
