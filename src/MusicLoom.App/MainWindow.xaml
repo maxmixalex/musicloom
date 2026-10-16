@@ -136,39 +136,31 @@
             </StackPanel>
           </Grid>
 
-          <!-- Progressive disclosure keeps the song list dominant:
-               common sync status is one compact field; four independent
-               provider filters and sort choices live inside focused flyouts. -->
-          <Grid Grid.Row="1" Margin="0,16,0,8" ColumnSpacing="14">
+          <!-- One aligned toolbar: search, progressive filters/sort, then counts. -->
+          <Grid Grid.Row="1" Margin="0,16,0,8" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" MinWidth="168"/>
               <ColumnDefinition Width="Auto"/>
-              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" Spacing="6"
-                        VerticalAlignment="Center">
+            <Grid Grid.Column="0" ColumnSpacing="6" VerticalAlignment="Center">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
               <Button x:Name="LibrarySearchButton" Width="32" Height="32"
                       Padding="0" Background="Transparent" BorderThickness="0"
                       Click="LibrarySearchButton_Click"
                       ToolTipService.ToolTip="Focus library search">
                 <SymbolIcon Symbol="Find"/>
               </Button>
-              <TextBox x:Name="LibrarySearchBox" Width="235"
+              <TextBox x:Name="LibrarySearchBox" Grid.Column="1"
+                       MinWidth="120" MaxWidth="280" HorizontalAlignment="Stretch"
                        PlaceholderText="Search title, artist, album or path"
                        TextChanged="LibrarySearchBox_TextChanged"/>
-            </StackPanel>
-
-            <StackPanel Grid.Column="1" Orientation="Horizontal"
-                        Spacing="10" VerticalAlignment="Center"
-                        HorizontalAlignment="Left">
-              <ComboBox x:Name="LibraryFilterBox" MinWidth="140"
-                        SelectionChanged="LibraryFilterBox_SelectionChanged">
-                <ComboBoxItem x:Name="LibraryFilterAllItem" Content="All statuses" Tag="all"/>
-                <ComboBoxItem x:Name="LibraryFilterPendingItem" Content="Pending" Tag="pending"/>
-                <ComboBoxItem x:Name="LibraryFilterSyncedItem" Content="Synced" Tag="synced"/>
-                <ComboBoxItem x:Name="LibraryFilterWarningsItem" Content="Warnings" Tag="warning"/>
-                <ComboBoxItem x:Name="LibraryFilterErrorsItem" Content="Errors" Tag="error"/>
-              </ComboBox>
-
+            </Grid>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                        VerticalAlignment="Center" HorizontalAlignment="Left">
               <Button x:Name="LibraryFacetsButton" Padding="12,8"
                       MinWidth="93" Content="Filters">
                 <Button.Flyout>
@@ -176,6 +168,17 @@
                     <StackPanel Width="272" Spacing="9">
                       <TextBlock x:Name="LibraryFacetPanelHeading"
                                  Text="Filter by" FontSize="16" FontWeight="SemiBold"/>
+                      <TextBlock x:Name="LibraryStatusFacetLabel"
+                                 Text="Sync status" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+              <ComboBox x:Name="LibraryFilterBox" HorizontalAlignment="Stretch"
+                        SelectionChanged="LibraryFilterBox_SelectionChanged">
+                <ComboBoxItem x:Name="LibraryFilterAllItem" Content="All statuses" Tag="all"/>
+                <ComboBoxItem x:Name="LibraryFilterPendingItem" Content="Pending" Tag="pending"/>
+                <ComboBoxItem x:Name="LibraryFilterSyncedItem" Content="Synced" Tag="synced"/>
+                <ComboBoxItem x:Name="LibraryFilterWarningsItem" Content="Warnings" Tag="warning"/>
+                <ComboBoxItem x:Name="LibraryFilterErrorsItem" Content="Errors" Tag="error"/>
+                <ComboBoxItem x:Name="LibraryFilterSyncingItem" Content="Syncing" Tag="syncing"/>
+              </ComboBox>
                       <TextBlock x:Name="LibraryLyricsFacetLabel"
                                  Text="Lyrics" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                       <ComboBox x:Name="LibraryLyricsFacetBox"
@@ -230,7 +233,12 @@
                 </Button.Flyout>
               </Button>
               <Button x:Name="LibrarySortMenuButton"
-                      Padding="12,8" MinWidth="108" Content="Sort">
+                      Padding="12,8" MinWidth="112">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <FontIcon x:Name="LibrarySortGlyph" Glyph="&#xE8CB;" FontSize="14"/>
+                  <TextBlock x:Name="LibrarySortFieldText" Text="Artist" VerticalAlignment="Center"/>
+                  <FontIcon x:Name="LibrarySortDirectionGlyph" Glyph="&#xEE68;" FontSize="14"/>
+                </StackPanel>
                 <Button.Flyout>
                   <Flyout Placement="Bottom">
                     <StackPanel Width="225" Spacing="9">
@@ -247,27 +255,26 @@
                       <ComboBox x:Name="LibrarySortDirectionBox"
                                 HorizontalAlignment="Stretch"
                                 SelectionChanged="LibrarySortDirectionBox_SelectionChanged">
-                        <ComboBoxItem x:Name="LibrarySortAscendingItem" Content="Ascending" Tag="asc"/>
-                        <ComboBoxItem x:Name="LibrarySortDescendingItem" Content="Descending" Tag="desc"/>
+                        <ComboBoxItem x:Name="LibrarySortAscendingItem" Tag="asc">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xEE68;" FontSize="14"/>
+                            <TextBlock x:Name="LibrarySortAscendingLabel" Text="Ascending"/>
+                          </StackPanel>
+                        </ComboBoxItem>
+                        <ComboBoxItem x:Name="LibrarySortDescendingItem" Tag="desc">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xEE69;" FontSize="14"/>
+                            <TextBlock x:Name="LibrarySortDescendingLabel" Text="Descending"/>
+                          </StackPanel>
+                        </ComboBoxItem>
                       </ComboBox>
                     </StackPanel>
                   </Flyout>
                 </Button.Flyout>
               </Button>
-            </StackPanel>
-          </Grid>
 
-          <Grid Grid.Row="2" ColumnSpacing="12" Margin="0,0,0,10">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBlock x:Name="LibraryActiveFilterSummary"
-                       VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       Visibility="Collapsed"/>
-            <StackPanel Grid.Column="1" Orientation="Horizontal"
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal"
                         Spacing="12" VerticalAlignment="Center"
                         HorizontalAlignment="Right">
               <StackPanel Orientation="Horizontal" Spacing="5">
@@ -288,6 +295,14 @@
               <TextBlock x:Name="LibraryVisibleCountText" Text="0 tracks"
                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>
+          </Grid>
+
+          <Grid Grid.Row="2">
+            <TextBlock x:Name="LibraryActiveFilterSummary"
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Visibility="Collapsed" Margin="0,0,0,8"/>
           </Grid>
 
           <Grid Grid.Row="3">

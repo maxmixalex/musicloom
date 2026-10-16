@@ -107,7 +107,8 @@ public sealed partial class MainWindow
     }
 
     private const string ConnectedCoverKey = "MusicLoom.Immersive.Cover";
-    private const string ConnectedTitleKey = "MusicLoom.Immersive.Title";
+    private static readonly TimeSpan ImmersiveCoverTransitionDuration =
+        TimeSpan.FromMilliseconds(460);
 
     private void PrepareImmersiveConnectedAnimation(bool exiting)
     {
@@ -116,33 +117,25 @@ public sealed partial class MainWindow
             if (_mediaPlayer.Source is null) return;
             ConnectedAnimationService service =
                 ConnectedAnimationService.GetForCurrentView();
+            // DirectConnectedAnimationConfiguration always lasts ~150 ms
+            // and ignores DefaultDuration. Basic honours the requested
+            // duration in BOTH directions; only artwork participates.
+            service.DefaultDuration = ImmersiveCoverTransitionDuration;
             UIElement cover = exiting
                 ? ImmersiveView.CoverTransitionTarget : PlayerArtworkImage;
-            UIElement title = exiting
-                ? ImmersiveView.TitleTransitionTarget : PlayerTitleText;
             if ((exiting ? ImmersiveView.CurrentArtwork
-                : PlayerArtworkImage.Source) is not null)
-            {
-                ConnectedAnimation animation = service.PrepareToAnimate(
-                    ConnectedCoverKey, cover);
-                if (exiting)
-                    animation.Configuration =
-                        new DirectConnectedAnimationConfiguration();
-            }
-            if (!string.IsNullOrWhiteSpace(PlayerTitleText.Text))
-            {
-                ConnectedAnimation animation = service.PrepareToAnimate(
-                    ConnectedTitleKey, title);
-                if (exiting)
-                    animation.Configuration =
-                        new DirectConnectedAnimationConfiguration();
-            }
+                : PlayerArtworkImage.Source) is null)
+                return;
+
+            ConnectedAnimation animation = service.PrepareToAnimate(
+                ConnectedCoverKey, cover);
+            animation.Configuration = new BasicConnectedAnimationConfiguration();
         }
         catch (Exception ex) when (ex is InvalidOperationException
             or System.Runtime.InteropServices.COMException)
         {
             AppDiagnostics.LogException(
-                "Connected transition could not be prepared; using instant navigation.",
+                "Artwork transition could not be prepared; using instant navigation.",
                 ex);
         }
     }
@@ -151,24 +144,18 @@ public sealed partial class MainWindow
     {
         try
         {
-            // ConnectedAnimation requires the destination to be measured.
-            // Start immediately after view activation, never after SQLite
-            // or network I/O; prepared animations expire if held too long.
             AppRoot.UpdateLayout();
             ConnectedAnimationService service =
                 ConnectedAnimationService.GetForCurrentView();
             UIElement cover = exiting
                 ? PlayerArtworkImage : ImmersiveView.CoverTransitionTarget;
-            UIElement title = exiting
-                ? PlayerTitleText : ImmersiveView.TitleTransitionTarget;
             service.GetAnimation(ConnectedCoverKey)?.TryStart(cover);
-            service.GetAnimation(ConnectedTitleKey)?.TryStart(title);
         }
         catch (Exception ex) when (ex is InvalidOperationException
             or System.Runtime.InteropServices.COMException)
         {
             AppDiagnostics.LogException(
-                "Connected transition could not start; displaying destination normally.",
+                "Artwork transition could not start; displaying destination normally.",
                 ex);
         }
     }

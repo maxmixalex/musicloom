@@ -32,6 +32,7 @@ public sealed partial class MainWindow
         _refreshingLocalizedChoices = true;
         try
         {
+            LibraryFilterBox.SelectedIndex = 0;
             LibraryLyricsFacetBox.SelectedIndex = 0;
             LibraryNeteaseFacetBox.SelectedIndex = 0;
             LibraryQqFacetBox.SelectedIndex = 0;
@@ -52,7 +53,7 @@ public sealed partial class MainWindow
 
         ComboBox[] facets =
         [
-            LibraryLyricsFacetBox, LibraryNeteaseFacetBox,
+            LibraryFilterBox, LibraryLyricsFacetBox, LibraryNeteaseFacetBox,
             LibraryQqFacetBox, LibraryKugouFacetBox,
         ];
         var chosen = facets
@@ -81,11 +82,18 @@ public sealed partial class MainWindow
         bool descending =
             (LibrarySortDirectionBox.SelectedItem as ComboBoxItem)
                 ?.Tag?.ToString() == "desc";
-        LibrarySortMenuButton.Content =
-            L("Sort: ", "排序：") + field + (descending ? " ↓" : " ↑");
+        // Real Segoe Fluent Icons, never Unicode arrow characters or a
+        // redundant textual "Sort:" label.
+        LibrarySortFieldText.Text = field;
+        LibrarySortDirectionGlyph.Glyph = descending ? "\uEE69" : "\uEE68";
+        ToolTipService.SetToolTip(LibrarySortMenuButton,
+            L("Sort songs by ", "歌曲排序：") + field
+            + (descending ? L(" descending", "，倒序")
+                          : L(" ascending", "，顺序")));
 
         LibraryFacetPanelHeading.Text = L("Filter by", "筛选条件");
         LibrarySortPanelHeading.Text = L("Sort songs", "歌曲排序");
+        LibraryStatusFacetLabel.Text = L("Synchronization", "同步状态");
         LibraryLyricsFacetLabel.Text = L("Lyrics", "歌词状态");
         LibraryNeteaseFacetLabel.Text = L("NetEase Music", "网易云匹配");
         LibraryQqFacetLabel.Text = L("QQ Music", "QQ音乐匹配");

@@ -9934,6 +9934,8 @@ public sealed partial class MainWindow : Window
             L(
                 "Errors",
                 "错误");
+        LibraryFilterSyncingItem.Content =
+            L("Syncing", "同步中");
         LocalizeLibraryFacetBoxes();
         SortTitleItem.Content =
             L(
@@ -9947,9 +9949,9 @@ public sealed partial class MainWindow : Window
             L(
                 "Sort by artist",
                 "按艺术家排序");
-        LibrarySortAscendingItem.Content =
+        LibrarySortAscendingLabel.Text =
             L("Ascending", "顺序");
-        LibrarySortDescendingItem.Content =
+        LibrarySortDescendingLabel.Text =
             L("Descending", "倒序");
 
         ToolTipService.SetToolTip(
