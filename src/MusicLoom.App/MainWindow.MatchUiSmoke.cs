@@ -261,7 +261,10 @@ public sealed partial class MainWindow
                     "KuGou candidate", "Artist", "Album", 123000,
                     Hash: "CB7EE97F4CC11C4EA7A1FA4B516A5D97"),
                 "Preview", "在酷狗音乐中打开", "在QQ音乐中搜索");
-            LyricsSearchCandidateCard recycled = new();
+            LyricsSearchCandidateCard recycled = new()
+            {
+                Width = 340,
+            };
             recycled.SetBinding(LyricsSearchCandidateCard.ExternalUrlProperty,
                 new Binding { Path = new PropertyPath(nameof(CloudCandidateRow.ExternalUrl)) });
             recycled.SetBinding(LyricsSearchCandidateCard.ExternalLabelProperty,
@@ -284,8 +287,11 @@ public sealed partial class MainWindow
             Assert(providerLink.Visibility == Visibility.Visible
                 && providerLink.NavigateUri?.Host == "www.kugou.com"
                 && providerLink.NavigateUri.Fragment.Contains(kugou.Candidate.Hash!,
-                    StringComparison.OrdinalIgnoreCase),
-                "Search result recycling: KuGou song link replaces QQ link when row reused");
+                    StringComparison.OrdinalIgnoreCase)
+                && providerLink.Content is StackPanel linkContainer
+                && linkContainer.Children[0] is TextBlock linkCaption
+                && linkCaption.MaxWidth >= 130,
+                "Search result recycling: compact KuGou song link stays full-width when row reused");
             CloudCandidateRow missingKugouHash = new(
                 new CloudLyricsCandidate(CloudLyricsSource.KugouMusic,
                     "456", "Unrecognized hash", "Artist", "Album", 123000,
@@ -333,6 +339,20 @@ public sealed partial class MainWindow
                 $"Search dialog: entire lyric column must be visible and painted (dialog={search.ActualWidth:0}, x={previewX:0}, width={previewWidth:0}, pixels={previewPixels})");
             Assert(new FileInfo(searchPng).Length > 1800,
                 "Search dialog: actual WinUI candidate and bilingual lyric columns rendered");
+
+            double originalHostWidth = host.Width;
+            host.Width = 840; // another realistic non-maximized window
+            await Task.Delay(160);
+            double compactPreviewX = preview.TransformToVisual(search)
+                .TransformPoint(new Windows.Foundation.Point(0, 0)).X;
+            Assert(search.ActualWidth is >= 770 and <= 840
+                && preview.ActualWidth >= 170
+                && compactPreviewX + preview.ActualWidth <= search.ActualWidth + 2
+                && actionsRail is not null
+                && Grid.GetRow(actionsRail) == 1,
+                $"Search dialog: three panels and stacked actions remain visible at compact window width ({search.ActualWidth:0}px)");
+            host.Width = originalHostWidth;
+            await Task.Delay(110);
 
             // A fixed viewport must govern BOTH immersive columns. Long
             // titles, translated lyrics and the cover's natural dimensions

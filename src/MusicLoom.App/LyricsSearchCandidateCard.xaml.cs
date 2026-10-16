@@ -180,7 +180,12 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
         {
             Text = label,
             FontSize = 11,
-            MaxWidth = Math.Max(45, MetadataRailColumn.Width.Value - 48),
+            // A recycled row may receive a new link without a SizeChanged
+            // event. Use its CURRENT compact/full layout, never the
+            // zero-width metadata rail of a previously stacked card.
+            MaxWidth = _compactCandidateLayout
+                ? Math.Max(130, CandidateLayout.ActualWidth - 158)
+                : Math.Max(45, MetadataRailColumn.Width.Value - 48),
             TextTrimming = TextTrimming.CharacterEllipsis,
             TextWrapping = TextWrapping.NoWrap,
         };
