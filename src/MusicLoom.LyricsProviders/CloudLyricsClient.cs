@@ -194,7 +194,8 @@ public sealed partial class CloudLyricsClient : IDisposable
                 "GetPlayLyricInfo",
                 "music.musichallSong.PlayLyricInfo",
                 parameters, ct);
-            return ParseQqLyrics(response);
+            return ParseQqLyrics(response)
+                ?? await GetQqLegacyLyricsAsync(track, ct);
         }
         catch (HttpRequestException)
         {
@@ -409,57 +410,66 @@ public sealed partial class CloudLyricsClient : IDisposable
         {
             int start = raw.IndexOf('{');
             int end = raw.LastIndexOf('}');
-            if (start < 0 || end < start)
-            {
-                return null;
-            }
+            if (start < 0 || end < start) return null;
             raw = raw[start..(end + 1)];
         }
 
         using JsonDocument document = JsonDocument.Parse(raw);
         JsonElement response = document.RootElement;
-        JsonElement data = Find(response, "request", out _)
-            ? QqData(response) : response;
-        LrcDocument primary = DecodeQqContent(Str(data, "lyric"));
-        if (primary.Lines.Count == 0)
+        JsonElement data = response;
+        if (Find(response, "request", out _))
         {
-            return null;
+            data = QqData(response);
         }
-        LrcDocument translated = DecodeQqContent(
-            Str(data, "trans", "tlyric"));
-        LrcDocument romanized = DecodeQqContent(Str(data, "roma"));
-        LrcDocument merged = translated.Lines.Count > 0
-            ? LrcDocument.Merge(primary, translated) : primary;
-
-        if (romanized.Lines.Count > 0)
+        else if (Find(response, "req_0", out JsonElement request)
+            && Find(request, "data", out JsonElement wrapper))
         {
-            // QQ roma QRC is an annotation over the same original timed
-            // words, not an independent translation to append/flatten.
-            foreach (LrcLine roma in romanized.Lines)
+            data = wrapper;
+        }
+        else if (Find(response, "data", out JsonElement nested)
+            && nested.ValueKind == JsonValueKind.Object)
+        {
+            data = nested;
+        }
+
+        LrcDocument primary = FirstQqLyricPart(data,
+            "lyric", "qrc", "lrc");
+        if (primary.Lines.Count == 0)
+            return null;
+
+        LrcDocument translated = FirstQqLyricPart(data,
+            "trans", "tlyric", "transLyric", "translation");
+        LrcDocument romanized = FirstQqLyricPart(data,
+            "roma", "romalrc", "romaLyric", "romalyric");
+        LrcDocument merged = translated.Lines.Count > 0
+            ? LrcDocument.Merge(primary, translated)
+            : primary;
+        if (romanized.Lines.Count > 0)
+            LrcRomanization.Attach(merged, primary, romanized);
+        return merged;
+    }
+
+    private static LrcDocument FirstQqLyricPart(
+        JsonElement data, params string[] fields)
+    {
+        foreach (string field in fields)
+        {
+            string? value = Str(data, field);
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            try
             {
-                LrcLine? aligned = primary.Lines
-                    .OrderBy(line =>
-                        (line.Timestamp - roma.Timestamp).Duration())
-                    .FirstOrDefault();
-                if (aligned is null
-                    || (aligned.Timestamp - roma.Timestamp).Duration()
-                        > TimeSpan.FromMilliseconds(600)
-                    || aligned.Words is not { Count: > 0 } originalWords
-                    || roma.Words is not { Count: > 0 } romanWords)
-                    continue;
-
-                IReadOnlyList<LrcWord>? annotated =
-                    RubyWordAlignment.Attach(originalWords, romanWords);
-                if (annotated is null) continue;
-
-                int index = merged.Lines.FindIndex(line =>
-                    line.Timestamp == aligned.Timestamp
-                    && line.Text == aligned.Text);
-                if (index < 0) continue;
-                merged.Lines[index] = aligned with { Words = annotated };
+                LrcDocument result = DecodeQqContent(value);
+                if (result.Lines.Count > 0) return result;
+            }
+            catch (Exception error) when (
+                error is FormatException or InvalidDataException
+                    or System.Security.Cryptography.CryptographicException)
+            {
+                // An empty or obsolete QRC variant must not suppress a
+                // valid LRC fallback in another response field.
             }
         }
-        return merged;
+        return new LrcDocument();
     }
 
     private static LrcDocument DecodeQqContent(string content)

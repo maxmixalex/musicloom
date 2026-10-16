@@ -19,7 +19,8 @@ internal sealed class LyricDisplayLine :
         string displayMode,
         TimeSpan? timestamp = null,
         IReadOnlyList<LrcWord>? originalWords = null,
-        IReadOnlyList<LrcWord>? translationWords = null)
+        IReadOnlyList<LrcWord>? translationWords = null,
+        string? romanization = null)
     {
         Original = original;
         Translation = translation;
@@ -27,6 +28,7 @@ internal sealed class LyricDisplayLine :
         Timestamp = timestamp;
         OriginalWords = originalWords;
         TranslationWords = translationWords;
+        Romanization = romanization;
     }
 
     public string Original { get; }
@@ -40,6 +42,19 @@ internal sealed class LyricDisplayLine :
     /// </summary>
     public IReadOnlyList<LrcWord>? OriginalWords { get; }
     public IReadOnlyList<LrcWord>? TranslationWords { get; }
+    // An LRC-only reading is displayed above the original as a line-level
+    // annotation. Never distribute its syllables among characters by guess.
+    public string? Romanization { get; }
+
+    public string? PrimaryRomanization =>
+        LyricsDisplayModes.Normalize(DisplayMode)
+            == LyricsDisplayModes.PreferTranslation && HasTranslation
+                ? null : Romanization;
+
+    public string? SecondaryRomanization =>
+        LyricsDisplayModes.Normalize(DisplayMode)
+            == LyricsDisplayModes.PreferTranslation && HasTranslation
+                ? Romanization : null;
 
     private bool HasTranslation => !string.IsNullOrWhiteSpace(Translation);
 
@@ -197,14 +212,18 @@ internal sealed class LyricDisplayLine :
         && words.Any(static word => !string.IsNullOrWhiteSpace(word.Ruby));
 
     public Visibility PrimaryRubyVisibility =>
-        HasRuby(PrimaryWords) ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility PrimaryPlainVisibility =>
-        HasRuby(PrimaryWords) ? Visibility.Collapsed : Visibility.Visible;
-    public Visibility SecondaryRubyVisibility =>
-        SecondaryText is not null && HasRuby(SecondaryWords)
+        HasRuby(PrimaryWords) || !string.IsNullOrWhiteSpace(PrimaryRomanization)
             ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility PrimaryPlainVisibility =>
+        PrimaryRubyVisibility == Visibility.Visible
+            ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility SecondaryRubyVisibility =>
+        SecondaryText is not null && (HasRuby(SecondaryWords)
+            || !string.IsNullOrWhiteSpace(SecondaryRomanization))
+                ? Visibility.Visible : Visibility.Collapsed;
     public Visibility SecondaryPlainVisibility =>
-        SecondaryText is not null && !HasRuby(SecondaryWords)
+        SecondaryText is not null
+        && SecondaryRubyVisibility != Visibility.Visible
             ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility SecondaryVisibility =>

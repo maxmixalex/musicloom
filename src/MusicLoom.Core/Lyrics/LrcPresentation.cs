@@ -10,7 +10,8 @@ public sealed record LrcPresentationLine(
     string Original,
     string? Translation,
     IReadOnlyList<LrcWord>? OriginalWords = null,
-    IReadOnlyList<LrcWord>? TranslationWords = null);
+    IReadOnlyList<LrcWord>? TranslationWords = null,
+    string? Romanization = null);
 
 public static class LrcPresentation
 {
@@ -94,12 +95,18 @@ public static class LrcPresentation
                                 translation,
                                 StringComparison.Ordinal));
 
+            string? romanization = group
+                .Where(line => string.Equals(
+                    line.Text.Trim(), lyrics[0], StringComparison.Ordinal))
+                .Select(static line => line.Romanization)
+                .FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
             result.Add(new LrcPresentationLine(
                 group.Key,
                 original,
                 translation,
                 originalWords,
-                translationWords));
+                translationWords,
+                romanization));
         }
 
         return result;

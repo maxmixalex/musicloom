@@ -41,6 +41,7 @@ public sealed class RubyLyricView : UserControl
     }
 
     private readonly List<GlyphState> _glyphs = [];
+    private StackPanel? _wholeLineReading;
     private SolidColorBrush? _playedBrush;
     private SolidColorBrush? _unplayedBrush;
     private LyricDisplayLine? _line;
@@ -60,6 +61,7 @@ public sealed class RubyLyricView : UserControl
     public RubyLyricView()
     {
         Content = _rich;
+        _rich.SizeChanged += (_, _) => ResizeWholeLineReading();
         Loaded += (_, _) =>
         {
             Subscribe();
@@ -118,6 +120,7 @@ public sealed class RubyLyricView : UserControl
     {
         _rich.Blocks.Clear();
         _glyphs.Clear();
+        _wholeLineReading = null;
         _playedBrush = null;
         _unplayedBrush = null;
         if (_line is null) return;
@@ -131,6 +134,44 @@ public sealed class RubyLyricView : UserControl
         _rich.Foreground = Foreground;
         _rich.FontWeight = FontWeight;
         Paragraph paragraph = new();
+        string? wholeReading = IsSecondary
+            ? _line.SecondaryRomanization : _line.PrimaryRomanization;
+        if (!string.IsNullOrWhiteSpace(wholeReading))
+        {
+            // NetEase and plain QQ LRC have only line timestamps, not
+            // character alignments. Keep the reading above the ORIGINAL
+            // and allow each text block to wrap at the actual viewport.
+            // No fabricated per-character timings or translation rows.
+            StackPanel atom = new()
+            {
+                Orientation = Orientation.Vertical,
+                Spacing = 0,
+                MaxWidth = Math.Max(180, _rich.ActualWidth - 4),
+            };
+            TextBlock reading = new()
+            {
+                Text = wholeReading,
+                FontSize = Math.Max(7, baseSize * 0.52),
+                Opacity = 0.80,
+                TextWrapping = TextWrapping.WrapWholeWords,
+                Foreground = Foreground,
+            };
+            TextBlock glyph = new()
+            {
+                Text = plain,
+                FontSize = baseSize,
+                FontWeight = FontWeight,
+                TextWrapping = TextWrapping.WrapWholeWords,
+                Foreground = Foreground,
+            };
+            atom.Children.Add(reading);
+            atom.Children.Add(glyph);
+            paragraph.Inlines.Add(new InlineUIContainer { Child = atom });
+            _wholeLineReading = atom;
+            _rich.Blocks.Add(paragraph);
+            ResizeWholeLineReading();
+            return;
+        }
         if (words is not { Count: > 0 and <= 256 }
             || !words.Any(static word => !string.IsNullOrWhiteSpace(word.Ruby))
             || !string.Equals(string.Concat(words.Select(static w => w.Text)),
@@ -179,6 +220,13 @@ public sealed class RubyLyricView : UserControl
         }
         _rich.Blocks.Add(paragraph);
         RefreshColors();
+    }
+
+    private void ResizeWholeLineReading()
+    {
+        if (_wholeLineReading is not null && _rich.ActualWidth > 100)
+            _wholeLineReading.MaxWidth =
+                Math.Max(120, _rich.ActualWidth - 4);
     }
 
     private void RefreshColors()

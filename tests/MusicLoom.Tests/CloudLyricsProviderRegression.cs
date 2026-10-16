@@ -2,6 +2,7 @@ using System.Text;
 using System.Net;
 using System.Net.Http;
 using MusicLoom.LyricsProviders;
+using MusicLoom.Core.Lyrics;
 
 internal static class CloudLyricsProviderRegression
 {
@@ -171,6 +172,33 @@ internal static class CloudLyricsProviderRegression
         {
             throw new InvalidOperationException(
                 "QQ translated lyrics were not merged.");
+        }
+
+        // Lite and Web QQ lyric responses can carry a blank trans field
+        // while translated lyrics live in tlyric. Romanization may be a
+        // simple LRC rather than a separately word-timed encrypted QRC.
+        string simpleRomaji = Convert.ToBase64String(
+            Encoding.UTF8.GetBytes("[00:01.000]o ri ji na ru"));
+        string nested = "{\"req_0\":{\"data\":{\"lyric\":\""
+            + base64 + "\",\"trans\":\"\",\"tlyric\":\""
+            + translation + "\",\"roma\":\"" + simpleRomaji
+            + "\"}}}";
+        LrcDocument? recovered = CloudLyricsClient.ParseQqLyrics(nested);
+        if (recovered is null || recovered.Lines.Count != 2
+            || recovered.Lines[0].Romanization != "o ri ji na ru"
+            || !recovered.Lines.Any(line => line.Text == "译文")
+            || LrcPresentation.Project(recovered).Count != 1)
+        {
+            throw new InvalidOperationException(
+                "QQ nested lyric response lost translated lyrics or line-level ruby.");
+        }
+        LrcDocument persisted = LrcDocument.Parse(recovered.ToString());
+        if (persisted.Lines[0].Romanization != "o ri ji na ru"
+            || persisted.ToStandardLrcString().Contains("ml-romaji",
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "QQ romaji should survive the canonical cache without leaking into output LRC.");
         }
 
         var kgLyrics = CloudLyricsClient.ParseKugouLyrics(

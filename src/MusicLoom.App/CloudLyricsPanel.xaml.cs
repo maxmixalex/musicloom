@@ -463,7 +463,8 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
                 .Select(line => new LyricDisplayLine(
                     line.Original, line.Translation,
                     LyricsDisplayModes.PreferOriginal,
-                    line.Timestamp, line.OriginalWords, line.TranslationWords))
+                    line.Timestamp, line.OriginalWords, line.TranslationWords,
+                    line.Romanization))
                 .ToArray();
             UseMatchButton.IsEnabled = true;
         }

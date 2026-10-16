@@ -73,6 +73,33 @@ public sealed partial class LrcDocument
                 continue;
             }
 
+            // A whole-line reading has no trustworthy per-word alignment.
+            // Preserve it above the original lyric rather than fabricating
+            // karaoke timestamps or adding it as a translation row.
+            if (line.StartsWith("[ml-romaji:", StringComparison.Ordinal)
+                && line.EndsWith(']'))
+            {
+                if (document.Lines.Count > 0)
+                {
+                    try
+                    {
+                        string value = Encoding.UTF8.GetString(
+                            Convert.FromBase64String(
+                                line["[ml-romaji:".Length..^1]));
+                        if (!string.IsNullOrWhiteSpace(value))
+                        {
+                            LrcLine previous = document.Lines[^1];
+                            document.Lines[^1] = previous with
+                            {
+                                Romanization = value,
+                            };
+                        }
+                    }
+                    catch (FormatException) { }
+                }
+                continue;
+            }
+
             Match metadataMatch = MetadataRegex().Match(line);
             if (metadataMatch.Success)
             {
@@ -455,6 +482,12 @@ public sealed partial class LrcDocument
                 string marker = Convert.ToBase64String(buffer.ToArray());
                 builder.Append("[ml-ruby:").Append(marker).Append("]\n");
             }
+            if (includeRuby && !string.IsNullOrWhiteSpace(line.Romanization))
+            {
+                string marker = Convert.ToBase64String(
+                    Encoding.UTF8.GetBytes(line.Romanization));
+                builder.Append("[ml-romaji:").Append(marker).Append("]\n");
+            }
         }
         return builder.ToString().TrimEnd('\n');
     }
@@ -533,7 +566,8 @@ public sealed record LrcWord(TimeSpan Start, TimeSpan End, string Text,
 public sealed record LrcLine(
     TimeSpan Timestamp,
     string Text,
-    IReadOnlyList<LrcWord>? Words = null)
+    IReadOnlyList<LrcWord>? Words = null,
+    string? Romanization = null)
 {
     public override string ToString()
     {
