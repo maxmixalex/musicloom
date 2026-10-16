@@ -5026,11 +5026,7 @@ public sealed partial class MainWindow : Window
             AtlTrackInspector.Read(
                 inspectPath);
 
-        byte[]? artwork =
-            inspection.Artwork
-            ?? TryReadExternalArtwork(
-                settings,
-                entry);
+        byte[]? artwork = TryReadArtworkBytes(settings, entry);
 
         // The scan/indexing pipeline imports the lyrics into SQLite.
         // Details only inspect audio metadata and artwork.
@@ -5651,134 +5647,59 @@ public sealed partial class MainWindow : Window
                 line.Romanization)).ToArray();
     }
 
-    private async Task
-        LoadArtworkThumbnailsAsync(
-            MusicLoomSettings settings,
-            int generation)
+    private async Task LoadArtworkThumbnailsAsync(
+        MusicLoomSettings settings, int generation)
     {
-        // A rescan can replace the live list while an awaited decode is in
-        // progress. Enumerate a snapshot to avoid invalidating the iterator.
+        // The very same MusicBee retrieval order drives thumbnails,
+        // details, the immersive full-size image and sync planning.
+        MusicBeeArtworkPreferences preferences =
+            MusicBeeArtworkPreferences.Load(
+                settings.Path.SourcePlaylistDirectory);
         LibraryDisplayItem[] snapshot = _allLibraryItems.ToArray();
+        Dictionary<string, BitmapImage> decoded = new(
+            StringComparer.OrdinalIgnoreCase);
+        HashSet<string> unreadable = new(StringComparer.OrdinalIgnoreCase);
 
-        // Embedded artwork belongs to the track, not to the album folder.
-        // Load these individually so one song's embedded cover never leaks to
-        // neighboring tracks that happen to share Artist/Album.
-        foreach (LibraryDisplayItem item
-            in snapshot.Where(
-                static item =>
-                    item.Entry.Metadata
-                        ?.HasEmbeddedArt
-                    == true))
+        foreach (LibraryDisplayItem item in snapshot)
         {
-            if (generation !=
-                _artworkGeneration)
+            if (generation != _artworkGeneration) return;
+            if (item.Entry.Metadata is not TrackMetadata metadata) continue;
+
+            foreach (MusicBeeArtworkCandidate candidate in
+                MusicBeeArtworkResolver.Enumerate(
+                    item.Entry.SourcePath, metadata, preferences))
             {
-                return;
-            }
-
-            byte[]? embedded =
-                await Task.Run(
-                    () =>
-                        TryReadEmbeddedArtwork(
-                            item.Entry));
-
-            if (embedded is not
-                { Length: > 0 }
-                || generation !=
-                    _artworkGeneration)
-            {
-                continue;
-            }
-
-            try
-            {
-                item.Artwork =
-                    await CreateBitmapImageAsync(
-                        embedded);
-            }
-            catch
-            {
-                // Corrupt embedded artwork is optional; continue with the
-                // remaining library rather than blocking browsing.
-            }
-        }
-
-        // Tracks without embedded art may safely share the same album-folder
-        // cover. Group those for efficient I/O.
-        IGrouping<string, LibraryDisplayItem>[]
-            groups =
-                snapshot
-                    .Where(
-                        static item =>
-                            item.Entry.Metadata
-                                ?.HasEmbeddedArt
-                            != true)
-                    .GroupBy(
-                        ArtworkKey,
-                        StringComparer
-                            .OrdinalIgnoreCase)
-                    .ToArray();
-
-        foreach (IGrouping<string,
-            LibraryDisplayItem> group
-            in groups)
-        {
-            if (generation !=
-                _artworkGeneration)
-            {
-                return;
-            }
-
-            LibraryDisplayItem[] groupItems =
-                group.ToArray();
-
-            byte[]? bytes =
-                await Task.Run(
-                    () =>
-                    {
-                        foreach (LibraryDisplayItem candidate
-                            in groupItems)
-                        {
-                            byte[]? candidateBytes =
-                                TryReadExternalArtwork(
-                                    settings,
-                                    candidate.Entry)
-                                ?? TryReadEmbeddedArtwork(
-                                    candidate.Entry);
-
-                            if (candidateBytes is
-                                { Length: > 0 })
-                            {
-                                return candidateBytes;
-                            }
-                        }
-
-                        return null;
-                    });
-
-            if (bytes is null
-                || bytes.Length == 0
-                || generation !=
-                    _artworkGeneration)
-            {
-                continue;
-            }
-
-            try
-            {
-                BitmapImage bitmap =
-                    await CreateBitmapImageAsync(
-                        bytes);
-
-                foreach (LibraryDisplayItem item
-                    in groupItems)
+                string key = candidate.CacheKey(item.Entry.SourcePath);
+                if (decoded.TryGetValue(key, out BitmapImage? existing))
                 {
-                    item.Artwork = bitmap;
+                    item.Artwork = existing;
+                    break;
                 }
-            }
-            catch
-            {
-                // Artwork is optional. Corrupt pictures must not block browsing.
+                if (unreadable.Contains(key)) continue;
+
+                byte[]? bytes = await Task.Run(
+                    () => ReadArtworkCandidateBytes(item.Entry, candidate));
+                if (generation != _artworkGeneration) return;
+                if (bytes is not { Length: > 0 })
+                {
+                    unreadable.Add(key);
+                    continue;
+                }
+                try
+                {
+                    BitmapImage bitmap =
+                        await CreateBitmapImageAsync(bytes);
+                    if (generation != _artworkGeneration) return;
+                    decoded[key] = bitmap;
+                    item.Artwork = bitmap;
+                    break;
+                }
+                catch (Exception error)
+                {
+                    unreadable.Add(key);
+                    AppDiagnostics.LogException(
+                        "Could not decode configured MusicBee artwork.", error);
+                }
             }
         }
     }
@@ -5802,49 +5723,40 @@ public sealed partial class MainWindow : Window
             item.Album);
     }
 
-    private static byte[]?
-        TryReadArtworkBytes(
-            MusicLoomSettings settings,
-            PlanEntry entry)
+    private static byte[]? TryReadArtworkBytes(
+        MusicLoomSettings settings, PlanEntry entry)
     {
+        MusicBeeArtworkPreferences preferences =
+            MusicBeeArtworkPreferences.Load(
+                settings.Path.SourcePlaylistDirectory);
+        if (entry.Metadata is TrackMetadata metadata)
+        {
+            foreach (MusicBeeArtworkCandidate candidate in
+                MusicBeeArtworkResolver.Enumerate(
+                    entry.SourcePath, metadata, preferences))
+            {
+                byte[]? bytes = ReadArtworkCandidateBytes(entry, candidate);
+                if (bytes is { Length: > 0 }) return bytes;
+            }
+        }
+        // Old cached entries can have missing tag metadata. Even in that
+        // case, never make a destination cache beat a readable source file.
+        if (!File.Exists(entry.SourcePath))
+            return TryReadDestinationArtwork(entry);
+        return null;
+    }
+
+    private static byte[]? ReadArtworkCandidateBytes(
+        PlanEntry entry, MusicBeeArtworkCandidate candidate)
+    {
+        if (candidate.IsEmbedded) return TryReadEmbeddedArtwork(entry);
+        if (candidate.Path is not string path) return null;
         try
         {
-            // Embedded artwork is track-specific and therefore wins over a
-            // generic Cover.* file in the album folder.
-            if (entry.Metadata?.HasEmbeddedArt
-                == true)
-            {
-                byte[]? embedded =
-                    TryReadEmbeddedArtwork(
-                        entry);
-
-                if (embedded is
-                    { Length: > 0 })
-                {
-                    return embedded;
-                }
-            }
-
-            byte[]? external =
-                TryReadExternalArtwork(
-                    settings,
-                    entry);
-
-            if (external is
-                { Length: > 0 })
-            {
-                return external;
-            }
-
-            // Metadata can be stale/missing for legacy cache entries. Try the
-            // actual file as a final embedded-art fallback.
-            return TryReadEmbeddedArtwork(
-                entry);
+            return File.Exists(path) ? File.ReadAllBytes(path) : null;
         }
-        catch
-        {
-            return null;
-        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
     }
 
     private static byte[]?
@@ -5900,70 +5812,22 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static byte[]?
-        TryReadExternalArtwork(
-            MusicLoomSettings settings,
-            PlanEntry entry)
+    private static byte[]? TryReadDestinationArtwork(PlanEntry entry)
     {
-        if (entry.Metadata is not null)
-        {
-            string? sourceDirectory =
-                Path.GetDirectoryName(
-                    entry.SourcePath);
-
-            if (!string.IsNullOrWhiteSpace(
-                    sourceDirectory)
-                && Directory.Exists(
-                    sourceDirectory))
-            {
-                string? sourceCover =
-                    AlbumArtLocator.Find(
-                        sourceDirectory,
-                        entry.Metadata,
-                        onlyExplicit: false);
-
-                if (sourceCover is not null)
-                {
-                    return File.ReadAllBytes(
-                        sourceCover);
-                }
-
-                // A destination Cover.* can be stale (notably from a
-                // previous WMP Folder.jpg cache). Current source state wins.
-                return null;
-            }
-        }
-
-        if (entry.DestinationPath
-            is not string destination)
-        {
+        if (entry.DestinationPath is not string destination) return null;
+        string? directory = Path.GetDirectoryName(destination);
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
             return null;
-        }
-
-        string? directory =
-            Path.GetDirectoryName(
-                destination);
-
-        if (string.IsNullOrWhiteSpace(
-                directory)
-            || !Directory.Exists(
-                directory))
+        try
         {
-            return null;
-        }
-
-        string? existing =
-            Directory
-                .EnumerateFiles(
-                    directory,
-                    "Cover.*",
+            string? path = Directory.EnumerateFiles(directory, "Cover.*",
                     SearchOption.TopDirectoryOnly)
+                .OrderBy(static file => file, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault();
-
-        return existing is null
-            ? null
-            : File.ReadAllBytes(
-                existing);
+            return path is null ? null : File.ReadAllBytes(path);
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
     }
 
     private static async Task<BitmapImage>

@@ -255,7 +255,21 @@ public sealed partial class MainWindow
         else
             return;
 
-        ImageSource? cover = PlayerArtworkImage.Source;
+        ImageSource? cover = ImmersiveView.CurrentArtwork;
+        if (updatePalette || cover is null)
+        {
+            // The small now-playing image is decoded at 144px. Request the
+            // original remote cover URL without any DecodePixelWidth cap.
+            string? artwork = _playingCloudPreviewCandidate?.CoverUrl
+                ?? _playingPreviewCandidate?.CoverUrl;
+            if (!string.IsNullOrWhiteSpace(artwork)
+                && Uri.TryCreate(artwork, UriKind.Absolute,
+                    out Uri? uri)
+                && uri.Scheme is "http" or "https")
+                cover = new BitmapImage { UriSource = uri };
+            else
+                cover = PlayerArtworkImage.Source;
+        }
         ImmersiveView.SetMode(_lyricsDisplayMode);
         ImmersiveView.SetTrack(title, artist, album, cover,
             BuildLyricLines(_remotePlaybackLyrics?.ToString(),
@@ -354,8 +368,9 @@ public sealed partial class MainWindow
 
             LyricDisplayLine[] lines = BuildLyricLines(
                 record?.Text, _lyricsDisplayMode);
-            ImmersiveView.SetTrack(
-                item.Title, item.Artist, item.Album, item.Artwork, lines);
+            // SetTrack would replace the freshly loaded full-resolution
+            // cover with the 192px list thumbnail. Only lyrics change here.
+            ImmersiveView.SetLyrics(lines);
             _activePlaybackLyric?.IsActive = false;
             _activePlaybackLyric = null;
             _lastAutoScrolledLyric = null;
@@ -374,57 +389,41 @@ public sealed partial class MainWindow
     {
         try
         {
-            // Reuse the already decoded detail-pane artwork when the
-            // selected/playing item is the same. Previously this byte cache
-            // was ignored even when it held the exact displayed image.
-            byte[]? imageBytes = ReferenceEquals(_selectedLibraryItem, item)
-                ? _currentArtworkBytes
-                : null;
-            if (imageBytes is null)
+            // Read the preferred ORIGINAL image according to the same
+            // MusicBee source order as the library and details. Never
+            // promote another album member's 192px thumbnail into this
+            // playback track just because its folder key is identical.
+            byte[]? bytes = await Task.Run(() =>
+                _settings is MusicLoomSettings settings
+                    ? TryReadArtworkBytes(settings, item.Entry) : null);
+            if (!_immersiveActive
+                || artworkVersion != _immersiveArtworkVersion
+                || !ReferenceEquals(_playingLibraryItem, item))
+                return;
+
+            if (bytes is not { Length: > 0 })
             {
-                imageBytes = await Task.Run(() =>
-                {
-                    if (_settings is not MusicLoomSettings settings)
-                        return null;
-                    return TryReadArtworkBytes(settings, item.Entry);
-                });
+                await ImmersiveView.ApplyArtworkColorsAsync(null);
+                return; // The list thumbnail remains a fallback only.
             }
 
-            if (!_immersiveActive || artworkVersion != _immersiveArtworkVersion)
-            {
+            // The main library intentionally decodes thumbnails at 192px;
+            // immersive playback deliberately decodes ALL available pixels.
+            BitmapImage fullSize = await CreateBitmapImageAsync(
+                bytes, decodePixelWidth: 0);
+            if (!_immersiveActive
+                || artworkVersion != _immersiveArtworkVersion
+                || !ReferenceEquals(_playingLibraryItem, item))
                 return;
-            }
-            if (imageBytes is null && item.Artwork is not null)
-            {
-                // Library browsing groups tracks with the same artwork.
-                // Another song in that group may own the embedded bytes.
-                var companions = _allLibraryItems
-                    .Where(candidate => !ReferenceEquals(candidate, item)
-                        && (ReferenceEquals(candidate.Artwork, item.Artwork)
-                            || string.Equals(ArtworkKey(candidate), ArtworkKey(item),
-                                StringComparison.OrdinalIgnoreCase)))
-                    .Take(24)
-                    .Select(candidate => candidate.Entry)
-                    .ToArray();
-                imageBytes = await Task.Run(() =>
-                {
-                    if (_settings is not MusicLoomSettings saved) return null;
-                    foreach (var entry in companions)
-                    {
-                        byte[]? bytes = TryReadArtworkBytes(saved, entry);
-                        if (bytes is { Length: > 0 }) return bytes;
-                    }
-                    return null;
-                });
-                if (!_immersiveActive || artworkVersion != _immersiveArtworkVersion)
-                    return;
-            }
-            await ImmersiveView.ApplyArtworkColorsAsync(imageBytes);
+
+            ImmersiveView.SetCover(fullSize);
+            await ImmersiveView.ApplyArtworkColorsAsync(bytes);
         }
         catch (Exception error)
         {
             AppDiagnostics.LogException(
-                "Could not refresh immersive artwork.", error);
+                "Could not refresh full-resolution immersive artwork.", error);
         }
     }
+
 }

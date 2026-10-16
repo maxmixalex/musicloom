@@ -45,10 +45,10 @@
              the actual non-square cover's rounded clip and shadow. -->
         <Border Grid.Row="0" x:Name="ImmersiveArtworkFrame"
                 Width="0" Height="0"
-                HorizontalAlignment="Center" VerticalAlignment="Center"
+                HorizontalAlignment="Center" VerticalAlignment="Top"
                 Background="Transparent" BorderThickness="0">
           <Border x:Name="AlbumCoverSurface"
-                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                  HorizontalAlignment="Center" VerticalAlignment="Top"
                   Width="0" Height="0" CornerRadius="16"
                   BorderThickness="0" Translation="0,0,14">
             <Border.Shadow><ThemeShadow /></Border.Shadow>
@@ -104,7 +104,7 @@
           <!-- Track, artist and album share one left alignment and
                a bounded header, independent of lyric count. -->
           <StackPanel Grid.Column="0" Spacing="5"
-                      VerticalAlignment="Center" HorizontalAlignment="Stretch">
+                      VerticalAlignment="Top" HorizontalAlignment="Stretch">
             <TextBlock x:Name="TrackHeading" Text="Nothing playing"
                        FontSize="25" FontWeight="SemiBold"
                        Foreground="White" MaxLines="2"
@@ -175,7 +175,7 @@
                scrolling ListView, never items inside its scroll content.
                Palette sampling keeps the veils flush with the background. -->
           <Border x:Name="LyricsTopFade" Canvas.ZIndex="1"
-                  Height="90" VerticalAlignment="Top"
+                  Visibility="Collapsed" Height="90" VerticalAlignment="Top"
                   HorizontalAlignment="Stretch" IsHitTestVisible="False">
             <Border.Background>
               <LinearGradientBrush x:Name="LyricsTopFadeBrush"
@@ -186,7 +186,7 @@
             </Border.Background>
           </Border>
           <Border x:Name="LyricsBottomFade" Canvas.ZIndex="1"
-                  Height="90" VerticalAlignment="Bottom"
+                  Visibility="Collapsed" Height="90" VerticalAlignment="Bottom"
                   HorizontalAlignment="Stretch" IsHitTestVisible="False">
             <Border.Background>
               <LinearGradientBrush x:Name="LyricsBottomFadeBrush"

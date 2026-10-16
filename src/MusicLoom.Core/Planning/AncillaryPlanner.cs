@@ -21,9 +21,11 @@ public static class AncillaryPlanner
         string destinationRoot = Path.GetFullPath(
             settings.Path.DestinationDirectory);
 
+        MusicBeeArtworkPreferences artworkPreferences =
+            MusicBeeArtworkPreferences.Load(
+                settings.Path.SourcePlaylistDirectory);
         List<CoverPlanEntry> covers = BuildCovers(
-            entries,
-            destinationRoot);
+            entries, destinationRoot, artworkPreferences);
 
         List<PlaylistPlanEntry> playlists = await BuildPlaylistsAsync(
             settings,
@@ -36,7 +38,8 @@ public static class AncillaryPlanner
 
     private static List<CoverPlanEntry> BuildCovers(
         IReadOnlyList<PlanEntry> entries,
-        string destinationRoot)
+        string destinationRoot,
+        MusicBeeArtworkPreferences artworkPreferences)
     {
         List<CoverPlanEntry> covers = [];
 
@@ -62,13 +65,28 @@ public static class AncillaryPlanner
             string sourceDirectory =
                 Path.GetDirectoryName(first.SourcePath)
                 ?? string.Empty;
-            bool onlyExplicit = group.Any(
-                static entry => entry.Metadata?.HasEmbeddedArt == true);
-
-            string? cover = AlbumArtLocator.Find(
-                sourceDirectory,
-                metadata,
-                onlyExplicit);
+            string? cover = null;
+            bool embeddedWins = false;
+            foreach (MusicBeeArtworkCandidate candidate in
+                MusicBeeArtworkResolver.Enumerate(
+                    first.SourcePath, metadata, artworkPreferences))
+            {
+                if (candidate.IsEmbedded)
+                {
+                    if (group.Any(static track =>
+                        track.Metadata?.HasEmbeddedArt == true))
+                    {
+                        embeddedWins = true;
+                        break;
+                    }
+                    continue;
+                }
+                cover = candidate.Path;
+                break;
+            }
+            // MusicBee's configured Embedded rule is a real priority:
+            // never overwrite an embedded-first album with a sidecar.
+            if (embeddedWins) continue;
             if (cover is null)
             {
                 AddStaleWmpCoverCleanup(

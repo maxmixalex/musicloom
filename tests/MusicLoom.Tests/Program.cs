@@ -47,6 +47,7 @@ List<(string Name, Action Test)> tests =
     ("Recipe and destination changes reuse cached metadata correctly", RecipeStateRegression.Run),
     ("Transactional sync persists nonfatal outcomes and retries failures", SyncExecutorRegression.Run),
     ("Live sync rejects recursive source/destination layouts", LibraryPathSafetyRegression.Run),
+    ("MusicBee ordered artwork retrieval wins over embedded and cached covers", MusicBeeArtworkRegression.Run),
     ("Cover and playlist-only changes remain actionable", AncillaryPlanningRegression.Run),
     ("Destination drift is rematerialized without touching source metadata", DestinationDriftRegression.Run),
     ("State recovery and materialization failures are isolated", ResilienceRegression.Run),

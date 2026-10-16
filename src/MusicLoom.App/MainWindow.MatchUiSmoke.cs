@@ -367,6 +367,13 @@ public sealed partial class MainWindow
             immersive.SetTrack("Short title", "Artist", "Album", null,
                 [new LyricDisplayLine("One", null, "preferOriginal")]);
             await Task.Delay(140);
+            Border noTopFade = immersive.FindName("LyricsTopFade") as Border
+                ?? throw new InvalidOperationException("Top fade not found");
+            Border noBottomFade = immersive.FindName("LyricsBottomFade") as Border
+                ?? throw new InvalidOperationException("Bottom fade not found");
+            Assert(noTopFade.Visibility == Visibility.Collapsed
+                && noBottomFade.Visibility == Visibility.Collapsed,
+                "Immersive: no edge veils when one lyric fits without scrolling");
             Grid playerColumns = immersive.FindName("PlayerColumns") as Grid
                 ?? throw new InvalidOperationException("Immersive columns not found");
             Grid leftColumn = immersive.FindName("LeftPanel") as Grid
@@ -397,6 +404,21 @@ public sealed partial class MainWindow
             Assert(!upperFade.IsHitTestVisible && !lowerFade.IsHitTestVisible
                 && upperFade.Height > 0 && lowerFade.Height > 0,
                 "Immersive: stationary, non-intercepting edge fades outside scrolling items");
+            ScrollViewer lyricScroll = immersive.LyricsScrollViewer
+                ?? throw new InvalidOperationException("Actual internal lyrics ScrollViewer missing");
+            lyricScroll.ChangeView(null, 0, null, true);
+            await Task.Delay(110);
+            Assert(lyricScroll.ScrollableHeight > 10
+                && upperFade.Visibility == Visibility.Collapsed
+                && lowerFade.Visibility == Visibility.Visible,
+                "Immersive: top lyric is crisp and only the bottom edge fades");
+            lyricScroll.ChangeView(null, lyricScroll.ScrollableHeight, null, true);
+            await Task.Delay(150);
+            Assert(upperFade.Visibility == Visibility.Visible
+                && lowerFade.Visibility == Visibility.Collapsed,
+                "Immersive: bottom lyric is crisp and only the top edge fades");
+            lyricScroll.ChangeView(null, 0, null, true);
+            await Task.Delay(90);
             string immersivePng = marker + ".ImmersiveViewport.png";
             await SavePanelScreenshotAsync(immersive, immersivePng);
             double rightX = rightColumn.TransformToVisual(immersive)
@@ -450,9 +472,36 @@ public sealed partial class MainWindow
             await Task.Delay(130);
             TextBlock heading = immersive.FindName("TrackHeading") as TextBlock
                 ?? throw new InvalidOperationException("Track heading not found");
+            Border artworkFrame = immersive.FindName("ImmersiveArtworkFrame")
+                as Border ?? throw new InvalidOperationException("Artwork frame missing");
+            double artworkTop = artworkFrame.TransformToVisual(playerColumns)
+                .TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+            double headingTop = heading.TransformToVisual(playerColumns)
+                .TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
             Assert(heading.FontSize < 25
-                && Math.Abs(leftColumn.ActualHeight - rightColumn.ActualHeight) < 1,
-                "Immersive: reducing window size scales text without unequal columns");
+                && Math.Abs(leftColumn.ActualHeight - rightColumn.ActualHeight) < 1
+                && Math.Abs(headingTop - artworkTop) < 6,
+                $"Immersive: resized panels and album cover/title tops align (art={artworkTop:0}, heading={headingTop:0})");
+
+            // Switching to a full-size bitmap must not have its dimensions
+            // or identity destroyed by subsequent async lyric rendering.
+            BitmapImage detailed = await FixtureArtworkAsync(
+                Color.FromArgb(255, 181, 101, 58),
+                width: 640, height: 480);
+            immersive.SetCover(detailed);
+            immersive.SetLyrics(
+                [new LyricDisplayLine("Loaded after artwork", null,
+                    "preferOriginal", TimeSpan.FromSeconds(1))]);
+            Assert(ReferenceEquals(immersive.CurrentArtwork, detailed)
+                && detailed.PixelWidth == 640
+                && detailed.PixelHeight == 480,
+                "Immersive: lyric reload keeps the current full-resolution cover");
+
+            immersive.SetLyrics([]);
+            await Task.Delay(90);
+            Assert(upperFade.Visibility == Visibility.Collapsed
+                && lowerFade.Visibility == Visibility.Collapsed,
+                "Immersive: no scrolling or edge veils with an empty lyric source");
 
             host.Children.Clear();
             LrcWord[] firstWords =

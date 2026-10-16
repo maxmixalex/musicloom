@@ -24,6 +24,7 @@ public sealed partial class ImmersivePlayer : UserControl
     private Func<string, string, string> _translate = (english, _) => english;
     private double _immersiveScale = 1;
     private int _artworkRequest;
+    private ScrollViewer? _lyricScrollViewer;
 
     // One shared animation clock drives the client gradient, progress accent,
     // fixed lyric veils and real native title-bar colors together.
@@ -51,6 +52,8 @@ public sealed partial class ImmersivePlayer : UserControl
     public event Action<string>? ModeChanged;
 
     internal ListView LyricsList => ImmersiveLyricsList;
+    internal ImageSource? CurrentArtwork => AlbumCover.Source;
+    internal ScrollViewer? LyricsScrollViewer => _lyricScrollViewer;
 
     public ImmersivePlayer()
     {
@@ -65,6 +68,10 @@ public sealed partial class ImmersivePlayer : UserControl
             DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
         ImmersiveLyricsList.SizeChanged += (_, _) =>
             DispatcherQueue.TryEnqueue(UpdateLyricFadeMasks);
+        // Virtualization and item changes can alter ScrollableHeight
+        // without changing the ListView's own ActualHeight.
+        ImmersiveLyricsList.LayoutUpdated += (_, _) =>
+            UpdateLyricFadeVisibility();
 
         _paletteTimer = DispatcherQueue.CreateTimer();
         _paletteTimer.Interval = TimeSpan.FromMilliseconds(16);
@@ -127,11 +134,24 @@ public sealed partial class ImmersivePlayer : UserControl
         TrackHeading.Text = title;
         ArtistHeading.Text = artist;
         AlbumHeading.Text = album;
+        SetCover(cover);
+        SetLyrics(lines);
+    }
+
+    internal void SetCover(ImageSource? cover)
+    {
+        if (ReferenceEquals(AlbumCover.Source, cover)) return;
         AlbumCover.Source = cover;
         UpdateCoverSurfaceSize();
+    }
+
+    internal void SetLyrics(IEnumerable<LyricDisplayLine> lines)
+    {
         LyricDisplayLine[] display = lines.ToArray();
         foreach (LyricDisplayLine line in display)
             line.SetImmersiveScale(_immersiveScale);
+        LyricsTopFade.Visibility = Visibility.Collapsed;
+        LyricsBottomFade.Visibility = Visibility.Collapsed;
         ImmersiveLyricsList.ItemsSource = display;
         LyricModeButton.Visibility = display.Any(
             static line => !string.IsNullOrWhiteSpace(line.Translation))
@@ -473,6 +493,7 @@ public sealed partial class ImmersivePlayer : UserControl
     // modifying each recycled ListViewItem, these do not move on scroll.
     private void UpdateLyricFadeMasks()
     {
+        EnsureLyricScrollViewer();
         double viewport = ImmersiveLyricsList.ActualHeight;
         if (viewport <= 0) return;
         double edge = Math.Min(92, viewport * 0.23);
@@ -480,7 +501,50 @@ public sealed partial class ImmersivePlayer : UserControl
             LyricsTopFade.Height = edge;
         if (Math.Abs(LyricsBottomFade.Height - edge) > 0.5)
             LyricsBottomFade.Height = edge;
+        UpdateLyricFadeVisibility();
         DispatcherQueue.TryEnqueue(UpdateLyricFadeColors);
+    }
+
+    private void EnsureLyricScrollViewer()
+    {
+        if (_lyricScrollViewer is not null) return;
+        _lyricScrollViewer = FindNestedScrollViewer(ImmersiveLyricsList);
+        if (_lyricScrollViewer is not null)
+            _lyricScrollViewer.ViewChanged += (_, _) =>
+                UpdateLyricFadeVisibility();
+    }
+
+    private static ScrollViewer? FindNestedScrollViewer(
+        DependencyObject parent)
+    {
+        if (parent is ScrollViewer scroll) return scroll;
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            ScrollViewer? nested = FindNestedScrollViewer(
+                VisualTreeHelper.GetChild(parent, i));
+            if (nested is not null) return nested;
+        }
+        return null;
+    }
+
+    private void UpdateLyricFadeVisibility()
+    {
+        EnsureLyricScrollViewer();
+        ScrollViewer? scroll = _lyricScrollViewer;
+        if (scroll is null || scroll.ScrollableHeight < 2)
+        {
+            LyricsTopFade.Visibility = Visibility.Collapsed;
+            LyricsBottomFade.Visibility = Visibility.Collapsed;
+            return;
+        }
+        // Only veil an edge if there are actual offscreen lyric pixels on
+        // that side. The first and last lines stay crisp at the boundaries.
+        LyricsTopFade.Visibility = scroll.VerticalOffset > 1
+            ? Visibility.Visible : Visibility.Collapsed;
+        LyricsBottomFade.Visibility =
+            scroll.VerticalOffset < scroll.ScrollableHeight - 1
+                ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private Color BackgroundAt(double y)
