@@ -1018,7 +1018,9 @@ public sealed partial class MainWindow : Window
             ImmersiveView.SetPlaying(playing);
             ImmersiveView.SetNavigationAvailable(
                 _playingLibraryItem is not null
-                && _playbackQueue.Length > 1);
+                && _playbackQueue.Length > 1,
+                remoteSource: _mediaPlayer.Source is not null
+                    && _playingLibraryItem is null);
         }
         RefreshKaraokeFrameRendering();
 
@@ -1034,6 +1036,14 @@ public sealed partial class MainWindow : Window
         PlayerNextButton.IsEnabled =
             _playingLibraryItem is not null
             && _playbackQueue.Length > 1;
+        // A remote source has no local navigation queue: hide these two
+        // transport controls altogether rather than showing disabled icons.
+        bool remoteTransport = _mediaPlayer.Source is not null
+            && _playingLibraryItem is null;
+        PlayerPreviousButton.Visibility = remoteTransport
+            ? Visibility.Collapsed : Visibility.Visible;
+        PlayerNextButton.Visibility = remoteTransport
+            ? Visibility.Collapsed : Visibility.Visible;
 
         foreach ((long trackId,
             SymbolIcon icon)
