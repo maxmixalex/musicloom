@@ -60,10 +60,51 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
                     duration_ms INTEGER,
                     cover_url TEXT,
                     updated_at TEXT NOT NULL,
+                    content_id TEXT, copyright_id TEXT, provider_song_id TEXT,
+                    provider_preview_url TEXT, provider_stream_url TEXT,
+                    provider_external_url TEXT,
                     PRIMARY KEY (source_path, provider)
                 );
                 """;
             await command.ExecuteNonQueryAsync(ct);
+            // Existing installations predate the three experimental
+            // providers. Migrate in place; never discard match records.
+            await using (SqliteCommand inspect = connection.CreateCommand())
+            {
+                inspect.CommandText = "PRAGMA table_info(provider_matches);";
+                HashSet<string> existing = new(
+                    StringComparer.OrdinalIgnoreCase);
+                await using (SqliteDataReader columns =
+                    await inspect.ExecuteReaderAsync(ct))
+                {
+                    while (await columns.ReadAsync(ct))
+                        existing.Add(columns.GetString(1));
+                }
+                foreach (string name in new[]
+                {
+                    "content_id", "copyright_id", "provider_song_id",
+                    "provider_preview_url", "provider_stream_url",
+                    "provider_external_url",
+                })
+                {
+                    if (existing.Contains(name)) continue;
+                    await using SqliteCommand alter = connection.CreateCommand();
+                    alter.CommandText =
+                        "ALTER TABLE provider_matches ADD COLUMN " + name + " TEXT;";
+                    try
+                    {
+                        await alter.ExecuteNonQueryAsync(ct);
+                    }
+                    catch (SqliteException error) when (
+                        error.SqliteErrorCode == 1
+                        && error.Message.Contains("duplicate column name",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Concurrent first opens can race this one-time
+                        // migration; the other writer already added it.
+                    }
+                }
+            }
             return connection;
         }
         catch
@@ -84,7 +125,9 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
         cmd.CommandText = """
             SELECT source_path, provider, suppressed, confirmed,
                    track_id, song_mid, media_mid, file_hash, album_id,
-                   title, artist, album, duration_ms, cover_url
+                   title, artist, album, duration_ms, cover_url,
+                   content_id, copyright_id, provider_song_id,
+                   provider_preview_url, provider_stream_url, provider_external_url
               FROM provider_matches;
             """;
         await using SqliteDataReader rows = await cmd.ExecuteReaderAsync(ct);
@@ -102,7 +145,10 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
                     Get(9) ?? "", Get(10) ?? "", Get(11) ?? "",
                     rows.IsDBNull(12) ? 0 : rows.GetInt32(12),
                     Hash: Get(7), SongMid: Get(5),
-                    CoverUrl: Get(13), AlbumId: Get(8), MediaMid: Get(6));
+                    CoverUrl: Get(13), AlbumId: Get(8), MediaMid: Get(6),
+                    ContentId: Get(14), CopyrightId: Get(15),
+                    ProviderSongId: Get(16), PreviewUrl: Get(17),
+                    StreamUrl: Get(18), ExternalUrl: Get(19));
             if (!snapshot.TryGetValue(path, out var providerRows))
             {
                 providerRows = [];
@@ -123,7 +169,9 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
         cmd.CommandText = """
             SELECT suppressed, confirmed, track_id, song_mid, media_mid,
                    file_hash, album_id, title, artist, album,
-                   duration_ms, cover_url
+                   duration_ms, cover_url, content_id, copyright_id,
+                   provider_song_id, provider_preview_url,
+                   provider_stream_url, provider_external_url
               FROM provider_matches
              WHERE source_path = $source AND provider = $provider;
             """;
@@ -146,7 +194,10 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
                     Field(9) ?? "", reader.IsDBNull(10) ? 0 : reader.GetInt32(10),
                     Hash: Field(5), SongMid: Field(3),
                     CoverUrl: Field(11), AlbumId: Field(6),
-                    MediaMid: Field(4));
+                    MediaMid: Field(4),
+                    ContentId: Field(12), CopyrightId: Field(13),
+                    ProviderSongId: Field(14), PreviewUrl: Field(15),
+                    StreamUrl: Field(16), ExternalUrl: Field(17));
         return new StoredProviderMatch(
             sourcePath, provider, candidate, suppressed, confirmed);
     }
@@ -166,11 +217,15 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
             INSERT INTO provider_matches (
               source_path, provider, suppressed, confirmed, track_id,
               song_mid, media_mid, file_hash, album_id, title, artist,
-              album, duration_ms, cover_url, updated_at
+              album, duration_ms, cover_url, updated_at,
+              content_id, copyright_id, provider_song_id,
+              provider_preview_url, provider_stream_url, provider_external_url
             ) VALUES (
               $source, $provider, 0, $confirmed, $id,
               $mid, $media, $hash, $albumId, $title, $artist,
-              $album, $duration, $cover, $updated
+              $album, $duration, $cover, $updated,
+              $contentId, $copyrightId, $providerSongId,
+              $previewUrl, $streamUrl, $externalUrl
             ) ON CONFLICT(source_path, provider) DO UPDATE SET
               suppressed=0, confirmed=excluded.confirmed,
               track_id=excluded.track_id, song_mid=excluded.song_mid,
@@ -178,7 +233,12 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
               album_id=excluded.album_id, title=excluded.title,
               artist=excluded.artist, album=excluded.album,
               duration_ms=excluded.duration_ms,
-              cover_url=excluded.cover_url, updated_at=excluded.updated_at;
+              cover_url=excluded.cover_url, updated_at=excluded.updated_at,
+              content_id=excluded.content_id, copyright_id=excluded.copyright_id,
+              provider_song_id=excluded.provider_song_id,
+              provider_preview_url=excluded.provider_preview_url,
+              provider_stream_url=excluded.provider_stream_url,
+              provider_external_url=excluded.provider_external_url;
             """;
         cmd.Parameters.AddWithValue("$source", sourcePath);
         cmd.Parameters.AddWithValue("$provider", (int)candidate.Source);
@@ -194,6 +254,12 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
         cmd.Parameters.AddWithValue("$album", candidate.Album);
         cmd.Parameters.AddWithValue("$duration", candidate.DurationMilliseconds);
         cmd.Parameters.AddWithValue("$cover", Str(candidate.CoverUrl));
+        cmd.Parameters.AddWithValue("$contentId", Str(candidate.ContentId));
+        cmd.Parameters.AddWithValue("$copyrightId", Str(candidate.CopyrightId));
+        cmd.Parameters.AddWithValue("$providerSongId", Str(candidate.ProviderSongId));
+        cmd.Parameters.AddWithValue("$previewUrl", Str(candidate.PreviewUrl));
+        cmd.Parameters.AddWithValue("$streamUrl", Str(candidate.StreamUrl));
+        cmd.Parameters.AddWithValue("$externalUrl", Str(candidate.ExternalUrl));
         cmd.Parameters.AddWithValue("$updated",
             DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
         await cmd.ExecuteNonQueryAsync(ct);
@@ -214,6 +280,9 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
                 song_mid=NULL, media_mid=NULL, file_hash=NULL,
                 album_id=NULL, title=NULL, artist=NULL, album=NULL,
                 duration_ms=NULL, cover_url=NULL,
+                content_id=NULL, copyright_id=NULL, provider_song_id=NULL,
+                provider_preview_url=NULL, provider_stream_url=NULL,
+                provider_external_url=NULL,
                 updated_at=excluded.updated_at;
             """;
         cmd.Parameters.AddWithValue("$source", sourcePath);

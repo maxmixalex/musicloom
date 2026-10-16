@@ -13,8 +13,11 @@ namespace MusicLoom.LyricsProviders;
 /// </summary>
 public enum CloudLyricsSource
 {
-    QqMusic,
-    KugouMusic,
+    QqMusic = 0,
+    KugouMusic = 1,
+    MiguMusic = 2,
+    AppleMusic = 3,
+    Spotify = 4,
 }
 
 public sealed record CloudLyricsCandidate(
@@ -28,7 +31,13 @@ public sealed record CloudLyricsCandidate(
     string? SongMid = null,
     string? CoverUrl = null,
     string? AlbumId = null,
-    string? MediaMid = null);
+    string? MediaMid = null,
+    string? ContentId = null,
+    string? CopyrightId = null,
+    string? ProviderSongId = null,
+    string? PreviewUrl = null,
+    string? StreamUrl = null,
+    string? ExternalUrl = null);
 
 public sealed partial class CloudLyricsClient : IDisposable
 {
@@ -54,6 +63,9 @@ public sealed partial class CloudLyricsClient : IDisposable
                 SearchQqAsync(keywords, cancellationToken),
             CloudLyricsSource.KugouMusic =>
                 SearchKugouAsync(keywords, cancellationToken),
+            CloudLyricsSource.MiguMusic or CloudLyricsSource.AppleMusic
+                or CloudLyricsSource.Spotify =>
+                SearchExternalProviderAsync(source, keywords, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(source)),
         };
 
@@ -66,6 +78,9 @@ public sealed partial class CloudLyricsClient : IDisposable
                 GetQqLyricsAsync(selected, cancellationToken),
             CloudLyricsSource.KugouMusic =>
                 GetKugouLyricsAsync(selected, cancellationToken),
+            CloudLyricsSource.MiguMusic or CloudLyricsSource.AppleMusic
+                or CloudLyricsSource.Spotify =>
+                GetExternalProviderLyricsAsync(selected, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(selected)),
         };
 
