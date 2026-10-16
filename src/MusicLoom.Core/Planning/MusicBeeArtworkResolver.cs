@@ -45,8 +45,9 @@ public static class MusicBeeArtworkResolver
         }
         catch (IOException) { images = []; }
         catch (UnauthorizedAccessException) { images = []; }
-        if (images.Length == 0) yield break;
-
+        // A library can contain only embedded artwork and no image files.
+        // Never skip the configured Embedded rule merely because the
+        // external candidates array is empty.
         HashSet<string> yielded = new(StringComparer.OrdinalIgnoreCase);
         foreach (string template in preferences.Filters)
         {

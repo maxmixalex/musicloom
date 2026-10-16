@@ -54,6 +54,22 @@ internal static class MusicBeeArtworkRegression
                 throw new InvalidOperationException(
                     "MusicBee's track-specific/embedded/cover precedence was violated.");
 
+            // Audio-only directories must still honour the Embedded
+            // rule even when there are ZERO external images to enumerate.
+            string embeddedOnly = Path.Combine(root, "embedded-only");
+            Directory.CreateDirectory(embeddedOnly);
+            string embeddedSong = Path.Combine(embeddedOnly, "solo.flac");
+            File.WriteAllBytes(embeddedSong, [1, 2, 3]);
+            MusicBeeArtworkCandidate[] embeddedCandidates =
+                MusicBeeArtworkResolver.Enumerate(
+                    embeddedSong, metadata,
+                    new MusicBeeArtworkPreferences(
+                        ["Cover.*", "Embedded"], true)).ToArray();
+            if (embeddedCandidates.Length != 1
+                || !embeddedCandidates[0].IsEmbedded)
+                throw new InvalidOperationException(
+                    "Embedded artwork must not disappear in audio-only folders.");
+
             // Explicit MusicBee filter disabling is authoritative. A
             // standalone folder.jpg cannot be silently promoted.
             File.WriteAllText(settings, """
