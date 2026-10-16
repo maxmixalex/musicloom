@@ -6,5 +6,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="MusicLoom.Tests" />
     <ProjectReference Include="../MusicLoom.Core/MusicLoom.Core.csproj" />
+    <ProjectReference Include="../MusicLoom.ProviderPoc/MusicLoom.ProviderPoc.csproj" />
   </ItemGroup>
 </Project>

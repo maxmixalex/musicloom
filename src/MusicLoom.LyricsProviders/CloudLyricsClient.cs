@@ -37,7 +37,10 @@ public sealed record CloudLyricsCandidate(
     string? ProviderSongId = null,
     string? PreviewUrl = null,
     string? StreamUrl = null,
-    string? ExternalUrl = null);
+    string? ExternalUrl = null,
+    string? LrcUrl = null,
+    string? TrcUrl = null,
+    string? MrcUrl = null);
 
 public sealed partial class CloudLyricsClient : IDisposable
 {
