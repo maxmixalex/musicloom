@@ -86,7 +86,16 @@ public static class AncillaryPlanner
             }
             // MusicBee's configured Embedded rule is a real priority:
             // never overwrite an embedded-first album with a sidecar.
-            if (embeddedWins) continue;
+            if (embeddedWins)
+            {
+                // Embedded-first does not mean leaving a stale generated
+                // WMP Folder.jpg replica in the destination. Cleanup is
+                // independent of which source provides the displayed art.
+                AddStaleWmpCoverCleanup(covers, sourceDirectory,
+                    albumDirectory, metadata.HasEmbeddedArt,
+                    albumMissing: string.IsNullOrWhiteSpace(metadata.Album));
+                continue;
+            }
             if (cover is null)
             {
                 AddStaleWmpCoverCleanup(

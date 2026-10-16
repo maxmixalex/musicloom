@@ -9,7 +9,8 @@ namespace MusicLoom.Core.Planning;
 /// the .ini extension). The order is authoritative when a file is available.
 /// </summary>
 public sealed record MusicBeeArtworkPreferences(
-    IReadOnlyList<string> Filters, bool LoadedFromMusicBee)
+    IReadOnlyList<string> Filters, bool LoadedFromMusicBee,
+    bool ScanSubfolders = false)
 {
     public static readonly MusicBeeArtworkPreferences Fallback = new(
         ["Cover.*", "Artwork.*", "Front.*",
@@ -82,7 +83,11 @@ public sealed record MusicBeeArtworkPreferences(
                 .ToArray();
             // An empty filter list is a legitimate MusicBee choice: do not
             // silently resurrect "Embedded" or other disabled sources.
-            return new MusicBeeArtworkPreferences(rules, true);
+            bool subfolders = bool.TryParse(
+                xml.Descendants().FirstOrDefault(static element =>
+                    element.Name.LocalName == "TagArtworkScanFolders")?.Value,
+                out bool recursive) && recursive;
+            return new MusicBeeArtworkPreferences(rules, true, subfolders);
         }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException

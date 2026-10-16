@@ -29,11 +29,15 @@ public static class MusicBeeArtworkResolver
         if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
             yield break;
 
+        bool recurse = preferences.ScanSubfolders
+            || preferences.Filters.Any(static filter =>
+                filter.Contains('/') || filter.Contains('\\'));
         string[] images;
         try
         {
             images = Directory.EnumerateFiles(directory, "*",
-                    SearchOption.TopDirectoryOnly)
+                    recurse ? SearchOption.AllDirectories
+                            : SearchOption.TopDirectoryOnly)
                 .Where(path => ImageExtensions.Contains(
                     System.IO.Path.GetExtension(path)))
                 .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
@@ -53,28 +57,37 @@ public static class MusicBeeArtworkResolver
                 continue;
             }
 
-            string rule = Substitute(template, audioPath, metadata);
-            // Only resolve artwork alongside its owning source track.
-            // Do not allow a user-supplied template to traverse to some
-            // unrelated path outside the library folder.
-            if (rule.Contains('/') || rule.Contains('\\')
+            string rule = Substitute(template, audioPath, metadata)
+                .Replace('\\', '/');
+            // Reject path traversal, absolute paths and arbitrary roots.
+            // Subfolder rules may target images BELOW this audio folder.
+            if (rule.StartsWith('/') || rule.StartsWith("../")
+                || rule.Contains("/../", StringComparison.Ordinal)
                 || rule is "." or ".." || rule.Length > 256)
                 continue;
 
+            bool hasRelativeDirectory = rule.Contains('/');
             string pattern = "^" + Regex.Escape(rule)
                 .Replace("\\*", ".*", StringComparison.Ordinal)
                 .Replace("\\?", ".", StringComparison.Ordinal) + "$";
             foreach (string image in images)
             {
-                if (!Regex.IsMatch(System.IO.Path.GetFileName(image),
+                string candidateName = hasRelativeDirectory
+                    ? Path.GetRelativePath(directory, image)
+                        .Replace('\\', '/')
+                    : System.IO.Path.GetFileName(image);
+                if (!Regex.IsMatch(candidateName,
                     pattern, RegexOptions.IgnoreCase
                         | RegexOptions.CultureInvariant))
                     continue;
 
-                if (string.Equals(System.IO.Path.GetFileNameWithoutExtension(image),
+                if (!preferences.LoadedFromMusicBee
+                    && string.Equals(
+                        System.IO.Path.GetFileNameWithoutExtension(image),
                         "Folder", StringComparison.OrdinalIgnoreCase)
                     && AlbumArtLocator.IsLikelyWindowsMediaPlayerFolderCache(
-                        directory, image, metadata.HasEmbeddedArt,
+                        Path.GetDirectoryName(image) ?? directory,
+                        image, metadata.HasEmbeddedArt,
                         albumMissing: string.IsNullOrWhiteSpace(metadata.Album)))
                     continue;
 

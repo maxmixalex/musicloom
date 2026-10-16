@@ -95,13 +95,61 @@ internal static class MusicBeeArtworkRegression
                 throw new InvalidOperationException(
                     "Portable MusicBee cover priority was ignored.");
 
-            // The original WMP cache-safety check still applies even when
-            // a filter explicitly mentions Folder.jpg.
+            // Explicit MusicBee order wins, including when a user has
+            // intentionally enabled Folder.jpg. The legacy WMP-cache
+            // suppression applies ONLY to MusicLoom's fallback defaults.
             File.WriteAllBytes(Path.Combine(root, "AlbumArt.jpg"), [2]);
             if (MusicBeeArtworkResolver.Enumerate(audio, metadata, resolved)
-                .First().Path != cover)
+                .First().Path != folder)
                 throw new InvalidOperationException(
-                    "A WMP-generated Folder.jpg displaced a valid cover.");
+                    "MusicBee's explicit Folder.jpg first priority was ignored.");
+
+            string cacheOnly = Path.Combine(root, "legacy-wmp-cache");
+            Directory.CreateDirectory(cacheOnly);
+            string cacheTrack = Path.Combine(cacheOnly, "legacy.mp3");
+            File.WriteAllBytes(cacheTrack, [1]);
+            File.WriteAllBytes(Path.Combine(cacheOnly, "Folder.jpg"), [9]);
+            File.WriteAllBytes(Path.Combine(cacheOnly, "AlbumArt.jpg"), [9]);
+            if (MusicBeeArtworkResolver.Enumerate(cacheTrack, metadata,
+                    MusicBeeArtworkPreferences.Fallback)
+                .Any(static candidate => candidate.Path is not null))
+                throw new InvalidOperationException(
+                    "Fallback scanning must not promote a legacy WMP cache.");
+
+            // MusicBee can scan subfolders when TagArtworkScanFolders is set.
+            string scans = Path.Combine(root, "Scans");
+            Directory.CreateDirectory(scans);
+            string scanCover = Path.Combine(scans, "Artwork.png");
+            File.WriteAllBytes(scanCover, [4]);
+            File.WriteAllText(settings, """
+                <ApplicationSettings>
+                  <TagArtworkScanFolders>true</TagArtworkScanFolders>
+                  <TagArtworkScanFilter>
+                    <string>Artwork.*</string><string>Embedded</string>
+                  </TagArtworkScanFilter>
+                </ApplicationSettings>
+                """);
+            MusicBeeArtworkPreferences deep =
+                MusicBeeArtworkPreferences.Read(settings)!;
+            if (!deep.ScanSubfolders
+                || MusicBeeArtworkResolver.Enumerate(audio, metadata, deep)
+                    .First().Path != scanCover)
+                throw new InvalidOperationException(
+                    "MusicBee's recursive artwork scan setting was ignored.");
+
+            File.WriteAllText(settings, """
+                <ApplicationSettings>
+                  <TagArtworkScanFilter>
+                    <string>Scans/Artwork.*</string>
+                  </TagArtworkScanFilter>
+                </ApplicationSettings>
+                """);
+            MusicBeeArtworkPreferences explicitSubfolder =
+                MusicBeeArtworkPreferences.Read(settings)!;
+            if (MusicBeeArtworkResolver.Enumerate(
+                    audio, metadata, explicitSubfolder).First().Path != scanCover)
+                throw new InvalidOperationException(
+                    "MusicBee relative subfolder artwork rule was ignored.");
         }
         finally
         {
