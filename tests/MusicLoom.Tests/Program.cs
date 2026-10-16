@@ -17,6 +17,7 @@ List<(string Name, Action Test)> tests =
     ("LRC parser preserves repeated timestamps", LrcRepeatedTimestamps),
     ("LRC timing offsets do not modify canonical lyrics", LyricsOffsetRegression.Run),
     ("Cloud lyric providers parse search and lyric payloads", CloudLyricsProviderRegression.Run),
+    ("External Migu/Apple/Spotify search, lyrics, playback grants and SQLite migration", ExternalProviderIntegrationRegression.Run),
     ("QQ/KuGou remote preview URLs respect provider grants", CloudAudioPreviewRegression.Run),
     ("QQ and KuGou matches persist independently with durable explicit empty states", ProviderMatchPersistenceRegression.Run),
     ("Unofficial QQ/KRC encrypted word timings and client requests", TimedLyricsRegression.Run),
