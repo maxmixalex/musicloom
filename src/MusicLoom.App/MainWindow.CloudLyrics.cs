@@ -110,7 +110,7 @@ public sealed partial class MainWindow
         CloudLyricsPanel originatingPanel,
         TimeSpan? startPosition = null)
     {
-        // The same shared playback session is used for all three providers.
+        // All remote providers share this one MediaPlayer, never a second queue.
         // Pause/resume and lyric seeking must not trigger a second network
         // request for the same already-authorized stream.
         if (SameCloudCandidate(_playingCloudPreviewCandidate, candidate)
@@ -165,17 +165,29 @@ public sealed partial class MainWindow
 
             if (!preview.CanPlay)
             {
-                string why = preview.Status switch
+                string why = candidate.Source switch
                 {
-                    CloudAudioPreviewStatus.InvalidCandidate => L(
-                        "The result lacks a valid playback identifier.",
-                        "该搜索结果缺少有效的音频播放标识。"),
-                    CloudAudioPreviewStatus.ProviderUnavailable => L(
-                        "The remote audio service is unavailable.",
-                        "远程音频服务暂时不可用。"),
-                    _ => L(
-                        "No public stream for this song (login, membership or copyright restriction).",
-                        "该歌曲没有游客可播放的音频地址（可能需要登录、会员权限或受版权限制）。"),
+                    CloudLyricsSource.Spotify => L(
+                        "Spotify has no direct full-song stream. Use an authorized Premium Spotify Connect device or the Web Playback SDK.",
+                        "Spotify 不提供完整音频直链；请使用经授权的 Premium Spotify Connect 设备或 Web Playback SDK。"),
+                    CloudLyricsSource.AppleMusic => L(
+                        "Apple Music needs MusicKit authorization for full songs; no catalog preview is available for this result.",
+                        "Apple Music 完整曲目需要 MusicKit 授权；当前结果没有可用的目录试听片段。"),
+                    CloudLyricsSource.MiguMusic => L(
+                        "Migu did not grant an HTTPS audio stream for this track. Subscription, copyright or location restrictions may apply.",
+                        "咪咕未向当前歌曲授予 HTTPS 音频地址，可能受到会员、版权或地区限制。"),
+                    _ => preview.Status switch
+                    {
+                        CloudAudioPreviewStatus.InvalidCandidate => L(
+                            "The result lacks a valid playback identifier.",
+                            "该搜索结果缺少有效的音频播放标识。"),
+                        CloudAudioPreviewStatus.ProviderUnavailable => L(
+                            "The remote audio service is unavailable.",
+                            "远程音频服务暂时不可用。"),
+                        _ => L(
+                            "No public stream for this song (login, membership or copyright restriction).",
+                            "该歌曲没有游客可播放的音频地址（可能需要登录、会员权限或受版权限制）。"),
+                    },
                 };
                 originatingPanel.SetPreviewStatus(why);
                 ShowInfo(InfoBarSeverity.Warning,
@@ -266,7 +278,7 @@ public sealed partial class MainWindow
         {
             _suppressPlaybackLyricFollow = false;
             AppDiagnostics.LogException(
-                "QQ/KuGou remote audio preview failed.", error);
+                "Remote music provider audio preview failed.", error);
             string message = L(
                 "Remote preview failed. The stream may be expired or blocked by the provider.",
                 "远程试听失败：音频地址可能已过期，或被音源限制访问。");
