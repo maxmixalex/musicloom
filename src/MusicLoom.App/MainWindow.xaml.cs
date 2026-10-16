@@ -418,6 +418,8 @@ public sealed partial class MainWindow : Window
             _playingLibraryItem = item;
             _playingPreviewCandidate = null;
             _playingCloudPreviewCandidate = null;
+            ResetRemotePlaybackLyrics();
+            UpdatePlayerSourceLabel();
             _ = LoadWaveformForTrackAsync(item);
 
             if (_activePlaybackLyric
@@ -657,6 +659,8 @@ public sealed partial class MainWindow : Window
             _playingPreviewCandidate =
                 candidate;
             _playingCloudPreviewCandidate = null;
+            ResetRemotePlaybackLyrics();
+            UpdatePlayerSourceLabel();
             _playbackQueue = [];
             _playbackQueueIndex = -1;
             RefreshNowPlayingPlaylist();
@@ -709,6 +713,10 @@ public sealed partial class MainWindow : Window
             }
 
             ConfigureAuxiliaryLongText();
+            if (_immersiveActive)
+                UpdateImmersiveRemoteTrack();
+            _ = LoadNeteasePreviewLyricsAsync(
+                candidate, _remotePlaybackLyricsVersion);
 
             if (startPosition
                 is TimeSpan initialPosition)
@@ -984,6 +992,7 @@ public sealed partial class MainWindow : Window
 
         PlayerTimeText.Text =
             $"{FormatPlayerTime(position)} / {FormatPlayerTime(duration)}";
+        UpdatePlayerSourceLabel();
         if (_immersiveActive)
         {
             ImmersiveView.SetProgress(
@@ -1007,6 +1016,9 @@ public sealed partial class MainWindow : Window
         if (_immersiveActive)
         {
             ImmersiveView.SetPlaying(playing);
+            ImmersiveView.SetNavigationAvailable(
+                _playingLibraryItem is not null
+                && _playbackQueue.Length > 1);
         }
         RefreshKaraokeFrameRendering();
 
@@ -1079,7 +1091,9 @@ public sealed partial class MainWindow : Window
         ListView targetList;
 
         if (_immersiveActive
-            && _playingLibraryItem is not null
+            && (_playingLibraryItem is not null
+                || _playingPreviewCandidate is not null
+                || _playingCloudPreviewCandidate is not null)
             && ImmersiveView.LyricsList.ItemsSource
                 is IEnumerable<LyricDisplayLine> immersiveLines)
         {

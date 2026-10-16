@@ -180,6 +180,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     // Used by the host to keep the shared remote preview and lyric seek
     // locked to the same selected provider candidate.
     public CloudLyricsCandidate? SelectedCandidate => _previewCandidate;
+    public LrcDocument? SelectedDocument => _previewDocument;
     public ListView PreviewLyricsList => LyricsPreview.LyricsList;
 
     public void SetPreviewStatus(string message)

@@ -1870,12 +1870,18 @@
                   </TextBlock>
                 </ScrollViewer>
               </StackPanel>
-              <TextBlock
-                  x:Name="PlayerTimeText"
-                  Grid.Column="1"
-                  Text="0:00 / 0:00"
-                  VerticalAlignment="Center"
-                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+              <StackPanel Grid.Column="1" Orientation="Vertical"
+                          Spacing="3" HorizontalAlignment="Right"
+                          VerticalAlignment="Center">
+                <TextBlock x:Name="PlayerSourceText"
+                           Text="" FontSize="12"
+                           HorizontalAlignment="Right"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                <TextBlock x:Name="PlayerTimeText"
+                           Text="0:00 / 0:00" FontSize="12"
+                           HorizontalAlignment="Right"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+              </StackPanel>
             </Grid>
 
             <Slider

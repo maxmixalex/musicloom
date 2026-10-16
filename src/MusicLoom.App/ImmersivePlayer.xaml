@@ -6,7 +6,7 @@
     IsTabStop="True"
     KeyDown="ImmersivePlayer_KeyDown">
   <!-- Immersive overlays the app client area, NOT the system monitor. -->
-  <Grid x:Name="ImmersiveLayoutRoot" Padding="34,24,34,20"
+  <Grid x:Name="ImmersiveLayoutRoot" Padding="34,12,34,20"
         MinHeight="0" SizeChanged="ImmersiveLayoutRoot_SizeChanged">
     <Grid.Background>
       <LinearGradientBrush x:Name="ArtworkGradient"
@@ -118,11 +118,13 @@
           </StackPanel>
           <!-- One compact action cycles through all three lyric modes. -->
           <Button x:Name="LyricModeButton" Grid.Column="1"
-                  MinWidth="88" VerticalAlignment="Center"
-                  Padding="12,7" BorderThickness="0"
-                  Background="#20FFFFFF" Foreground="White"
-                  Click="LyricModeButton_Click"
-                  Content="Prefer original"/>
+                  Width="38" Height="38" VerticalAlignment="Center"
+                  Padding="0" BorderThickness="0"
+                  Background="Transparent"
+                  Click="LyricModeButton_Click">
+            <FontIcon x:Name="LyricModeIcon" Glyph="&#xE8C1;"
+                      FontSize="18" Foreground="White"/>
+          </Button>
         </Grid>
         <Grid Grid.Row="1" MinHeight="0">
           <ListView x:Name="ImmersiveLyricsList"
@@ -204,7 +206,7 @@
       <StackPanel x:Name="TransportControls" Orientation="Horizontal"
                   VerticalAlignment="Center" HorizontalAlignment="Center"
                   Spacing="18">
-        <Button Width="40" Height="40" Padding="0"
+        <Button x:Name="PreviousButton" Width="40" Height="40" Padding="0"
                 BorderThickness="0" Background="Transparent"
                 Click="PreviousButton_Click" ToolTipService.ToolTip="Previous">
           <FontIcon Glyph="&#xE892;" FontSize="18" Foreground="White" />
@@ -214,7 +216,7 @@
                 Click="PlayPauseButton_Click" ToolTipService.ToolTip="Play or pause">
           <SymbolIcon x:Name="PlayPauseIcon" Symbol="Play" Foreground="White" />
         </Button>
-        <Button Width="40" Height="40" Padding="0"
+        <Button x:Name="NextButton" Width="40" Height="40" Padding="0"
                 BorderThickness="0" Background="Transparent"
                 Click="NextButton_Click" ToolTipService.ToolTip="Next">
           <FontIcon Glyph="&#xE893;" FontSize="18" Foreground="White" />

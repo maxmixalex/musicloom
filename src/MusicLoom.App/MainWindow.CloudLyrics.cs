@@ -194,6 +194,11 @@ public sealed partial class MainWindow
             _playingLibraryItem = null;
             _playingPreviewCandidate = null;
             _playingCloudPreviewCandidate = candidate;
+            ResetRemotePlaybackLyrics();
+            _remotePlaybackLyrics = SameCloudCandidate(
+                originatingPanel.SelectedCandidate, candidate)
+                ? originatingPanel.SelectedDocument : null;
+            UpdatePlayerSourceLabel();
 
             _waveformCancellation?.Cancel();
             _playingAudioFrames = null;
@@ -230,6 +235,11 @@ public sealed partial class MainWindow
                 PlayerArtworkPlaceholder.Visibility = Visibility.Visible;
             }
             ConfigureAuxiliaryLongText();
+            if (_immersiveActive)
+                UpdateImmersiveRemoteTrack();
+            if (_remotePlaybackLyrics is null)
+                _ = LoadCloudPreviewLyricsAsync(
+                    candidate, _remotePlaybackLyricsVersion);
 
             if (startPosition is TimeSpan position)
                 await SeekPlayerWhenReadyAsync(position);

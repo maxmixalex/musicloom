@@ -1,5 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+using MusicLoom.LyricsProviders;
+using MusicLoom.Netease;
 using MusicLoom.Core.Configuration;
 using Windows.UI;
 using MusicLoom.Core.Lyrics;
@@ -15,6 +18,8 @@ public sealed partial class MainWindow
     private bool _immersiveActive;
     private int _immersiveLoadVersion;
     private int _immersiveArtworkVersion;
+    private int _remotePlaybackLyricsVersion;
+    private LrcDocument? _remotePlaybackLyrics;
     private ElementTheme _previousImmersiveTitleTheme;
     private Brush? _previousImmersiveTitleBackground;
     private Brush? _previousImmersiveTitleForeground;
@@ -68,9 +73,10 @@ public sealed partial class MainWindow
             RenderLyrics();
             await PersistLyricsDisplayModeAsync();
             if (_playingLibraryItem is LibraryDisplayItem current)
-            {
                 await UpdateImmersiveTrackAsync(current, updatePalette: false);
-            }
+            else if (_playingCloudPreviewCandidate is not null
+                || _playingPreviewCandidate is not null)
+                UpdateImmersiveRemoteTrack(updatePalette: false);
         };
     }
 
@@ -129,6 +135,7 @@ public sealed partial class MainWindow
             }
 
             _immersiveActive = true;
+            ImmersiveWindowBorder.TrySetImmersive(this, immersive: true);
             // The WinUI title and OS window title must both survive an
             // immersive view switch; do not rely on decorative in-view text.
             AppTitleBar.Title = "MusicLoom";
@@ -141,18 +148,18 @@ public sealed partial class MainWindow
             UpdatePlayerVisualState();
             ImmersiveView.Focus(FocusState.Programmatic);
             if (_playingLibraryItem is LibraryDisplayItem playing)
-            {
                 await UpdateImmersiveTrackAsync(playing);
-            }
-            else if (_selectedLibraryItem is LibraryDisplayItem selected)
-            {
-                await UpdateImmersiveTrackAsync(selected);
-            }
+            else if (_playingCloudPreviewCandidate is not null
+                || _playingPreviewCandidate is not null)
+                UpdateImmersiveRemoteTrack();
             else
             {
+                // A selected library item is NOT the currently playing
+                // source. Never borrow its art/lyrics for remote or idle.
                 ImmersiveView.SetTrack(
                     L("Nothing playing", "尚未播放"),
                     string.Empty, string.Empty, null, []);
+                ImmersiveView.SetNavigationAvailable(false);
                 await ImmersiveView.ApplyArtworkColorsAsync(null);
             }
         }
@@ -175,6 +182,7 @@ public sealed partial class MainWindow
         ++_immersiveLoadVersion;
         ++_immersiveArtworkVersion;
         _immersiveActive = false;
+        ImmersiveWindowBorder.TrySetImmersive(this, immersive: false);
         ImmersiveHost.Visibility = Visibility.Collapsed;
         AppTitleBar.RequestedTheme = _previousImmersiveTitleTheme;
         AppTitleBar.Background = _previousImmersiveTitleBackground;
@@ -198,6 +206,117 @@ public sealed partial class MainWindow
         // its original size, maximization and taskbar state throughout.
     }
 
+    private void ResetRemotePlaybackLyrics()
+    {
+        ++_remotePlaybackLyricsVersion;
+        _remotePlaybackLyrics = null;
+    }
+
+    private void UpdatePlayerSourceLabel()
+    {
+        string next = _playingLibraryItem is not null
+            ? L("Local library", "本地曲库")
+            : _playingPreviewCandidate is not null
+                ? L("NetEase Music", "网易云音乐")
+            : _playingCloudPreviewCandidate?.Source switch
+            {
+                CloudLyricsSource.QqMusic => L("QQ Music", "QQ音乐"),
+                CloudLyricsSource.KugouMusic => L("KuGou Music", "酷狗音乐"),
+                _ => "",
+            };
+        if (PlayerSourceText.Text != next)
+            PlayerSourceText.Text = next;
+    }
+
+    // Remote preview is a first-class playback context. The currently
+    // selected LOCAL library item must never supply its cover or lyrics.
+    private void UpdateImmersiveRemoteTrack(bool updatePalette = true)
+    {
+        if (!_immersiveActive)
+            return;
+
+        ++_immersiveLoadVersion;  // invalidate in-flight LOCAL SQL reads
+        ++_immersiveArtworkVersion; // invalidate in-flight LOCAL art reads
+        string title;
+        string artist;
+        string album;
+        if (_playingCloudPreviewCandidate is CloudLyricsCandidate cloud)
+        {
+            title = cloud.Title;
+            artist = cloud.Artist;
+            album = cloud.Album;
+        }
+        else if (_playingPreviewCandidate is NeteaseMatchCandidate netease)
+        {
+            title = netease.Name;
+            artist = netease.Artist;
+            album = netease.Album;
+        }
+        else
+            return;
+
+        ImageSource? cover = PlayerArtworkImage.Source;
+        ImmersiveView.SetMode(_lyricsDisplayMode);
+        ImmersiveView.SetTrack(title, artist, album, cover,
+            BuildLyricLines(_remotePlaybackLyrics?.ToString(),
+                _lyricsDisplayMode));
+        ImmersiveView.SetNavigationAvailable(false);
+        _activePlaybackLyric?.IsActive = false;
+        _activePlaybackLyric = null;
+        _lastAutoScrolledLyric = null;
+        UpdatePlaybackLyrics();
+
+        if (updatePalette)
+        {
+            // Sample the remote cover itself on ImageOpened. Never call
+            // TryReadArtworkBytes with a local library entry here.
+            _ = ImmersiveView.ApplyArtworkColorsAsync(null);
+        }
+    }
+
+    private async Task LoadNeteasePreviewLyricsAsync(
+        NeteaseMatchCandidate candidate, int version)
+    {
+        try
+        {
+            using NeteaseClient client = new();
+            LrcDocument? lyrics = await client.GetLyricsAsync(candidate.TrackId);
+            if (version != _remotePlaybackLyricsVersion
+                || _playingPreviewCandidate?.TrackId != candidate.TrackId
+                || _playingCloudPreviewCandidate is not null
+                || _playingLibraryItem is not null)
+                return;
+            _remotePlaybackLyrics = lyrics;
+            UpdateImmersiveRemoteTrack(updatePalette: false);
+        }
+        catch (Exception error)
+        {
+            AppDiagnostics.LogException(
+                "Could not fetch NetEase remote preview lyrics.", error);
+        }
+    }
+
+    private async Task LoadCloudPreviewLyricsAsync(
+        CloudLyricsCandidate candidate, int version)
+    {
+        try
+        {
+            using CloudLyricsClient client = new();
+            LrcDocument? lyrics = await client.GetLyricsAsync(candidate);
+            if (version != _remotePlaybackLyricsVersion
+                || !SameCloudCandidate(_playingCloudPreviewCandidate, candidate)
+                || _playingLibraryItem is not null)
+                return;
+            _remotePlaybackLyrics = lyrics;
+            UpdateImmersiveRemoteTrack(updatePalette: false);
+        }
+        catch (Exception error)
+        {
+            AppDiagnostics.LogException(
+                "Could not fetch remote provider preview lyrics.", error);
+        }
+    }
+
     private async Task UpdateImmersiveTrackAsync(
         LibraryDisplayItem item, bool updatePalette = true)
     {
@@ -207,6 +326,7 @@ public sealed partial class MainWindow
             ImmersiveView.SetTrack(
                 item.Title, item.Artist, item.Album, item.Artwork, []);
         }
+        ImmersiveView.SetNavigationAvailable(_playbackQueue.Length > 1);
         // Changing lyric language should not blank/reflow the artwork or
         // current lyric viewport while the SQLite request is running.
         ImmersiveView.SetMode(_lyricsDisplayMode);

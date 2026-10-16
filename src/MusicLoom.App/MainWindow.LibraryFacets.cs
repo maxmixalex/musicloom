@@ -1,3 +1,4 @@
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.State;
@@ -20,6 +21,9 @@ public sealed partial class MainWindow
     private bool _libraryFacetLoading;
     private bool _libraryFacetLoaded;
     private bool _libraryFacetRefreshPending;
+
+    private void LibrarySearchButton_Click(object sender, RoutedEventArgs args) =>
+        LibrarySearchBox.Focus(FocusState.Programmatic);
 
     private static string FacetValue(ComboBox? box) =>
         (box?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "all";
@@ -112,9 +116,9 @@ public sealed partial class MainWindow
             bool result = lyricFilter switch
             {
                 "present" => lyric?.HasLyrics == true,
-                "empty" => lyric?.Origin == LibraryLyricsOrigin.ManualEmpty,
-                "missing" => lyric?.HasLyrics != true
-                    && lyric?.Origin != LibraryLyricsOrigin.ManualEmpty,
+                // ManualEmpty is still a song without lyrics; clearing
+                // lyrics is a content operation, not a provider match state.
+                "missing" => lyric?.HasLyrics != true,
                 _ => true,
             };
             if (!result) return false;
@@ -167,28 +171,41 @@ public sealed partial class MainWindow
 
     private void LocalizeLibraryFacetBoxes()
     {
-        Set(LibraryLyricsFacetBox, "Lyrics", "歌词");
-        Set(LibraryNeteaseFacetBox, "NetEase", "网易云");
-        Set(LibraryQqFacetBox, "QQ Music", "QQ音乐");
-        Set(LibraryKugouFacetBox, "KuGou", "酷狗");
-        void Set(ComboBox box, string en, string zh)
+        ToolTipService.SetToolTip(LibrarySearchButton,
+            L("Focus library search", "搜索音乐库"));
+        LocalizeLyricsFacet();
+        LocalizeProviderFacet(LibraryNeteaseFacetBox, "NetEase", "网易云");
+        LocalizeProviderFacet(LibraryQqFacetBox, "QQ Music", "QQ音乐");
+        LocalizeProviderFacet(LibraryKugouFacetBox, "KuGou Music", "酷狗音乐");
+
+        void LocalizeLyricsFacet()
+        {
+            foreach (ComboBoxItem choice in LibraryLyricsFacetBox.Items
+                .OfType<ComboBoxItem>())
+            {
+                choice.Content = (choice.Tag?.ToString()) switch
+                {
+                    "present" => L("Has lyrics", "有歌词"),
+                    "missing" => L("No lyrics", "无歌词"),
+                    _ => L("All lyric statuses", "全部歌词状态"),
+                };
+            }
+        }
+
+        void LocalizeProviderFacet(ComboBox box, string english, string chinese)
         {
             foreach (ComboBoxItem choice in box.Items.OfType<ComboBoxItem>())
             {
-                string key = choice.Tag?.ToString() ?? "all";
-                string value = key switch
+                choice.Content = (choice.Tag?.ToString()) switch
                 {
-                    "all" => L("All", "全部"),
-                    "present" => L("Available", "有歌词"),
-                    "missing" => ReferenceEquals(box, LibraryLyricsFacetBox)
-                        ? L("Missing", "无歌词") : L("Unmatched", "未匹配"),
-                    "empty" => L("Explicitly empty", "已置空"),
-                    "matched" => L("Matched", "已匹配"),
-                    "confirmed" => L("Confirmed", "已确认"),
-                    "unconfirmed" => L("Needs confirmation", "待确认"),
-                    _ => key,
+                    "matched" => L($"{english} matched", $"{chinese}已匹配"),
+                    "confirmed" => L($"{english} confirmed", $"{chinese}已确认"),
+                    "unconfirmed" => L($"{english} needs confirmation",
+                                      $"{chinese}待确认"),
+                    "missing" => L($"{english} not matched", $"{chinese}未匹配"),
+                    "empty" => L($"{english} match cleared", $"{chinese}匹配已置空"),
+                    _ => L($"All {english} matches", $"全部{chinese}匹配"),
                 };
-                choice.Content = L(en, zh) + " · " + value;
             }
         }
     }

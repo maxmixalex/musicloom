@@ -93,16 +93,22 @@ public sealed partial class ImmersivePlayer : UserControl
 
     private void UpdateLyricModeButton()
     {
-        LyricModeButton.Content = _lyricMode switch
+        LyricModeIcon.Glyph = _lyricMode switch
+        {
+            LyricsDisplayModes.OriginalOnly => "\uE97E",
+            LyricsDisplayModes.PreferTranslation => "\uF2B7",
+            _ => "\uE8C1",
+        };
+        string mode = _lyricMode switch
         {
             LyricsDisplayModes.OriginalOnly =>
                 _translate("Original only", "仅原文"),
             LyricsDisplayModes.PreferTranslation =>
-                _translate("Prefer translation", "优先翻译"),
+                _translate("Prefer translation", "优先译文"),
             _ => _translate("Prefer original", "优先原文"),
         };
         ToolTipService.SetToolTip(LyricModeButton,
-            _translate("Cycle lyric display mode", "切换歌词显示模式"));
+            mode + _translate(" (click to cycle)", "（点击切换）"));
     }
 
     internal void SetMode(string displayMode)
@@ -155,6 +161,12 @@ public sealed partial class ImmersivePlayer : UserControl
 
     internal void SetPlaying(bool playing) =>
         PlayPauseIcon.Symbol = playing ? Symbol.Pause : Symbol.Play;
+
+    internal void SetNavigationAvailable(bool available)
+    {
+        PreviousButton.IsEnabled = available;
+        NextButton.IsEnabled = available;
+    }
 
     internal async Task ApplyArtworkColorsAsync(byte[]? artwork)
     {
@@ -361,7 +373,7 @@ public sealed partial class ImmersivePlayer : UserControl
     {
         double width = Math.Max(0, e.NewSize.Width - 68) * 0.88;
         // 24 + 20: root padding; 38: the exit-button row.
-        double height = Math.Max(0, e.NewSize.Height - 100) * 0.88;
+        double height = Math.Max(0, e.NewSize.Height - 88) * 0.88;
         if (!double.IsFinite(PlayerColumns.Width)
             || Math.Abs(PlayerColumns.Width - width) > 0.5)
             PlayerColumns.Width = width;
@@ -377,7 +389,7 @@ public sealed partial class ImmersivePlayer : UserControl
             TrackHeading.FontSize = 25 * scale;
             ArtistHeading.FontSize = 16 * scale;
             AlbumHeading.FontSize = 13 * scale;
-            LyricModeButton.FontSize = 13 * scale;
+            LyricModeIcon.FontSize = 18 * scale;
             PlaybackTime.FontSize = 12 * scale;
             if (ImmersiveLyricsList.ItemsSource is LyricDisplayLine[] lines)
                 foreach (LyricDisplayLine line in lines)
