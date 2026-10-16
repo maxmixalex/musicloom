@@ -188,6 +188,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
     public CloudLyricsCandidate? SelectedCandidate => _previewCandidate;
     public LrcDocument? SelectedDocument => _previewDocument;
     public ListView PreviewLyricsList => LyricsPreview.LyricsList;
+    internal ListView CandidateList => CandidatesList;
 
     public void SetPreviewStatus(string message)
     {

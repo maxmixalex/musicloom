@@ -53,8 +53,24 @@ public sealed partial class MainWindow
                 && LibraryLyricsFacetBox is not null
                 && LibraryNeteaseFacetBox is not null
                 && LibraryQqFacetBox is not null
-                && LibraryKugouFacetBox is not null,
-                "Library: advanced facet and sort controls are progressively disclosed in two native flyouts");
+                && LibraryKugouFacetBox is not null
+                && LibraryMiguFacetBox is not null
+                && LibraryAppleFacetBox is not null
+                && LibrarySpotifyFacetBox is not null
+                && LibraryFilterSyncingItem.Tag?.ToString() == "syncing",
+                "Library: all statuses and six independent provider facets live under the same filter flyout");
+            Assert(LibrarySearchBox.Parent is Grid searchRow
+                && LibraryVisibleCountText.Parent is StackPanel counts
+                && ReferenceEquals(searchRow.Parent, counts.Parent)
+                && Grid.GetColumn(searchRow) == 0
+                && Grid.GetColumn(counts) == 2,
+                "Library: search, filter, sort and all right-hand status counters align in one native Grid row");
+            Assert(LibrarySortGlyph.Glyph == "\uE8CB"
+                && LibrarySortDirectionGlyph.Glyph is "\uEE68" or "\uEE69"
+                && LibrarySortMenuButton.Content is StackPanel
+                && LibrarySortAscendingLabel.Parent is StackPanel
+                && LibrarySortDescendingLabel.Parent is StackPanel,
+                "Library: Fluent sort direction icons replace text prefixes and Unicode arrows");
             Assert(LyricsRomanizationToggle is not null
                 && !new MusicLoom.Core.Configuration.LyricsSettings()
                     .IncludeRomanization,
@@ -93,6 +109,15 @@ public sealed partial class MainWindow
                 (MatchProviderKind.KugouMusic, "55002",
                     new Uri("https://imge.kugou.com/stdmusic/300/album.jpg"),
                     Color.FromArgb(255, 95, 166, 131)),
+                (MatchProviderKind.MiguMusic, "600929000001520013",
+                    new Uri("https://d.musicapp.migu.cn/cover.jpg"),
+                    Color.FromArgb(255, 84, 161, 189)),
+                (MatchProviderKind.AppleMusic, "123456",
+                    new Uri("https://is1-ssl.mzstatic.com/cover.jpg"),
+                    Color.FromArgb(255, 178, 111, 120)),
+                (MatchProviderKind.Spotify, "4iV5W9uYEdYUVa79Axb7Rh",
+                    new Uri("https://i.scdn.co/image/cover"),
+                    Color.FromArgb(255, 92, 170, 102)),
             ];
 
             foreach (var fixture in fixtures)
@@ -192,6 +217,17 @@ public sealed partial class MainWindow
                 Assert(new FileInfo(png).Length > 1800,
                     provider + ": real WinUI matching panel rendered to PNG");
             }
+
+            // QQ/KuGou/new-provider candidate lists must use the real
+            // native ListViewItemPresenter selection indicator, rather
+            // than just a highlight painted inside the candidate card.
+            CloudLyricsPanel candidatePanel = new();
+            Assert(candidatePanel.CandidateList.ItemContainerStyle?.Setters
+                .OfType<Setter>().Any(setter =>
+                    setter.Property == ListViewItem.TemplateProperty
+                    && setter.Value is ControlTemplate) == true,
+                "Cloud candidate lists apply the native selected-left-indicator ListViewItem template");
+            candidatePanel.Dispose();
 
             // The previous evidence only rendered the provider DETAIL tabs.
             // It never exercised "Find XX match": render the actual search
