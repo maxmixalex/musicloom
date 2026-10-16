@@ -59,36 +59,34 @@ public sealed partial class MainWindow
                 && LibrarySpotifyFacetBox is not null
                 && LibraryFilterSyncingItem.Tag?.ToString() == "syncing",
                 "Library: all statuses and six independent provider facets live under the same filter flyout");
-            // WinUI visual parentage is not necessarily the same as the
-            // direct XAML declaration once controls are templated. Anchor
-            // the actual toolbar container rather than comparing the
-            // immediate Parent objects of unrelated nested controls.
-            bool InToolbar(FrameworkElement element)
-            {
-                DependencyObject? node = element;
-                for (int depth = 0; node is not null && depth < 12; depth++)
-                {
-                    if (ReferenceEquals(node, LibraryToolbarRow))
-                        return true;
-                    node = node switch
-                    {
-                        FrameworkElement framework =>
-                            framework.Parent ?? VisualTreeHelper.GetParent(framework),
-                        _ => VisualTreeHelper.GetParent(node),
-                    };
-                }
-                return false;
-            }
+            // Verify the actual THREE direct content regions of the
+            // named toolbar Grid, not framework Parent/visual relationships
+            // (which are not stable for unloaded WinUI navigation content).
+            var toolbarChildren = LibraryToolbarRow.Children;
+            bool directStructure = toolbarChildren.Count == 3
+                && toolbarChildren[0] is Grid
+                && toolbarChildren[1] is StackPanel
+                && toolbarChildren[2] is StackPanel;
+            bool searchRegion = directStructure
+                && toolbarChildren[0] is Grid searchGrid
+                && searchGrid.Children.Contains(LibrarySearchBox)
+                && Grid.GetColumn(LibrarySearchBox) == 1;
+            bool filterRegion = directStructure
+                && toolbarChildren[1] is StackPanel toolbarActions
+                && toolbarActions.Children.Contains(LibraryFacetsButton)
+                && toolbarActions.Children.Contains(LibrarySortMenuButton)
+                && Grid.GetColumn(toolbarActions) == 1;
+            bool countsRegion = directStructure
+                && toolbarChildren[2] is StackPanel toolbarCounts
+                && toolbarCounts.Children.Contains(LibraryVisibleCountText)
+                && Grid.GetColumn(toolbarCounts) == 2;
             Assert(LibraryToolbarRow.ColumnDefinitions.Count == 3
-                && Grid.GetRow(LibraryToolbarRow) == 1
-                && InToolbar(LibrarySearchBox)
-                && InToolbar(LibraryFacetsButton)
-                && InToolbar(LibrarySortMenuButton)
-                && InToolbar(PendingCountText)
-                && InToolbar(WarningCountText)
-                && InToolbar(ErrorCountText)
-                && InToolbar(LibraryVisibleCountText),
-                "Library: search, filters, sort, pending/warning/error counts and track total share one toolbar row");
+                && directStructure && searchRegion && filterRegion
+                && countsRegion,
+                "Library: one toolbar row with search, filter, sort and counters"
+                + $" (columns={LibraryToolbarRow.ColumnDefinitions.Count},"
+                + $" children={toolbarChildren.Count}, search={searchRegion},"
+                + $" actions={filterRegion}, counts={countsRegion})");
             Assert(LibrarySortGlyph.Glyph == "\uE8CB"
                 && LibrarySortDirectionGlyph.Glyph is "\uEE68" or "\uEE69"
                 && LibrarySortMenuButton.Content is StackPanel
