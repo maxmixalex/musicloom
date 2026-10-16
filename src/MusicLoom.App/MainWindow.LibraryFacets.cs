@@ -48,6 +48,9 @@ public sealed partial class MainWindow
     {
         _libraryFacetFetchedAt = DateTimeOffset.MinValue;
         _libraryFacetItemCount = -1;
+        // Do not hide the selected track using stale provider/lyric rows
+        // while an explicit match or lyric change is being reloaded.
+        _libraryFacetLoaded = false;
         if (_libraryFacetLoading)
         {
             // A match/lyric change may arrive while the two SQLite
@@ -71,6 +74,8 @@ public sealed partial class MainWindow
                     .LoadLibrarySnapshotAsync();
             var matches = await new SqliteProviderMatchStore(DatabasePath)
                 .LoadSnapshotAsync();
+            if (_libraryFacetRefreshPending)
+                return; // A newer mutation invalidated this read mid-flight.
             _libraryFacetLyrics = lyrics;
             _libraryFacetMatches = matches;
             _libraryFacetLoaded = true;
