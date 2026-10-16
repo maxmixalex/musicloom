@@ -115,6 +115,9 @@ jobs:
       - name: Run NativeAOT regression harness
         run: .\artifacts\regression-win-x64\MusicLoom.Tests.exe
 
+      - name: Run independent provider PoC fixtures (Windows)
+        run: dotnet run --project tests/MusicLoom.ProviderPoc.Tests/MusicLoom.ProviderPoc.Tests.csproj -c Release
+
       - name: Publish CLI with NativeAOT
         run: dotnet publish src/MusicLoom.Cli/MusicLoom.Cli.csproj -c Release -r win-x64 --self-contained true -o artifacts/cli-win-x64
 
