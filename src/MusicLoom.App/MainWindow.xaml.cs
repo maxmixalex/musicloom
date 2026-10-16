@@ -8905,6 +8905,8 @@ public sealed partial class MainWindow : Window
                             OverrideExisting =
                                 LyricsOverrideToggle
                                     .IsOn,
+                            IncludeRomanization =
+                                LyricsRomanizationToggle.IsOn,
                             RefreshIntervalHours =
                                 refreshHours,
                             StorageMode =
@@ -8969,6 +8971,8 @@ public sealed partial class MainWindow : Window
             LyricsOverrideToggle.IsOn =
                 settings.Organizer.Lyrics
                     .OverrideExisting;
+            LyricsRomanizationToggle.IsOn =
+                settings.Organizer.Lyrics.IncludeRomanization;
 
             LyricsRefreshHoursBox.Value =
                 settings.Organizer.Lyrics
@@ -10163,6 +10167,11 @@ public sealed partial class MainWindow : Window
             L(
                 "Replace lyrics already present in the destination.",
                 "替换目标文件中已经存在的歌词。");
+        LyricsRomanizationSettingTitle.Text = L(
+            "Include romanization when syncing", "同步时包含罗马音");
+        LyricsRomanizationSettingDescription.Text = L(
+            "Add romanized reading lines to destination lyrics. The database and source library remain unchanged.",
+            "在目标歌词中加入罗马音读音行；不改变歌词数据库和源音乐库。");
         LyricsStorageSettingTitle.Text =
             L(
                 "Lyrics storage",

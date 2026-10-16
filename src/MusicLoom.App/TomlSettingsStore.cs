@@ -103,6 +103,10 @@ internal static class TomlSettingsStore
                                     "organizer.lyrics.override_existing",
                                     defaults.Organizer
                                         .Lyrics.OverrideExisting),
+                            IncludeRomanization =
+                                ReadBool(values,
+                                    "organizer.lyrics.include_romanization",
+                                    defaults.Organizer.Lyrics.IncludeRomanization),
                             RefreshIntervalHours =
                                 ReadDouble(
                                     values,
@@ -235,6 +239,8 @@ internal static class TomlSettingsStore
             .AppendLine(
                 Bool(
                     settings.Organizer.Lyrics.OverrideExisting));
+        builder.Append("include_romanization = ")
+            .AppendLine(Bool(settings.Organizer.Lyrics.IncludeRomanization));
         builder.Append("refresh_interval_hours = ")
             .AppendLine(
                 settings.Organizer.Lyrics

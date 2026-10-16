@@ -455,6 +455,36 @@ public sealed partial class LrcDocument
     /// </summary>
     public string ToStandardLrcString() => Serialize(includeRuby: false);
 
+    /// <summary>
+    /// Materialize human-readable romanization as separately timestamped
+    /// LRC rows ONLY when the user opts into target synchronization.
+    /// Canonical lyrics, their ruby annotations and the database remain
+    /// unchanged, and normal exports never leak MusicLoom private tags.
+    /// </summary>
+    public LrcDocument ForSynchronization(bool includeRomanization)
+    {
+        if (!includeRomanization) return this;
+        LrcDocument output = new();
+        foreach ((string key, string value) in Metadata)
+            output.Metadata[key] = value;
+        foreach (LrcLine line in Lines)
+        {
+            output.Lines.Add(line);
+            string? reading = line.Romanization;
+            if (string.IsNullOrWhiteSpace(reading)
+                && line.Words is { Count: > 0 } words
+                && words.Any(static word => !string.IsNullOrWhiteSpace(word.Ruby)))
+            {
+                reading = string.Join(" ", words
+                    .Select(static word => word.Ruby?.Trim())
+                    .Where(static word => !string.IsNullOrWhiteSpace(word)));
+            }
+            if (!string.IsNullOrWhiteSpace(reading))
+                output.Lines.Add(new LrcLine(line.Timestamp, reading));
+        }
+        return output;
+    }
+
     private string Serialize(bool includeRuby)
     {
         StringBuilder builder = new();

@@ -194,8 +194,29 @@ public sealed partial class CloudLyricsClient : IDisposable
                 "GetPlayLyricInfo",
                 "music.musichallSong.PlayLyricInfo",
                 parameters, ct);
-            return ParseQqLyrics(response)
-                ?? await GetQqLegacyLyricsAsync(track, ct);
+            LrcDocument? modern = ParseQqLyrics(response);
+            if (modern is null)
+                return await GetQqLegacyLyricsAsync(track, ct);
+
+            // Newer QQ Lite responses may return word-timed originals but
+            // omit trans/roma even though the legacy MID endpoint still
+            // has them. Retrieve missing supplemental channels instead of
+            // treating the presence of original lyrics as complete.
+            if (HasTranslationAndReading(modern)
+                || string.IsNullOrWhiteSpace(track.SongMid))
+                return modern;
+            try
+            {
+                LrcDocument? legacy = await GetQqLegacyLyricsAsync(track, ct);
+                return legacy is null ? modern :
+                    MergeQqSupplementalLyrics(modern, legacy);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception error) when (error is HttpRequestException
+                or InvalidDataException or System.Text.Json.JsonException)
+            {
+                return modern;
+            }
         }
         catch (HttpRequestException)
         {
@@ -205,6 +226,65 @@ public sealed partial class CloudLyricsClient : IDisposable
         {
             return await GetQqLegacyLyricsAsync(track, ct);
         }
+    }
+
+    private static bool HasTranslationAndReading(LrcDocument lyrics)
+    {
+        IReadOnlyList<LrcPresentationLine> lines = LrcPresentation.Project(lyrics);
+        bool translated = lines.Any(static line =>
+            !string.IsNullOrWhiteSpace(line.Translation));
+        bool reading = lines.Any(static line =>
+            !string.IsNullOrWhiteSpace(line.Romanization)
+            || line.OriginalWords is { Count: > 0 } words
+                && words.Any(static word => !string.IsNullOrWhiteSpace(word.Ruby)));
+        return translated && reading;
+    }
+
+    internal static LrcDocument MergeQqSupplementalLyrics(
+        LrcDocument main, LrcDocument supplemental)
+    {
+        LrcDocument output = LrcDocument.Parse(main.ToString());
+        var originals = LrcPresentation.Project(main);
+        var alternatives = LrcPresentation.Project(supplemental);
+        foreach (LrcPresentationLine line in originals)
+        {
+            if (!line.Timestamp.HasValue) continue;
+            LrcPresentationLine? extra = alternatives
+                .Where(candidate =>
+                    string.Equals(candidate.Original, line.Original,
+                        StringComparison.Ordinal)
+                    && candidate.Timestamp is TimeSpan timestamp
+                    && (timestamp - line.Timestamp.Value).Duration()
+                        <= TimeSpan.FromMilliseconds(750))
+                .OrderBy(candidate =>
+                    (candidate.Timestamp!.Value - line.Timestamp.Value).Duration())
+                .FirstOrDefault();
+            if (extra is null) continue;
+            int primaryIndex = output.Lines.FindIndex(candidate =>
+                candidate.Timestamp == line.Timestamp.Value
+                && candidate.Text == line.Original);
+            if (primaryIndex < 0) continue;
+
+            if (string.IsNullOrWhiteSpace(line.Romanization)
+                && extra.Romanization is string romaji
+                && output.Lines[primaryIndex].Words?.Any(
+                    static word => !string.IsNullOrWhiteSpace(word.Ruby)) != true)
+            {
+                output.Lines[primaryIndex] =
+                    output.Lines[primaryIndex] with { Romanization = romaji };
+            }
+            if (string.IsNullOrWhiteSpace(line.Translation)
+                && !string.IsNullOrWhiteSpace(extra.Translation))
+            {
+                output.Lines.Add(new LrcLine(line.Timestamp.Value,
+                    extra.Translation));
+            }
+        }
+        LrcLine[] stable = output.Lines.OrderBy(
+            static line => line.Timestamp).ToArray();
+        output.Lines.Clear();
+        output.Lines.AddRange(stable);
+        return output;
     }
 
     private async Task<LrcDocument?> GetQqLegacyLyricsAsync(

@@ -138,23 +138,24 @@ public sealed class RubyLyricView : UserControl
             ? _line.SecondaryRomanization : _line.PrimaryRomanization;
         if (!string.IsNullOrWhiteSpace(wholeReading))
         {
-            // NetEase and plain QQ LRC have only line timestamps, not
-            // character alignments. Keep the reading above the ORIGINAL
-            // and allow each text block to wrap at the actual viewport.
-            // No fabricated per-character timings or translation rows.
-            StackPanel atom = new()
+            // Two independent wrapped text blocks share the same available
+            // viewport width. A full-line romaji annotation must NEVER be
+            // an InlineUIContainer with an unconstrained intrinsic width:
+            // that makes Japanese originals jump to the next line.
+            StackPanel stack = new()
             {
                 Orientation = Orientation.Vertical,
                 Spacing = 0,
-                MaxWidth = Math.Max(180, _rich.ActualWidth - 4),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
             };
             TextBlock reading = new()
             {
                 Text = wholeReading,
-                FontSize = Math.Max(7, baseSize * 0.52),
-                Opacity = 0.80,
+                FontSize = Math.Max(7, baseSize * 0.50),
+                Opacity = 0.76,
                 TextWrapping = TextWrapping.WrapWholeWords,
                 Foreground = Foreground,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
             };
             TextBlock glyph = new()
             {
@@ -163,15 +164,19 @@ public sealed class RubyLyricView : UserControl
                 FontWeight = FontWeight,
                 TextWrapping = TextWrapping.WrapWholeWords,
                 Foreground = Foreground,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
             };
-            atom.Children.Add(reading);
-            atom.Children.Add(glyph);
-            paragraph.Inlines.Add(new InlineUIContainer { Child = atom });
-            _wholeLineReading = atom;
-            _rich.Blocks.Add(paragraph);
-            ResizeWholeLineReading();
+            stack.Children.Add(reading);
+            stack.Children.Add(glyph);
+            _wholeLineReading = stack;
+            Content = stack;
             return;
         }
+        // Word-timed ruby uses separate inline atoms for real karaoke.
+        // Restore the original RichTextBlock when virtualization reuses a
+        // container that previously displayed only line-level readings.
+        if (!ReferenceEquals(Content, _rich))
+            Content = _rich;
         if (words is not { Count: > 0 and <= 256 }
             || !words.Any(static word => !string.IsNullOrWhiteSpace(word.Ruby))
             || !string.Equals(string.Concat(words.Select(static w => w.Text)),

@@ -79,10 +79,19 @@ public static class MusicBeeArtworkResolver
                 continue;
 
             bool hasRelativeDirectory = rule.Contains('/');
+            bool broadAlbumCover = !hasRelativeDirectory
+                && IsBroadArtworkRule(rule);
             string pattern = "^" + Regex.Escape(rule)
                 .Replace("\\*", ".*", StringComparison.Ordinal)
                 .Replace("\\?", ".", StringComparison.Ordinal) + "$";
-            foreach (string image in images)
+            // A broad Cover.* pattern must not grab a DIFFERENT album's
+            // Cover.<Album Artist>.<Album>.jpg from a shared folder. Prefer
+            // the matching tagged cover even when the broad filter appears
+            // above MusicBee's exact naming template in the settings.
+            string[] prioritizedImages = broadAlbumCover
+                ? PrioritizeAlbumArtwork(images, rule, metadata)
+                : images.ToArray();
+            foreach (string image in prioritizedImages)
             {
                 string candidateName = hasRelativeDirectory
                     ? Path.GetRelativePath(directory, image)
@@ -109,23 +118,86 @@ public static class MusicBeeArtworkResolver
         }
     }
 
-    private static string Substitute(string pattern,
-        string audioPath, TrackMetadata metadata)
+    private static bool IsBroadArtworkRule(string rule)
+    {
+        string lower = rule.ToLowerInvariant();
+        return lower is "cover.*" or "artwork.*"
+            or "front.*" or "back.*";
+    }
+
+    private static string[] PrioritizeAlbumArtwork(
+        IReadOnlyList<string> images, string rule, TrackMetadata metadata)
+    {
+        string prefix = rule[..rule.IndexOf('.')];
+        string artist = Clean(metadata.AlbumArtist);
+        if (artist.Length == 0) artist = Clean(metadata.Artist);
+        string album = Clean(metadata.Album);
+        string specific = artist.Length > 0 && album.Length > 0
+            ? prefix + "." + artist + "." + album : "";
+        string alternate = album.Length > 0
+            ? prefix + "." + album : "";
+
+        string[] belonging = images
+            .Where(path =>
+            {
+                string stem = System.IO.Path.GetFileNameWithoutExtension(path);
+                return specific.Length > 0
+                    && string.Equals(stem, specific,
+                        StringComparison.OrdinalIgnoreCase)
+                    || alternate.Length > 0
+                    && string.Equals(stem, alternate,
+                        StringComparison.OrdinalIgnoreCase);
+            })
+            .ToArray();
+        if (belonging.Length > 0)
+        {
+            // Track-specific candidates are the only safe first choice in
+            // a shared directory of several independent albums.
+            return belonging.Concat(images.Where(path =>
+                string.Equals(System.IO.Path.GetFileNameWithoutExtension(path),
+                    prefix, StringComparison.OrdinalIgnoreCase))).ToArray();
+        }
+
+        bool containsNamedAlbums = images.Any(path =>
+            System.IO.Path.GetFileNameWithoutExtension(path)
+                .StartsWith(prefix + ".", StringComparison.OrdinalIgnoreCase));
+        if (containsNamedAlbums)
+        {
+            // Never silently assign somebody else's album-specific cover.
+            // Embedded artwork or the next rule can still be selected.
+            return [];
+        }
+        return images.ToArray();
+    }
+
+    private static string Substitute(
+        string pattern, string audioPath, TrackMetadata metadata)
     {
         string result = pattern;
-        result = result.Replace("<Filename>",
-            Path.GetFileNameWithoutExtension(audioPath),
-            StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("<Album Artist>",
-            Clean(metadata.AlbumArtist), StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("<AlbumArtist>",
-            Clean(metadata.AlbumArtist), StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("<Artist>",
-            Clean(metadata.Artist), StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("<Album>",
-            Clean(metadata.Album), StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("<Title>",
-            Clean(metadata.Title), StringComparison.OrdinalIgnoreCase);
+        static string R(string value, string token, string? replacement) =>
+            value.Replace(token, Clean(replacement),
+                StringComparison.OrdinalIgnoreCase);
+
+        result = R(result, "<Filename>",
+            Path.GetFileNameWithoutExtension(audioPath));
+        result = R(result, "<Album Artist>", metadata.AlbumArtist);
+        result = R(result, "<AlbumArtist>", metadata.AlbumArtist);
+        result = R(result, "<Album>", metadata.Album);
+        result = R(result, "<Artist>", metadata.Artist);
+        result = R(result, "<Title>", metadata.Title);
+
+        // MusicBee tag templates also appear translated in localized
+        // settings. These aliases are labels, not a different tag schema.
+        result = R(result, "<专辑演出者>", metadata.AlbumArtist);
+        result = R(result, "<專輯演出者>", metadata.AlbumArtist);
+        result = R(result, "<专辑艺术家>", metadata.AlbumArtist);
+        result = R(result, "<專輯藝術家>", metadata.AlbumArtist);
+        result = R(result, "<专辑>", metadata.Album);
+        result = R(result, "<專輯>", metadata.Album);
+        result = R(result, "<演出者>", metadata.Artist);
+        result = R(result, "<艺术家>", metadata.Artist);
+        result = R(result, "<標題>", metadata.Title);
+        result = R(result, "<标题>", metadata.Title);
         return result;
     }
 

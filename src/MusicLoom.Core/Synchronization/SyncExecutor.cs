@@ -353,7 +353,8 @@ public sealed class SyncExecutor
                             == LibraryLyricsOrigin.ManualEdited;
                         LyricsWriteResult output = await _lyricsWriter.WriteAsync(
                             entry.DestinationPath,
-                            shifted,
+                            shifted.ForSynchronization(
+                                settings.Organizer.Lyrics.IncludeRomanization),
                             overrideExisting: explicitlyEdited
                                 || settings.Organizer.Lyrics.OverrideExisting,
                             cancellationToken);
@@ -397,7 +398,8 @@ public sealed class SyncExecutor
                                 storedOffset ?? 0);
                             LyricsWriteResult result = await _lyricsWriter.WriteAsync(
                                 entry.DestinationPath,
-                                shifted,
+                                shifted.ForSynchronization(
+                                    settings.Organizer.Lyrics.IncludeRomanization),
                                 storedOffset.HasValue
                                     || settings.Organizer.Lyrics.OverrideExisting,
                                 cancellationToken);
@@ -509,7 +511,8 @@ public sealed class SyncExecutor
                         LyricsWriteResult localWrite =
                             await _lyricsWriter.WriteAsync(
                                 entry.DestinationPath,
-                                shiftedLocal,
+                                shiftedLocal.ForSynchronization(
+                                    settings.Organizer.Lyrics.IncludeRomanization),
                                 localOffset.HasValue
                                     || settings.Organizer.Lyrics.OverrideExisting,
                                 cancellationToken);

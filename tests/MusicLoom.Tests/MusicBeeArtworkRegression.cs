@@ -65,6 +65,60 @@ internal static class MusicBeeArtworkRegression
                 throw new InvalidOperationException(
                     "Reusing a MusicBee artwork directory index changed precedence.");
 
+            // Multiple albums in ONE source folder are common in flat
+            // MusicBee libraries. Broad "Cover.*" must never make them
+            // share the first lexicographic named album cover.
+            string various = Path.Combine(root, "shared-albums");
+            Directory.CreateDirectory(various);
+            string alpha = Path.Combine(various, "Cover.歌手甲.专辑甲.jpg");
+            string beta = Path.Combine(various, "Cover.歌手乙.专辑乙.jpg");
+            string generic = Path.Combine(various, "Cover.jpg");
+            File.WriteAllBytes(alpha, [11]);
+            File.WriteAllBytes(beta, [22]);
+            File.WriteAllBytes(generic, [33]);
+            string alphaSong = Path.Combine(various, "a.flac");
+            string betaSong = Path.Combine(various, "b.flac");
+            File.WriteAllBytes(alphaSong, [1]);
+            File.WriteAllBytes(betaSong, [2]);
+            TrackMetadata alphaMeta = new("歌手甲", "歌手甲",
+                "专辑甲", HasEmbeddedArt: false);
+            TrackMetadata betaMeta = new("歌手乙", "歌手乙",
+                "专辑乙", HasEmbeddedArt: false);
+
+            MusicBeeArtworkPreferences broad = new(
+                ["Cover.*", "Embedded"], true);
+            string? aa = MusicBeeArtworkResolver.Enumerate(
+                alphaSong, alphaMeta, broad).FirstOrDefault().Path;
+            string? bb = MusicBeeArtworkResolver.Enumerate(
+                betaSong, betaMeta, broad).FirstOrDefault().Path;
+            if (aa != alpha || bb != beta)
+                throw new InvalidOperationException(
+                    "Shared-folder albums inherited another artist/album cover.");
+
+            MusicBeeArtworkPreferences template = new(
+                ["Cover.<专辑演出者>.<专辑>.*", "Cover.*"], true);
+            if (MusicBeeArtworkResolver.Enumerate(
+                    alphaSong, alphaMeta, template).First().Path != alpha
+                || MusicBeeArtworkResolver.Enumerate(
+                    betaSong, betaMeta, template).First().Path != beta)
+                throw new InvalidOperationException(
+                    "Localized MusicBee album artist / album cover naming templates were not resolved.");
+
+            MusicBeeArtworkPreferences englishTemplate = new(
+                ["Cover.<Album Artist>.<Album>.*"], true);
+            if (MusicBeeArtworkResolver.Enumerate(
+                    alphaSong, alphaMeta, englishTemplate).First().Path != alpha)
+                throw new InvalidOperationException(
+                    "MusicBee English album-cover naming template was ignored.");
+
+            TrackMetadata third = new("歌手丙", "歌手丙",
+                "专辑丙", HasEmbeddedArt: true);
+            MusicBeeArtworkCandidate noWrongCover =
+                MusicBeeArtworkResolver.Enumerate(alphaSong, third, broad).First();
+            if (!noWrongCover.IsEmbedded)
+                throw new InvalidOperationException(
+                    "Other albums' named covers were incorrectly used as generic fallback.");
+
             // Audio-only directories must still honour the Embedded
             // rule even when there are ZERO external images to enumerate.
             string embeddedOnly = Path.Combine(root, "embedded-only");

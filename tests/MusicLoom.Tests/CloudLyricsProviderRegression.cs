@@ -201,6 +201,37 @@ internal static class CloudLyricsProviderRegression
                 "QQ romaji should survive the canonical cache without leaking into output LRC.");
         }
 
+        // A QQ Lite QRC response can contain only the original while
+        // the legacy SongMID endpoint retains romaji and translation.
+        // The merged result must keep word timings and order stable.
+        const string baseQrc = """
+        <QrcInfos><LyricInfo><Lyric_1 LyricContent="[1000,1300]晴(1000,650)天(1650,650)"
+        /></LyricInfo></QrcInfos>
+        """;
+        string modern = BuildQqFixture(baseQrc, "", "");
+        string legacy = BuildQqFixture(baseQrc,
+            "[00:01.000]Sunny day", "[00:01.000]qing tian");
+        LrcDocument? modernDocument =
+            CloudLyricsClient.ParseQqLyrics(modern);
+        LrcDocument? legacyDocument =
+            CloudLyricsClient.ParseQqLyrics(legacy);
+        if (modernDocument is null || legacyDocument is null)
+            throw new InvalidOperationException(
+                "QQ test fixture should contain two parsed lyric records.");
+        LrcDocument enriched = CloudLyricsClient.MergeQqSupplementalLyrics(
+            modernDocument, legacyDocument);
+        LrcPresentationLine[] enrichedLines =
+            LrcPresentation.Project(enriched).ToArray();
+        if (enrichedLines.Length != 1
+            || enrichedLines[0].Original != "晴天"
+            || enrichedLines[0].Translation != "Sunny day"
+            || enrichedLines[0].Romanization != "qing tian"
+            || enrichedLines[0].OriginalWords is not { Count: 2 })
+        {
+            throw new InvalidOperationException(
+                "QQ legacy supplementation dropped the translation, romanization or word timings.");
+        }
+
         var kgLyrics = CloudLyricsClient.ParseKugouLyrics(
             "{\"content\":\"" + base64 + "\"}");
         if (kgLyrics?.Lines.Count != 1 || kgLyrics.Lines[0].Text != "Original")
@@ -208,6 +239,22 @@ internal static class CloudLyricsProviderRegression
             throw new InvalidOperationException("KuGou lyric base64 was not parsed.");
         }
     }
+    private static string BuildQqFixture(string original,
+        string translated, string romanized)
+    {
+        using MemoryStream buffer = new();
+        using (System.Text.Json.Utf8JsonWriter writer = new(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("lyric", original);
+            writer.WriteString("trans", translated);
+            writer.WriteString("roma", romanized);
+            writer.WriteEndObject();
+            writer.Flush();
+        }
+        return Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
     private sealed class ArtworkHandler(string payload) : HttpMessageHandler
     {
         public Uri? LastRequest { get; private set; }

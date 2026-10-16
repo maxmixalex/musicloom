@@ -33,6 +33,7 @@ internal static class TimedLyricsRegression
     {
         VerifyQrcWordTiming();
         VerifyQqRubyAnnotation();
+        VerifyRomanizationExportOptIn();
         VerifyUnequalRubySyllables();
         VerifyKrcWordTiming();
         await VerifyUnofficialTransportAsync();
@@ -108,6 +109,33 @@ internal static class TimedLyricsRegression
             && exportedWords.All(static word => word.Ruby is null)
             && !exported.Contains("[ml-ruby:", StringComparison.Ordinal),
             "Export must preserve word-timed lyric text without private ruby annotations.");
+    }
+
+    private static void VerifyRomanizationExportOptIn()
+    {
+        LrcDocument original = LrcDocument.Parse(
+            "[00:01.000]<00:01.000>君<00:01.300>が<00:01.800>");
+        LrcWord[] words = original.Lines[0].Words!
+            .Select((word, index) => word with
+                { Ruby = index == 0 ? "kimi" : "ga" }).ToArray();
+        original.Lines[0] = original.Lines[0] with { Words = words };
+        string normal = original.ForSynchronization(false).ToStandardLrcString();
+        string selected = original.ForSynchronization(true).ToStandardLrcString();
+        if (normal.Contains("kimi", StringComparison.Ordinal)
+            || normal.Contains("ga", StringComparison.Ordinal)
+            || !selected.Contains("[00:01.000]kimi ga",
+                StringComparison.Ordinal)
+            || selected.Contains("[ml-ruby:", StringComparison.Ordinal)
+            || original.Lines.Count != 1)
+            throw new InvalidOperationException(
+                "The romanization export preference must default off and must never mutate canonical lyrics.");
+        LrcDocument line = LrcDocument.Parse("[00:02.000]春");
+        line.Lines[0] = line.Lines[0] with
+            { Romanization = "haru" };
+        if (!line.ForSynchronization(true).ToStandardLrcString()
+                .Contains("[00:02.000]haru", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Plain LRC romanization must be included when the user opts in.");
     }
 
     private static void VerifyUnequalRubySyllables()
