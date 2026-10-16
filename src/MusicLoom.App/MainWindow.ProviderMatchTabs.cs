@@ -63,5 +63,27 @@ public sealed partial class MainWindow
             await SuppressCloudMatchAsync(CloudLyricsSource.KugouMusic);
         KugouMatchPanel.UpdateRequested += async (_, _) =>
             await RefreshCloudMatchLyricsAsync(CloudLyricsSource.KugouMusic);
+
+        WireExternalMatchTab(MiguMatchPanel, CloudLyricsSource.MiguMusic);
+        WireExternalMatchTab(AppleMatchPanel, CloudLyricsSource.AppleMusic);
+        WireExternalMatchTab(SpotifyMatchPanel, CloudLyricsSource.Spotify);
+    }
+
+    private void WireExternalMatchTab(
+        ProviderMatchTabView panel, CloudLyricsSource provider)
+    {
+        // The SAME view/action semantics as QQ and KuGou, independent
+        // match persistence. Only the data adapter changes by provider.
+        panel.SearchRequested += async (_, _) =>
+        {
+            if (_selectedLibraryItem is LibraryDisplayItem item)
+                await ShowCloudMatchDialogAsync(item, provider);
+        };
+        panel.ConfirmRequested += async (_, _) =>
+            await ConfirmCloudMatchAsync(provider);
+        panel.ClearRequested += async (_, _) =>
+            await SuppressCloudMatchAsync(provider);
+        panel.UpdateRequested += async (_, _) =>
+            await RefreshCloudMatchLyricsAsync(provider);
     }
 }

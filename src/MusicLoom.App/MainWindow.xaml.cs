@@ -176,6 +176,9 @@ public sealed partial class MainWindow : Window
         LibraryNeteaseFacetBox.SelectedIndex = 0;
         LibraryQqFacetBox.SelectedIndex = 0;
         LibraryKugouFacetBox.SelectedIndex = 0;
+        LibraryMiguFacetBox.SelectedIndex = 0;
+        LibraryAppleFacetBox.SelectedIndex = 0;
+        LibrarySpotifyFacetBox.SelectedIndex = 0;
         LibrarySortBox.SelectedIndex = 2;
         LibrarySortDirectionBox.SelectedIndex = 0;
         PlaylistSortBox.SelectedIndex = 2;
@@ -1336,6 +1339,9 @@ public sealed partial class MainWindow : Window
         LibraryNeteaseFacetBox.SelectedIndex = 0;
         LibraryQqFacetBox.SelectedIndex = 0;
         LibraryKugouFacetBox.SelectedIndex = 0;
+        LibraryMiguFacetBox.SelectedIndex = 0;
+        LibraryAppleFacetBox.SelectedIndex = 0;
+        LibrarySpotifyFacetBox.SelectedIndex = 0;
         ApplyLibraryFilter();
 
         NavigateTo("library");
@@ -4028,7 +4034,10 @@ public sealed partial class MainWindow : Window
             || LibraryLyricsFacetBox is null
             || LibraryNeteaseFacetBox is null
             || LibraryQqFacetBox is null
-            || LibraryKugouFacetBox is null)
+            || LibraryKugouFacetBox is null
+            || LibraryMiguFacetBox is null
+            || LibraryAppleFacetBox is null
+            || LibrarySpotifyFacetBox is null)
         {
             return;
         }
@@ -8537,6 +8546,9 @@ public sealed partial class MainWindow : Window
         LibraryNeteaseFacetBox.SelectedIndex = 0;
         LibraryQqFacetBox.SelectedIndex = 0;
         LibraryKugouFacetBox.SelectedIndex = 0;
+        LibraryMiguFacetBox.SelectedIndex = 0;
+        LibraryAppleFacetBox.SelectedIndex = 0;
+        LibrarySpotifyFacetBox.SelectedIndex = 0;
         ApplyLibraryFilter();
 
         NavigateTo("library");
@@ -9999,9 +10011,15 @@ public sealed partial class MainWindow : Window
         MatchTab.Header = L("NetEase match", "网易云匹配");
         QqMatchTab.Header = L("QQ Music match", "QQ音乐匹配");
         KugouMatchTab.Header = L("KuGou Music match", "酷狗音乐匹配");
+        MiguMatchTab.Header = L("Migu Music match", "咪咕音乐匹配");
+        AppleMatchTab.Header = L("Apple Music match", "Apple Music 匹配");
+        SpotifyMatchTab.Header = L("Spotify match", "Spotify 匹配");
         NeteaseMatchPanel.Localize(L, MatchProviderKind.Netease);
         QqMatchPanel.Localize(L, MatchProviderKind.QqMusic);
         KugouMatchPanel.Localize(L, MatchProviderKind.KugouMusic);
+        MiguMatchPanel.Localize(L, MatchProviderKind.MiguMusic);
+        AppleMatchPanel.Localize(L, MatchProviderKind.AppleMusic);
+        SpotifyMatchPanel.Localize(L, MatchProviderKind.Spotify);
         MatchDialogTitleText.Text =
             L(
                 "Find NetEase match",
@@ -10447,6 +10465,9 @@ public sealed partial class MainWindow : Window
             LibraryNeteaseFacetBox,
             LibraryQqFacetBox,
             LibraryKugouFacetBox,
+            LibraryMiguFacetBox,
+            LibraryAppleFacetBox,
+            LibrarySpotifyFacetBox,
             LibrarySortBox,
             LibrarySortDirectionBox,
             LyricsModeBox,

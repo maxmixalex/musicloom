@@ -165,7 +165,10 @@
                       MinWidth="93" Content="Filters">
                 <Button.Flyout>
                   <Flyout Placement="Bottom">
-                    <StackPanel Width="272" Spacing="9">
+                    <ScrollViewer MaxHeight="490"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                      <StackPanel Width="272" Spacing="9">
                       <TextBlock x:Name="LibraryFacetPanelHeading"
                                  Text="Filter by" FontSize="16" FontWeight="SemiBold"/>
                       <TextBlock x:Name="LibraryStatusFacetLabel"
@@ -224,11 +227,45 @@
                         <ComboBoxItem Tag="missing" Content="Not matched on KuGou"/>
                         <ComboBoxItem Tag="empty" Content="KuGou match cleared"/>
                       </ComboBox>
+                      <TextBlock x:Name="LibraryMiguFacetLabel"
+                                 Text="Migu Music" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                      <ComboBox x:Name="LibraryMiguFacetBox" HorizontalAlignment="Stretch"
+                                SelectionChanged="LibraryFacetFilter_SelectionChanged">
+                        <ComboBoxItem Tag="all" Content="All Migu matches"/>
+                        <ComboBoxItem Tag="matched" Content="Matched on Migu"/>
+                        <ComboBoxItem Tag="confirmed" Content="Migu confirmed"/>
+                        <ComboBoxItem Tag="unconfirmed" Content="Migu needs confirmation"/>
+                        <ComboBoxItem Tag="missing" Content="Not matched on Migu"/>
+                        <ComboBoxItem Tag="empty" Content="Migu match cleared"/>
+                      </ComboBox>
+                      <TextBlock x:Name="LibraryAppleFacetLabel"
+                                 Text="Apple Music" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                      <ComboBox x:Name="LibraryAppleFacetBox" HorizontalAlignment="Stretch"
+                                SelectionChanged="LibraryFacetFilter_SelectionChanged">
+                        <ComboBoxItem Tag="all" Content="All Apple matches"/>
+                        <ComboBoxItem Tag="matched" Content="Matched on Apple"/>
+                        <ComboBoxItem Tag="confirmed" Content="Apple confirmed"/>
+                        <ComboBoxItem Tag="unconfirmed" Content="Apple needs confirmation"/>
+                        <ComboBoxItem Tag="missing" Content="Not matched on Apple"/>
+                        <ComboBoxItem Tag="empty" Content="Apple match cleared"/>
+                      </ComboBox>
+                      <TextBlock x:Name="LibrarySpotifyFacetLabel"
+                                 Text="Spotify" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                      <ComboBox x:Name="LibrarySpotifyFacetBox" HorizontalAlignment="Stretch"
+                                SelectionChanged="LibraryFacetFilter_SelectionChanged">
+                        <ComboBoxItem Tag="all" Content="All Spotify matches"/>
+                        <ComboBoxItem Tag="matched" Content="Matched on Spotify"/>
+                        <ComboBoxItem Tag="confirmed" Content="Spotify confirmed"/>
+                        <ComboBoxItem Tag="unconfirmed" Content="Spotify needs confirmation"/>
+                        <ComboBoxItem Tag="missing" Content="Not matched on Spotify"/>
+                        <ComboBoxItem Tag="empty" Content="Spotify match cleared"/>
+                      </ComboBox>
                       <Button x:Name="LibraryClearFacetsButton"
                               HorizontalAlignment="Right"
                               Content="Clear filters"
                               Click="LibraryClearFacetsButton_Click"/>
-                    </StackPanel>
+                      </StackPanel>
+                    </ScrollViewer>
                   </Flyout>
                 </Button.Flyout>
               </Button>
@@ -907,6 +944,15 @@
                   </TabViewItem>
                   <TabViewItem x:Name="KugouMatchTab" Header="KuGou Music match" IsClosable="False">
                     <local:ProviderMatchTabView x:Name="KugouMatchPanel" />
+                  </TabViewItem>
+                  <TabViewItem x:Name="MiguMatchTab" Header="Migu Music match" IsClosable="False">
+                    <local:ProviderMatchTabView x:Name="MiguMatchPanel" />
+                  </TabViewItem>
+                  <TabViewItem x:Name="AppleMatchTab" Header="Apple Music match" IsClosable="False">
+                    <local:ProviderMatchTabView x:Name="AppleMatchPanel" />
+                  </TabViewItem>
+                  <TabViewItem x:Name="SpotifyMatchTab" Header="Spotify match" IsClosable="False">
+                    <local:ProviderMatchTabView x:Name="SpotifyMatchPanel" />
                   </TabViewItem>
 
                   <TabViewItem x:Name="SyncTab" Header="Sync" IsClosable="False">

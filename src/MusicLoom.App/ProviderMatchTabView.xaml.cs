@@ -10,6 +10,9 @@ internal enum MatchProviderKind
     Netease,
     QqMusic,
     KugouMusic,
+    MiguMusic,
+    AppleMusic,
+    Spotify,
 }
 
 
@@ -94,7 +97,11 @@ public sealed partial class ProviderMatchTabView : UserControl
         {
             MatchProviderKind.Netease => ("NetEase", "网易云"),
             MatchProviderKind.QqMusic => ("QQ Music", "QQ音乐"),
-            _ => ("KuGou Music", "酷狗音乐"),
+            MatchProviderKind.KugouMusic => ("KuGou Music", "酷狗音乐"),
+            MatchProviderKind.MiguMusic => ("Migu Music", "咪咕音乐"),
+            MatchProviderKind.AppleMusic => ("Apple Music", "Apple Music"),
+            MatchProviderKind.Spotify => ("Spotify", "Spotify"),
+            _ => ("NetEase", "网易云"),
         };
         _providerName = translate(en, zh);
         OpenMatchDialogButtonText.Text = translate(
@@ -247,6 +254,27 @@ public sealed partial class ProviderMatchTabView : UserControl
         // A QQ song MID is a public song-detail identifier. KuGou's
         // compact page slug is NOT derivable from its file hash: do not
         // fabricate a broken direct song link.
+        if (CloudLyricsSourceNames.IsExternal(candidate.Source))
+        {
+            if (!Uri.TryCreate(candidate.ExternalUrl, UriKind.Absolute,
+                    out Uri? external)
+                || external.Scheme != Uri.UriSchemeHttps
+                || !external.IsDefaultPort
+                || external.UserInfo.Length > 0)
+                return null;
+
+            string expected = candidate.Source switch
+            {
+                CloudLyricsSource.MiguMusic => "migu.cn",
+                CloudLyricsSource.AppleMusic => "music.apple.com",
+                CloudLyricsSource.Spotify => "open.spotify.com",
+                _ => "",
+            };
+            return external.Host.Equals(expected, StringComparison.OrdinalIgnoreCase)
+                || external.Host.EndsWith("." + expected,
+                    StringComparison.OrdinalIgnoreCase)
+                    ? external : null;
+        }
         if (candidate.Source != CloudLyricsSource.QqMusic)
             return null;
         string? mid = candidate.SongMid;

@@ -37,6 +37,9 @@ public sealed partial class MainWindow
             LibraryNeteaseFacetBox.SelectedIndex = 0;
             LibraryQqFacetBox.SelectedIndex = 0;
             LibraryKugouFacetBox.SelectedIndex = 0;
+            LibraryMiguFacetBox.SelectedIndex = 0;
+            LibraryAppleFacetBox.SelectedIndex = 0;
+            LibrarySpotifyFacetBox.SelectedIndex = 0;
         }
         finally
         {
@@ -55,6 +58,8 @@ public sealed partial class MainWindow
         [
             LibraryFilterBox, LibraryLyricsFacetBox, LibraryNeteaseFacetBox,
             LibraryQqFacetBox, LibraryKugouFacetBox,
+            LibraryMiguFacetBox, LibraryAppleFacetBox,
+            LibrarySpotifyFacetBox,
         ];
         var chosen = facets
             .Select(static box => box.SelectedItem as ComboBoxItem)
@@ -98,6 +103,9 @@ public sealed partial class MainWindow
         LibraryNeteaseFacetLabel.Text = L("NetEase Music", "网易云匹配");
         LibraryQqFacetLabel.Text = L("QQ Music", "QQ音乐匹配");
         LibraryKugouFacetLabel.Text = L("KuGou Music", "酷狗音乐匹配");
+        LibraryMiguFacetLabel.Text = L("Migu Music", "咪咕音乐匹配");
+        LibraryAppleFacetLabel.Text = L("Apple Music", "Apple Music 匹配");
+        LibrarySpotifyFacetLabel.Text = L("Spotify", "Spotify 匹配");
         LibraryClearFacetsButton.Content = L("Clear filters", "清除筛选");
     }
 
@@ -108,7 +116,10 @@ public sealed partial class MainWindow
         FacetValue(LibraryLyricsFacetBox) != "all"
         || FacetValue(LibraryNeteaseFacetBox) != "all"
         || FacetValue(LibraryQqFacetBox) != "all"
-        || FacetValue(LibraryKugouFacetBox) != "all";
+        || FacetValue(LibraryKugouFacetBox) != "all"
+        || FacetValue(LibraryMiguFacetBox) != "all"
+        || FacetValue(LibraryAppleFacetBox) != "all"
+        || FacetValue(LibrarySpotifyFacetBox) != "all";
 
     private void EnsureLibraryFacetSnapshot()
     {
@@ -205,7 +216,13 @@ public sealed partial class MainWindow
         return MatchesProviderFacet(path, CloudLyricsSource.QqMusic,
                 FacetValue(LibraryQqFacetBox))
             && MatchesProviderFacet(path, CloudLyricsSource.KugouMusic,
-                FacetValue(LibraryKugouFacetBox));
+                FacetValue(LibraryKugouFacetBox))
+            && MatchesProviderFacet(path, CloudLyricsSource.MiguMusic,
+                FacetValue(LibraryMiguFacetBox))
+            && MatchesProviderFacet(path, CloudLyricsSource.AppleMusic,
+                FacetValue(LibraryAppleFacetBox))
+            && MatchesProviderFacet(path, CloudLyricsSource.Spotify,
+                FacetValue(LibrarySpotifyFacetBox));
     }
 
     private bool MatchesNeteaseFacet(string path, string filter)
@@ -253,6 +270,9 @@ public sealed partial class MainWindow
         LocalizeProviderFacet(LibraryNeteaseFacetBox, "NetEase", "网易云");
         LocalizeProviderFacet(LibraryQqFacetBox, "QQ Music", "QQ音乐");
         LocalizeProviderFacet(LibraryKugouFacetBox, "KuGou Music", "酷狗音乐");
+        LocalizeProviderFacet(LibraryMiguFacetBox, "Migu Music", "咪咕音乐");
+        LocalizeProviderFacet(LibraryAppleFacetBox, "Apple Music", "Apple Music");
+        LocalizeProviderFacet(LibrarySpotifyFacetBox, "Spotify", "Spotify");
 
         void LocalizeLyricsFacet()
         {
