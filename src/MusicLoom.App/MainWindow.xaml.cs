@@ -5659,6 +5659,8 @@ public sealed partial class MainWindow : Window
         LibraryDisplayItem[] snapshot = _allLibraryItems.ToArray();
         Dictionary<string, BitmapImage> decoded = new(
             StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, IReadOnlyList<string>> folderImages =
+            new(StringComparer.OrdinalIgnoreCase);
         HashSet<string> unreadable = new(StringComparer.OrdinalIgnoreCase);
 
         foreach (LibraryDisplayItem item in snapshot)
@@ -5669,10 +5671,22 @@ public sealed partial class MainWindow : Window
             // should still work rather than leaving those tracks blank.
             TrackMetadata metadata = item.Entry.Metadata
                 ?? new TrackMetadata(null, null, null, HasEmbeddedArt: false);
+            string directory = Path.GetDirectoryName(item.Entry.SourcePath)
+                ?? string.Empty;
+            if (!folderImages.TryGetValue(directory, out var imageInventory))
+            {
+                // Directory enumeration may traverse many thousands of
+                // audio files; keep it OFF the WinUI dispatcher thread.
+                imageInventory = await Task.Run(() =>
+                    MusicBeeArtworkResolver.ListImages(directory, preferences));
+                if (generation != _artworkGeneration) return;
+                folderImages[directory] = imageInventory;
+            }
 
             foreach (MusicBeeArtworkCandidate candidate in
                 MusicBeeArtworkResolver.Enumerate(
-                    item.Entry.SourcePath, metadata, preferences))
+                    item.Entry.SourcePath, metadata, preferences,
+                    imageInventory))
             {
                 string key = candidate.CacheKey(item.Entry.SourcePath);
                 if (decoded.TryGetValue(key, out BitmapImage? existing))
@@ -5754,7 +5768,15 @@ public sealed partial class MainWindow : Window
     private static byte[]? ReadArtworkCandidateBytes(
         PlanEntry entry, MusicBeeArtworkCandidate candidate)
     {
-        if (candidate.IsEmbedded) return TryReadEmbeddedArtwork(entry);
+        if (candidate.IsEmbedded)
+        {
+            // The library scanner already inspected this audio tag. Do
+            // not reopen thousands of files known to have no embedded art.
+            // Missing/legacy metadata still gets a real inspection.
+            if (entry.Metadata?.HasEmbeddedArt == false)
+                return null;
+            return TryReadEmbeddedArtwork(entry);
+        }
         if (candidate.Path is not string path) return null;
         try
         {

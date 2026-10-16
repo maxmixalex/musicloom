@@ -54,6 +54,17 @@ internal static class MusicBeeArtworkRegression
                 throw new InvalidOperationException(
                     "MusicBee's track-specific/embedded/cover precedence was violated.");
 
+            // The index used for library-size performance optimization
+            // must produce the same ordered results as a fresh directory
+            // enumeration, including the embedded sentinel.
+            var cachedInventory = MusicBeeArtworkResolver.ListImages(root, options);
+            MusicBeeArtworkCandidate[] indexed =
+                MusicBeeArtworkResolver.Enumerate(
+                    audio, metadata, options, cachedInventory).ToArray();
+            if (!indexed.SequenceEqual(ordered))
+                throw new InvalidOperationException(
+                    "Reusing a MusicBee artwork directory index changed precedence.");
+
             // Audio-only directories must still honour the Embedded
             // rule even when there are ZERO external images to enumerate.
             string embeddedOnly = Path.Combine(root, "embedded-only");

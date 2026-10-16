@@ -21,21 +21,15 @@ public static class MusicBeeArtworkResolver
         [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif",
          ".tif", ".tiff"], StringComparer.OrdinalIgnoreCase);
 
-    public static IEnumerable<MusicBeeArtworkCandidate> Enumerate(
-        string audioPath, TrackMetadata metadata,
-        MusicBeeArtworkPreferences preferences)
+    public static IReadOnlyList<string> ListImages(
+        string directory, MusicBeeArtworkPreferences preferences)
     {
-        string? directory = Path.GetDirectoryName(audioPath);
-        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
-            yield break;
-
         bool recurse = preferences.ScanSubfolders
             || preferences.Filters.Any(static filter =>
                 filter.Contains('/') || filter.Contains('\\'));
-        string[] images;
         try
         {
-            images = Directory.EnumerateFiles(directory, "*",
+            return Directory.EnumerateFiles(directory, "*",
                     recurse ? SearchOption.AllDirectories
                             : SearchOption.TopDirectoryOnly)
                 .Where(path => ImageExtensions.Contains(
@@ -43,8 +37,25 @@ public static class MusicBeeArtworkResolver
                 .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
         }
-        catch (IOException) { images = []; }
-        catch (UnauthorizedAccessException) { images = []; }
+        catch (IOException) { return []; }
+        catch (UnauthorizedAccessException) { return []; }
+    }
+
+    public static IEnumerable<MusicBeeArtworkCandidate> Enumerate(
+        string audioPath, TrackMetadata metadata,
+        MusicBeeArtworkPreferences preferences,
+        IReadOnlyList<string>? indexedImages = null)
+    {
+        string? directory = Path.GetDirectoryName(audioPath);
+        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            yield break;
+
+        // During a library refresh the caller scans each audio directory
+        // ONCE, then reuses that immutable listing across all songs.
+        // Without this a folder holding 2,000 tracks could be enumerated
+        // 2,000 times, producing effectively quadratic filesystem I/O.
+        IReadOnlyList<string> images =
+            indexedImages ?? ListImages(directory, preferences);
         // A library can contain only embedded artwork and no image files.
         // Never skip the configured Embedded rule merely because the
         // external candidates array is empty.
