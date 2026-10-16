@@ -137,7 +137,7 @@
           </Grid>
 
           <!-- One aligned toolbar: search, progressive filters/sort, then counts. -->
-          <Grid Grid.Row="1" Margin="0,16,0,8" ColumnSpacing="12">
+          <Grid x:Name="LibraryToolbarRow" Grid.Row="1" Margin="0,16,0,8" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" MinWidth="168"/>
               <ColumnDefinition Width="Auto"/>

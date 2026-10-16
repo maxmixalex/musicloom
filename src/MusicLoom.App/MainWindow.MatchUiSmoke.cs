@@ -59,12 +59,36 @@ public sealed partial class MainWindow
                 && LibrarySpotifyFacetBox is not null
                 && LibraryFilterSyncingItem.Tag?.ToString() == "syncing",
                 "Library: all statuses and six independent provider facets live under the same filter flyout");
-            Assert(LibrarySearchBox.Parent is Grid searchRow
-                && LibraryVisibleCountText.Parent is StackPanel counts
-                && ReferenceEquals(searchRow.Parent, counts.Parent)
-                && Grid.GetColumn(searchRow) == 0
-                && Grid.GetColumn(counts) == 2,
-                "Library: search, filter, sort and all right-hand status counters align in one native Grid row");
+            // WinUI visual parentage is not necessarily the same as the
+            // direct XAML declaration once controls are templated. Anchor
+            // the actual toolbar container rather than comparing the
+            // immediate Parent objects of unrelated nested controls.
+            bool InToolbar(FrameworkElement element)
+            {
+                DependencyObject? node = element;
+                for (int depth = 0; node is not null && depth < 12; depth++)
+                {
+                    if (ReferenceEquals(node, LibraryToolbarRow))
+                        return true;
+                    node = node switch
+                    {
+                        FrameworkElement framework =>
+                            framework.Parent ?? VisualTreeHelper.GetParent(framework),
+                        _ => VisualTreeHelper.GetParent(node),
+                    };
+                }
+                return false;
+            }
+            Assert(LibraryToolbarRow.ColumnDefinitions.Count == 3
+                && Grid.GetRow(LibraryToolbarRow) == 1
+                && InToolbar(LibrarySearchBox)
+                && InToolbar(LibraryFacetsButton)
+                && InToolbar(LibrarySortMenuButton)
+                && InToolbar(PendingCountText)
+                && InToolbar(WarningCountText)
+                && InToolbar(ErrorCountText)
+                && InToolbar(LibraryVisibleCountText),
+                "Library: search, filters, sort, pending/warning/error counts and track total share one toolbar row");
             Assert(LibrarySortGlyph.Glyph == "\uE8CB"
                 && LibrarySortDirectionGlyph.Glyph is "\uEE68" or "\uEE69"
                 && LibrarySortMenuButton.Content is StackPanel
