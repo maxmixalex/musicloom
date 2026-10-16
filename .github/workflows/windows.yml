@@ -118,6 +118,9 @@ jobs:
       - name: Run independent provider PoC fixtures (Windows)
         run: dotnet run --project tests/MusicLoom.ProviderPoc.Tests/MusicLoom.ProviderPoc.Tests.csproj -c Release
 
+      - name: Build standalone provider experiment CLI (Windows)
+        run: dotnet build src/MusicLoom.ProviderPoc.Cli/MusicLoom.ProviderPoc.Cli.csproj -c Release
+
       - name: Publish CLI with NativeAOT
         run: dotnet publish src/MusicLoom.Cli/MusicLoom.Cli.csproj -c Release -r win-x64 --self-contained true -o artifacts/cli-win-x64
 
