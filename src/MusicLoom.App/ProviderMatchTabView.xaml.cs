@@ -255,26 +255,7 @@ public sealed partial class ProviderMatchTabView : UserControl
         // compact page slug is NOT derivable from its file hash: do not
         // fabricate a broken direct song link.
         if (CloudLyricsSourceNames.IsExternal(candidate.Source))
-        {
-            if (!Uri.TryCreate(candidate.ExternalUrl, UriKind.Absolute,
-                    out Uri? external)
-                || external.Scheme != Uri.UriSchemeHttps
-                || !external.IsDefaultPort
-                || external.UserInfo.Length > 0)
-                return null;
-
-            string expected = candidate.Source switch
-            {
-                CloudLyricsSource.MiguMusic => "migu.cn",
-                CloudLyricsSource.AppleMusic => "music.apple.com",
-                CloudLyricsSource.Spotify => "open.spotify.com",
-                _ => "",
-            };
-            return external.Host.Equals(expected, StringComparison.OrdinalIgnoreCase)
-                || external.Host.EndsWith("." + expected,
-                    StringComparison.OrdinalIgnoreCase)
-                    ? external : null;
-        }
+            return CloudLyricsSourceNames.SongPage(candidate);
         if (candidate.Source != CloudLyricsSource.QqMusic)
             return null;
         string? mid = candidate.SongMid;

@@ -38,10 +38,9 @@ public sealed partial class CloudLyricsPanel
         var groups = rows
             .Where(static row => row.Artwork is null)
             .GroupBy(static row =>
-                row.Candidate.Source == CloudLyricsSource.KugouMusic
-                    ? "kg:" + (row.Candidate.AlbumId is { Length: > 0 } id
-                        ? id : row.Candidate.Hash ?? row.Candidate.Id)
-                    : "qq:" + (row.Candidate.AlbumId ?? row.Candidate.Id))
+                CloudLyricsSourceNames.Slug(row.Candidate.Source) + ":"
+                + (row.Candidate.AlbumId ?? row.Candidate.Hash
+                    ?? row.Candidate.Id))
             .ToArray();
 
         Task[] requests = groups.Select(async group =>

@@ -42,6 +42,29 @@ public static class CloudLyricsSourceNames
         CloudLyricsSource.Spotify => "spotify",
         _ => "unknown",
     };
+    public static Uri? SongPage(CloudLyricsCandidate candidate)
+    {
+        if (!IsExternal(candidate.Source)
+            || !Uri.TryCreate(candidate.ExternalUrl, UriKind.Absolute,
+                out Uri? uri)
+            || uri.Scheme != Uri.UriSchemeHttps
+            || !uri.IsDefaultPort || uri.UserInfo.Length > 0)
+            return null;
+
+        string trustedDomain = candidate.Source switch
+        {
+            CloudLyricsSource.MiguMusic => "migu.cn",
+            CloudLyricsSource.AppleMusic => "music.apple.com",
+            CloudLyricsSource.Spotify => "open.spotify.com",
+            _ => "",
+        };
+        return uri.Host.Equals(trustedDomain,
+                   StringComparison.OrdinalIgnoreCase)
+               || uri.Host.EndsWith("." + trustedDomain,
+                   StringComparison.OrdinalIgnoreCase)
+            ? uri : null;
+    }
+
 }
 
 /// <summary>
@@ -88,10 +111,12 @@ public sealed partial class CloudLyricsClient
     private static CloudLyricsCandidate ToCloudCandidate(ProviderTrack track) =>
         new(Source(track.Provider), track.Id, track.Title, track.Artist,
             track.Album, track.DurationMilliseconds,
-            CoverUrl: track.ArtworkUrl, AlbumId: track.AlbumId,
+            CoverUrl: NormalizeExternalArtwork(track.ArtworkUrl,
+                Source(track.Provider)), AlbumId: track.AlbumId,
             ContentId: track.ContentId, CopyrightId: track.CopyrightId,
             ProviderSongId: track.SongId, PreviewUrl: track.PreviewUrl,
-            StreamUrl: track.StreamUrl, ExternalUrl: track.ExternalUrl,
+            StreamUrl: track.StreamUrl,
+            ExternalUrl: track.ExternalUrl,
             LrcUrl: track.LrcUrl, TrcUrl: track.TrcUrl, MrcUrl: track.MrcUrl);
 
     private static ProviderTrack ToExternalTrack(CloudLyricsCandidate song) =>

@@ -88,6 +88,9 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
         CloudLyricsSource.KugouMusic =>
             "https://www.kugou.com/yy/html/search.html#searchType=song&searchKey="
                 + Uri.EscapeDataString(Candidate.Artist + " " + Candidate.Title),
+        CloudLyricsSource.MiguMusic or CloudLyricsSource.AppleMusic
+            or CloudLyricsSource.Spotify =>
+            CloudLyricsSourceNames.SongPage(Candidate)?.AbsoluteUri,
         _ => null,
     };
     public string ExternalLabel => Candidate.Source switch
@@ -98,6 +101,9 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
         CloudLyricsSource.KugouMusic
             when Candidate.Hash is not { Length: >= 16 and <= 64 } hash
                 || !hash.All(UriHexDigit) => _searchLabel,
+        CloudLyricsSource.MiguMusic or CloudLyricsSource.AppleMusic
+            or CloudLyricsSource.Spotify
+            when CloudLyricsSourceNames.SongPage(Candidate) is null => _searchLabel,
         _ => _linkLabel,
     };
     private static bool UriHexDigit(char c) =>
@@ -373,14 +379,19 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
 
             CloudCandidateRow[] ranked = found
                 .OrderByDescending(CandidateScore)
-                .Select(candidate => new CloudCandidateRow(candidate,
-                    L("Play remote preview", "播放远程试听"),
-                    candidate.Source == CloudLyricsSource.QqMusic
-                        ? L("Open in QQ Music", "在QQ音乐中打开")
-                        : L("Open in KuGou Music", "在酷狗音乐中打开"),
-                    candidate.Source == CloudLyricsSource.QqMusic
-                        ? L("Search in QQ Music", "在QQ音乐中搜索")
-                        : L("Search in KuGou Music", "在酷狗音乐中搜索")))
+                .Select(candidate =>
+                {
+                    string name = L(
+                        CloudLyricsSourceNames.English(candidate.Source),
+                        CloudLyricsSourceNames.Chinese(candidate.Source));
+                    return new CloudCandidateRow(candidate,
+                        candidate.Source == CloudLyricsSource.Spotify
+                            ? L("Check provider playback availability",
+                                "检查音源播放权限")
+                            : L("Play remote preview", "播放远程试听"),
+                        L("Open in ", "在") + name + L("", "中打开"),
+                        L("Search in ", "在") + name + L(" search", "中搜索"));
+                })
                 .ToArray();
             CandidatesList.ItemsSource = ranked;
             ProviderStatus.Text = ranked.Length == 0
@@ -397,10 +408,16 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         catch (OperationCanceledException)
         {
         }
+        catch (MusicLoom.ProviderPoc.ProviderAuthorizationException)
+        {
+            ProviderStatus.Text = L(
+                "Sign-in required. Supply your own provider token through the documented environment variables and restart MusicLoom.",
+                "需要账户授权。请按 Provider PoC 文档设置自己的环境变量令牌，然后重启 MusicLoom。");
+        }
         catch (Exception error)
         {
             AppDiagnostics.LogException(
-                "Could not search QQ/KuGou lyrics.", error);
+                "Could not search music provider songs.", error);
             ProviderStatus.Text = L(
                 "Provider search failed; see Diagnostics for details.",
                 "歌词源搜索失败，详情请查看诊断日志。");
@@ -471,10 +488,16 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         catch (OperationCanceledException)
         {
         }
+        catch (MusicLoom.ProviderPoc.ProviderAuthorizationException)
+        {
+            ShowPreviewMessage(L(
+                "This provider needs your authorized account to retrieve lyrics.",
+                "当前音源需要账户授权才能获取歌词。"));
+        }
         catch (Exception error)
         {
             AppDiagnostics.LogException(
-                "Could not decode QQ/KuGou lyrics.", error);
+                "Could not decode provider lyrics.", error);
             ShowPreviewMessage(L(
                 "Could not load lyrics from this provider.",
                 "无法从此歌词源获取歌词。"));
