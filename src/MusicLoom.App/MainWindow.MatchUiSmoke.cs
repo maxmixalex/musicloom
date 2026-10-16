@@ -226,11 +226,17 @@ public sealed partial class MainWindow
             host.Children.Add(search);
             await Task.Delay(140);
 
-            Assert(searchCard.Content is Grid cardGrid
+            Grid? cardGrid = searchCard.Content as Grid;
+            Grid? actionsRail = searchCard.FindName("CandidateActions") as Grid;
+            Assert(cardGrid is not null && actionsRail is not null
                 && cardGrid.ColumnDefinitions.Count == 3
                 && cardGrid.ColumnDefinitions[0].Width.Value == 52
-                && cardGrid.ColumnDefinitions[2].Width.Value is >= 125 and <= 220,
-                "Search dialog: original NetEase 52px cover and responsive metadata/actions rail");
+                && (cardGrid.ActualWidth < 440
+                    ? Grid.GetRow(actionsRail) == 1
+                        && cardGrid.ColumnDefinitions[2].Width.Value == 0
+                    : Grid.GetRow(actionsRail) == 0
+                        && cardGrid.ColumnDefinitions[2].Width.Value is >= 125 and <= 220),
+                "Search dialog: 52px NetEase artwork with actions stacked rather than clipped on narrow widths");
             Assert(ReferenceEquals(preview.LyricsList.ItemTemplate,
                     LyricsList.ItemTemplate)
                 && ReferenceEquals(preview.LyricsList.ItemContainerStyle,

@@ -107,6 +107,7 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
         {
             ExternalLinkButton.NavigateUri = null;
             ExternalLinkButton.Content = null;
+            ToolTipService.SetToolTip(ExternalLinkButton, null);
             _linkText = null;
             ExternalLinkButton.Visibility = Visibility.Collapsed;
             return;
@@ -132,23 +133,40 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
 
     private TextBlock? _linkText;
 
-    // Preserve the pre-provider 220px action rail on a wide results pane,
-    // but return space to the song title when the whole dialog narrows.
+    private bool _compactCandidateLayout;
+
+    // The accepted 52px-artwork / title / actions hierarchy is preserved
+    // on wide cards. Narrow windows stack actions UNDER the song metadata,
+    // not compress the title or clip the provider link.
     private void CandidateLayout_SizeChanged(
         object sender, SizeChangedEventArgs e)
     {
         double available = e.NewSize.Width;
         if (available <= 0 || !double.IsFinite(available))
             return;
+
+        bool compact = available < 440;
+        if (_compactCandidateLayout != compact)
+        {
+            _compactCandidateLayout = compact;
+            Grid.SetColumnSpan(CandidateInfo, compact ? 2 : 1);
+            Grid.SetRow(CandidateActions, compact ? 1 : 0);
+            Grid.SetColumn(CandidateActions, compact ? 1 : 2);
+            Grid.SetColumnSpan(CandidateActions, compact ? 2 : 1);
+            CandidateActions.HorizontalAlignment = compact
+                ? HorizontalAlignment.Right : HorizontalAlignment.Stretch;
+        }
+
         const double StructuralWidth = 52 + 24 + 22 + 16;
-        double rail = Math.Clamp(available - StructuralWidth - 158, 125, 220);
+        double rail = compact ? 0
+            : Math.Clamp(available - StructuralWidth - 158, 125, 220);
         if (Math.Abs(MetadataRailColumn.Width.Value - rail) > 0.5)
             MetadataRailColumn.Width = new GridLength(rail);
 
-        // The full link still opens on compact cards. Ellipsize its
-        // visible caption rather than shrinking the track title to 20px.
         if (_linkText is not null)
-            _linkText.MaxWidth = Math.Max(45, rail - 48);
+            _linkText.MaxWidth = compact
+                ? Math.Max(130, available - StructuralWidth - 44)
+                : Math.Max(45, rail - 48);
     }
 
     public void SetExternalLink(Uri uri, string label)
@@ -170,6 +188,7 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
         content.Children.Add(new FontIcon { Glyph = "\uE8A7", FontSize = 11 });
         ExternalLinkButton.NavigateUri = uri;
         ExternalLinkButton.Content = content;
+        ToolTipService.SetToolTip(ExternalLinkButton, label);
         ExternalLinkButton.Visibility = Visibility.Visible;
     }
 

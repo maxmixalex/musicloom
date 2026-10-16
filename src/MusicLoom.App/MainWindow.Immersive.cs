@@ -24,7 +24,12 @@ public sealed partial class MainWindow
     private Color? _previousCaptionButtonBackground;
     private Color? _previousCaptionButtonForeground;
     private bool _captionColorsSupported;
-     private void InitializeImmersivePlayer()
+    private readonly SolidColorBrush _immersiveTitleBrush =
+        new(Color.FromArgb(255, 56, 108, 138));
+    private readonly SolidColorBrush _immersiveWhiteTextBrush =
+        new(Color.FromArgb(255, 255, 255, 255));
+
+    private void InitializeImmersivePlayer()
     {
         ImmersiveView.CloseRequested += (_, _) => CloseImmersivePlayer();
         ImmersiveView.PaletteChanged += ApplyImmersiveTitlePalette;
@@ -75,20 +80,23 @@ public sealed partial class MainWindow
         // The player gradient is vertical: its entire top edge matches this
         // solid title/caption color. Both are advanced on the SAME animation
         // tick so no dark horizontal seam appears while switching songs.
-        AppTitleBar.Background = new SolidColorBrush(background);
-        AppTitleBar.BorderThickness = new Thickness(0);
-        AppTitleBar.BorderBrush = new SolidColorBrush(background);
-        // Cover the one-pixel client seam if Windows draws a transparent
-        // gap between the custom title bar and the immersive content.
-        AppRoot.Background = new SolidColorBrush(background);
-        AppTitleBar.Foreground = new SolidColorBrush(
-            Color.FromArgb(255, 255, 255, 255));
-        if (_captionColorsSupported)
+        // Do not allocate four new brushes every 16ms during a palette
+        // crossfade. Sharing the same mutable brush prevents title, border,
+        // and client seam from rendering different animation frames.
+        _immersiveTitleBrush.Color = background;
+        if (!ReferenceEquals(AppTitleBar.Background, _immersiveTitleBrush))
         {
-            AppWindow.TitleBar.ButtonBackgroundColor = background;
-            AppWindow.TitleBar.ButtonForegroundColor =
-                Color.FromArgb(255, 255, 255, 255);
+            AppTitleBar.Background = _immersiveTitleBrush;
+            AppTitleBar.BorderBrush = _immersiveTitleBrush;
+            AppTitleBar.BorderThickness = new Thickness(0);
+            AppRoot.Background = _immersiveTitleBrush;
+            AppTitleBar.Foreground = _immersiveWhiteTextBrush;
+            if (_captionColorsSupported)
+                AppWindow.TitleBar.ButtonForegroundColor =
+                    Color.FromArgb(255, 255, 255, 255);
         }
+        if (_captionColorsSupported)
+            AppWindow.TitleBar.ButtonBackgroundColor = background;
     }
 
     private async void ImmersiveOpenButton_Click(
