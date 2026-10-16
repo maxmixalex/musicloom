@@ -58,8 +58,15 @@ public static partial class MiguMrcCodec
             BinaryPrimitives.WriteInt64LittleEndian(
                 bytes.AsSpan(i * 8, 8), state[i]);
         string decoded = new UnicodeEncoding(false, false, true).GetString(bytes);
-        // The transport pads plaintext blocks with the ASCII digit '0'.
-        return decoded.TrimEnd('\0', '0');
+        // Remove only unmistakable block padding AFTER a terminal newline.
+        // Blind TrimEnd('0') would silently delete a legitimate final lyric
+        // digit (e.g. a song ending in "2020"). No guessed text cleanup.
+        decoded = decoded.TrimEnd('\0');
+        int lastLine = decoded.LastIndexOf('\n');
+        if (lastLine >= 0 && decoded[(lastLine + 1)..].All(
+            static ch => ch == '0'))
+            return decoded[..(lastLine + 1)];
+        return decoded;
     }
 
     private static long Mix(long count, long right, long left, int index, long selector)

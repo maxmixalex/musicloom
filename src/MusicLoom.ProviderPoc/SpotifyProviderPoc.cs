@@ -56,7 +56,14 @@ public sealed class SpotifyProviderPoc : IExternalMusicProvider, IDisposable
         using HttpRequestMessage request = OfficialRequest(HttpMethod.Get,
             "tracks/" + Uri.EscapeDataString(track.Id) + "?market=" + _market);
         using JsonDocument json = await ProviderProtocol.JsonAsync(_http, request, ct);
-        return ParseTrack(json.RootElement) ?? track;
+        ProviderTrack? details = ParseTrack(json.RootElement);
+        return details is null ? track : details with
+        {
+            ArtworkUrl = string.IsNullOrWhiteSpace(details.ArtworkUrl)
+                ? track.ArtworkUrl : details.ArtworkUrl,
+            ExternalUrl = string.IsNullOrWhiteSpace(details.ExternalUrl)
+                ? track.ExternalUrl : details.ExternalUrl,
+        };
     }
 
     public async Task<ProviderLyricBundle?> GetLyricsAsync(

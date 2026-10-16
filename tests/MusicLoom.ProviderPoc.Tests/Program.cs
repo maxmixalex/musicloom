@@ -254,7 +254,10 @@ static async Task AppleFullFlow()
         && result[0].ArtworkUrl!.Contains("600x600"),
         "Apple official catalog search must keep real artwork and preview URL");
     var details = await poc.GetDetailsAsync(result[0]);
-    Check(details?.Title == "Song", "Apple catalog details");
+    Check(details?.Title == "Song"
+        && details.PreviewUrl == result[0].PreviewUrl
+        && details.ArtworkUrl == result[0].ArtworkUrl,
+        "Apple catalog details must retain previously known artwork and preview fields");
     var lyrics = await poc.GetLyricsAsync(result[0]);
     Check(lyrics!.Original.Lines[0].Text == "歌手名：歌曲的一句"
         && lyrics.Localizations!.ContainsKey("ja-JP") && privateRequests == 1,
@@ -320,7 +323,10 @@ static async Task SpotifyFullFlow()
         && hits[0].ExternalUrl!.StartsWith("https://open.spotify.com"),
         "Spotify catalog search title/artist/album/duration/link");
     var info = await poc.GetDetailsAsync(hits[0]);
-    Check(info?.Album == "Album", "Spotify details endpoint");
+    Check(info?.Album == "Album"
+        && info.ExternalUrl == hits[0].ExternalUrl
+        && info.ArtworkUrl == hits[0].ArtworkUrl,
+        "Spotify details must preserve search artwork and provider song link");
     var lyrics = await poc.GetLyricsAsync(hits[0]);
     Check(lyrics?.Original.Lines.Count == 3
         && lyrics.Original.Lines[0].Text == "歌曲名：真歌词"

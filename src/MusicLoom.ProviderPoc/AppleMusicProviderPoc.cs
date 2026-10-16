@@ -63,7 +63,19 @@ public sealed class AppleMusicProviderPoc : IExternalMusicProvider, IDisposable
         using JsonDocument json = await ProviderProtocol.JsonAsync(_http, request, ct);
         ProviderTrack? detail = ParseTrack(ProviderProtocol.First(
             ProviderProtocol.Get(json.RootElement, "data")));
-        return detail ?? track;
+        return detail is null ? track : detail with
+        {
+            // Catalog partial fields differ by query/territory. Enrich rather
+            // than erasing an already visible preview, artwork or share URL.
+            PreviewUrl = string.IsNullOrWhiteSpace(detail.PreviewUrl)
+                ? track.PreviewUrl : detail.PreviewUrl,
+            ArtworkUrl = string.IsNullOrWhiteSpace(detail.ArtworkUrl)
+                ? track.ArtworkUrl : detail.ArtworkUrl,
+            ExternalUrl = string.IsNullOrWhiteSpace(detail.ExternalUrl)
+                ? track.ExternalUrl : detail.ExternalUrl,
+            DurationMilliseconds = detail.DurationMilliseconds > 0
+                ? detail.DurationMilliseconds : track.DurationMilliseconds,
+        };
     }
 
     public async Task<ProviderLyricBundle?> GetLyricsAsync(
@@ -109,8 +121,10 @@ public sealed class AppleMusicProviderPoc : IExternalMusicProvider, IDisposable
         ProviderProtocol.RequireSameProvider(track, Provider);
         ct.ThrowIfCancellationRequested();
         // Provider-declared previews are separate from full MusicKit playback.
-        if (Uri.TryCreate(track.PreviewUrl, UriKind.Absolute, out Uri? preview)
-            && preview.Scheme == Uri.UriSchemeHttps)
+        if (ProviderProtocol.ProviderHttpsUrl(
+                track.PreviewUrl, "itunes.apple.com", out Uri? preview)
+            || ProviderProtocol.ProviderHttpsUrl(
+                track.PreviewUrl, "mzstatic.com", out preview))
             return Task.FromResult(new ProviderPlayback(
                 PlaybackDisposition.AuthorizedPreviewUrl,
                 "The Apple Music catalog provided a preview. Full tracks require user-authorized MusicKit.", preview));
