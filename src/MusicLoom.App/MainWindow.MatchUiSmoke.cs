@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using MusicLoom.Core.Configuration;
@@ -236,6 +237,53 @@ public sealed partial class MainWindow
                 ?? throw new InvalidOperationException("Preview button not found"));
             Assert(previewInvocations == 1,
                 "Search dialog: actual candidate play control dispatches once");
+            // Simulate a virtualized candidate control being reused as the
+            // ListView scrolls. The hyperlink follows the new DataContext
+            // instead of remaining tied to Loaded or an old provider result.
+            CloudCandidateRow qq = new(
+                new CloudLyricsCandidate(CloudLyricsSource.QqMusic, "123",
+                    "QQ candidate", "Artist", "Album", 123000,
+                    SongMid: "003Ngvnw2Ks69Z"),
+                "Preview", "在QQ音乐中打开", "在QQ音乐中搜索");
+            CloudCandidateRow kugou = new(
+                new CloudLyricsCandidate(CloudLyricsSource.KugouMusic, "456",
+                    "KuGou candidate", "Artist", "Album", 123000,
+                    Hash: "CB7EE97F4CC11C4EA7A1FA4B516A5D97"),
+                "Preview", "在酷狗音乐中打开", "在QQ音乐中搜索");
+            LyricsSearchCandidateCard recycled = new();
+            recycled.SetBinding(LyricsSearchCandidateCard.ExternalUrlProperty,
+                new Binding { Path = new PropertyPath(nameof(CloudCandidateRow.ExternalUrl)) });
+            recycled.SetBinding(LyricsSearchCandidateCard.ExternalLabelProperty,
+                new Binding { Path = new PropertyPath(nameof(CloudCandidateRow.ExternalLabel)) });
+            host.Children.Clear();
+            host.Children.Add(recycled);
+            recycled.DataContext = qq;
+            await Task.Delay(70);
+            HyperlinkButton providerLink = recycled.FindName("ExternalLinkButton")
+                as HyperlinkButton
+                ?? throw new InvalidOperationException("Provider link is missing");
+            Assert(providerLink.Visibility == Visibility.Visible
+                && providerLink.NavigateUri?.Host == "y.qq.com"
+                && providerLink.NavigateUri.AbsolutePath.Contains("songDetail",
+                    StringComparison.Ordinal),
+                "Search result recycling: QQ song MID link resolves on DataContext bind");
+
+            recycled.DataContext = kugou;
+            await Task.Delay(70);
+            Assert(providerLink.Visibility == Visibility.Visible
+                && providerLink.NavigateUri?.Host == "www.kugou.com"
+                && providerLink.NavigateUri.Fragment.Contains(kugou.Candidate.Hash!,
+                    StringComparison.OrdinalIgnoreCase),
+                "Search result recycling: KuGou song link replaces QQ link when row reused");
+            recycled.DataContext = null;
+            await Task.Delay(70);
+            Assert(providerLink.Visibility == Visibility.Collapsed
+                && providerLink.NavigateUri is null,
+                "Search result recycling: recycled empty row does not retain stale links");
+            host.Children.Clear();
+            host.Children.Add(search);
+            await Task.Delay(70);
+
             string searchPng = marker + ".SearchDialog.png";
             await SavePanelScreenshotAsync(search, searchPng);
             Assert(new FileInfo(searchPng).Length > 1800,
@@ -364,10 +412,27 @@ public sealed partial class MainWindow
                 && secondRuby.Blocks[0] is Microsoft.UI.Xaml.Documents.Paragraph next
                 && next.Inlines.Count == 1,
                 "Ruby: changing the lyric line rebuilds inline layout without losing the next line");
+            // Render many ruby+base atoms so the browser-style reading
+            // row must wrap naturally. A one-character transparent PNG may
+            // compress below 1.8 KB despite being correctly rendered.
+            LrcWord[] flow = Enumerable.Range(0, 24)
+                .Select(i => new LrcWord(
+                    TimeSpan.FromSeconds(i), TimeSpan.FromSeconds(i + 1),
+                    "春", "haru"))
+                .ToArray();
+            rubyView.Line = new LyricDisplayLine(
+                new string('春', flow.Length), null, "preferOriginal",
+                TimeSpan.Zero, flow);
+            await Task.Delay(140);
+            Assert(rubyView.Content is RichTextBlock wrap
+                && wrap.Blocks.Count == 1
+                && wrap.Blocks[0] is Microsoft.UI.Xaml.Documents.Paragraph wrapped
+                && wrapped.Inlines.Count == flow.Length,
+                "Ruby: long annotated lyrics retain every atom after line wrapping");
             string rubyPng = marker + ".RubyViewport.png";
             await SavePanelScreenshotAsync(rubyView, rubyPng);
-            Assert(new FileInfo(rubyPng).Length > 1800,
-                "Ruby: real WinUI annotation renderer produced screenshot");
+            Assert(new FileInfo(rubyPng).Length > 500,
+                "Ruby: nonempty real WinUI annotated text screenshot captured");
 
             host.Children.Clear();
             AppRoot.Children.Remove(host);

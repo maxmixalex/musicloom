@@ -405,6 +405,10 @@ public sealed partial class MainWindow
             using CloudLyricsClient client = new();
             SqliteLyricsCache cache = new(DatabasePath);
             SqliteProviderMatchStore matchStore = new(DatabasePath);
+            // Bulk snapshots avoid thousands of SQLite connections in a
+            // large library. Explicit no-match records still take priority.
+            var knownMatches = await matchStore.LoadSnapshotAsync(cancellation.Token);
+            var knownLyrics = await cache.LoadLibrarySnapshotAsync(cancellation.Token);
             using KugouAudioRecognitionClient kugouRecognizer = new();
             KugouPcmWindowDecoder pcmDecoder = new();
 
@@ -413,25 +417,28 @@ public sealed partial class MainWindow
                 cancellation.Token.ThrowIfCancellationRequested();
                 LibraryDisplayItem item = snapshot[i];
                 SetProgress(i, snapshot.Length);
-                SetOperationStatus(L(
-                    $"{provider} metadata {i+1:N0}/{snapshot.Length:N0} · {item.Title}",
-                    $"{provider} 元数据匹配 {i+1:N0}/{snapshot.Length:N0} · {item.Title}"));
+                SetOperationStatus(
+                    source == CloudLyricsSource.KugouMusic
+                        ? L($"KuGou audio/fallback {i+1:N0}/{snapshot.Length:N0} · {item.Title}",
+                            $"酷狗识曲/元数据回退 {i+1:N0}/{snapshot.Length:N0} · {item.Title}")
+                        : L($"QQ Music metadata {i+1:N0}/{snapshot.Length:N0} · {item.Title}",
+                            $"QQ音乐元数据匹配 {i+1:N0}/{snapshot.Length:N0} · {item.Title}"));
 
                 try
                 {
                     // An explicit empty state or a previously selected
                     // match is independent of the canonical lyric source.
                     // Never re-match a provider after "No match".
-                    StoredProviderMatch? previousMatch =
-                        await matchStore.GetAsync(
-                            item.Entry.SourcePath, source, cancellation.Token);
+                    StoredProviderMatch? previousMatch = null;
+                    if (knownMatches.TryGetValue(item.Entry.SourcePath,
+                            out var sourceMatches))
+                        sourceMatches.TryGetValue(source, out previousMatch);
                     if (previousMatch?.Suppressed == true
                         || previousMatch?.IsMatched == true)
                         continue;
 
-                    LibraryLyricsRecord? canonical =
-                        await cache.GetLibraryAsync(
-                            item.Entry.SourcePath, cancellation.Token);
+                    knownLyrics.TryGetValue(
+                        item.Entry.SourcePath, out LibraryLyricsRecord? canonical);
 
                     CloudLyricsCandidate? chosen = null;
                     if (source == CloudLyricsSource.KugouMusic)

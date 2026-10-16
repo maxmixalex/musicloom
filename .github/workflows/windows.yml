@@ -262,7 +262,7 @@ jobs:
                 $failure = "$Label failed the matching UI behavior regression."
               }
               if (-not $failure) {
-                foreach ($provider in @("Netease", "QqMusic", "KugouMusic", "SearchDialog", "ImmersiveViewport")) {
+                foreach ($provider in @("Netease", "QqMusic", "KugouMusic", "SearchDialog", "ImmersiveViewport", "RubyViewport")) {
                   $picture = "$matchMarker.$provider.png"
                   if (-not (Test-Path $picture) -or (Get-Item $picture).Length -lt 1800) {
                     $failure = "$Label failed to render $provider matching panel PNG."

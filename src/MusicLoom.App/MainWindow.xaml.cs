@@ -1531,6 +1531,7 @@ public sealed partial class MainWindow : Window
             plan,
             state,
             cancellationToken);
+        InvalidateLibraryFacetSnapshot();
     }
 
     private async Task InitializeSettingsAsync()
@@ -6993,6 +6994,7 @@ public sealed partial class MainWindow : Window
 
         await _stateStore.SaveAsync(
             _state);
+        InvalidateLibraryFacetSnapshot();
 
         RefreshCurrentMatchCard(
             item);
@@ -7118,6 +7120,7 @@ public sealed partial class MainWindow : Window
         }
 
         await _stateStore.SaveAsync(_state);
+        InvalidateLibraryFacetSnapshot();
 
         foreach (LibraryDisplayItem item in confirmed)
         {

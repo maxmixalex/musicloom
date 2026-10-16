@@ -296,6 +296,7 @@ public sealed partial class MainWindow
     {
         SqliteLyricsCache store = new(DatabasePath);
         await store.SaveLibraryAsync(record);
+        InvalidateLibraryFacetSnapshot();
         await QueueLyricOutputSyncAsync(item);
     }
 
