@@ -45,6 +45,18 @@ dotnet run --project src/MusicLoom.ProviderPoc.Cli -- play spotify 4iV5W9uYEdYUV
 
 Environment tokens are read only in the running process and never written to the repository, a local credentials file or the existing SQLite store. The CLI suppresses the query string of potentially signed audio links.
 
+
+## Independent Apple MusicKit playback experiment (browser)
+
+The C# provider PoC is a catalog/lyrics/preview requester, not a full DRM playback engine. An **additional standalone** MusicKit JS v3 HTML experiment implements the official user-authorized playback path with a real song queue:
+
+1. Serve the checked-in file (not via file://) from a local HTTP origin: run Python's simple HTTP server from the repository root, then visit the HTML file.
+2. Register the local origin or use a developer-token configuration accepted by Apple MusicKit, with your own developer token and subscription.
+3. In a normal supported browser, click Configure, Sign in, Play. Inspect *audible* playback rather than only whether the play promise resolves.
+4. The HTML never sends a raw audio URL to the C# client and never records developer tokens itself. MusicKit may retain an authorized session. A WinUI WebView2 or Electron runtime may behave differently because protected-media / EME support can differ.
+
+File: poc/apple-musickit-playback.html. This path is based on documented MusicKit JS v3, not Apple private lyric endpoint scraping.
+
 ## Playback means different things on different platforms
 
 - Migu: only an actual server-granted HTTPS URI on an accepted Migu domain can be offered for a playable track. When no authorized stream exists, the client returns Unavailable. One successful URL resolution does not establish that an unentitled account may play it.
