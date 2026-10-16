@@ -6606,8 +6606,8 @@ public sealed partial class MainWindow : Window
                             "No matches found.",
                             "没有找到匹配。")
                         : L(
-                            $"{ranked.Count:N0} matches found · best duration match selected first.",
-                            $"找到 {ranked.Count:N0} 个匹配 · 已优先按时长选择。");
+                            $"{ranked.Count:N0} matches found. The closest duration match is shown first.",
+                            $"找到 {ranked.Count:N0} 个匹配，已将时长最接近的结果放在最前面。");
 
                 if (ranked.Count > 0)
                 {
@@ -8801,8 +8801,8 @@ public sealed partial class MainWindow : Window
                 SyncButton.IsEnabled = false;
                 OperationStatusText.Text =
                     L(
-                        "Settings changed · refresh the library.",
-                        "设置已更改 · 请刷新音乐库。");
+                        "Settings changed. Refresh the library to apply them.",
+                        "设置已更改，请刷新音乐库以应用更改。");
             }
 
             UpdateLibraryEmptyState();

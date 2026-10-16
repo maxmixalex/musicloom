@@ -262,7 +262,7 @@ internal static class TimedLyricsRegression
         Assert(qqRich.First().Translation == "你好"
             && qqRich.First().Romanization == "he ro"
             && mock.QqLegacyRequests == 1,
-            "QQ must supplement missing translation and romaji from the legacy SongMID endpoint.");
+            $"QQ must supplement missing translation and romaji from the legacy SongMID endpoint (translation={qqRich.First().Translation}, reading={qqRich.First().Romanization}, requests={mock.QqLegacyRequests}).");
         Assert(mock.QqSessions == 1,
             "Guest QQ session should be shared between search/lyrics.");
         Assert(mock.QqRequests == 3,
@@ -396,7 +396,8 @@ internal static class TimedLyricsRegression
             {
                 QqLegacyRequests++;
                 string lyric = Convert.ToBase64String(Encoding.UTF8.GetBytes(
-                    "[00:00.500]Hello\\n[00:01.900]World".Replace("\\\\n", "\\n")));
+                    "[00:00.500]Hello" + Environment.NewLine
+                    + "[00:01.900]World"));
                 string trans = Convert.ToBase64String(Encoding.UTF8.GetBytes(
                     "[00:00.500]你好"));
                 string roma = Convert.ToBase64String(Encoding.UTF8.GetBytes(

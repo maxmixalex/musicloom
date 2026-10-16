@@ -386,8 +386,8 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
             ProviderStatus.Text = ranked.Length == 0
                 ? L("No matches found.", "没有找到匹配。")
                 : L(
-                    $"{ranked.Length} results · best metadata/duration matches first.",
-                    $"找到 {ranked.Length} 个候选 · 已优先按元数据和时长排序。");
+                    $"{ranked.Length} results found. Candidates are ranked by matching metadata and duration.",
+                    $"找到 {ranked.Length} 个候选，已根据元数据和时长排序。");
             if (ranked.Length > 0)
             {
                 CandidatesList.SelectedIndex = 0;
