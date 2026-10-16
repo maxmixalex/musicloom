@@ -30,7 +30,19 @@ public sealed class RubyLyricView : UserControl
         IsTextSelectionEnabled = false,
         HorizontalAlignment = HorizontalAlignment.Stretch,
     };
-    private readonly List<(LrcWord Word, TextBlock Glyph)> _glyphs = [];
+    private sealed class GlyphState(LrcWord word, TextBlock glyph)
+    {
+        internal LrcWord Word { get; } = word;
+        internal TextBlock Glyph { get; } = glyph;
+        internal int Stage = -1;
+        internal LinearGradientBrush? Partial;
+        internal GradientStop? Filled;
+        internal GradientStop? Unfilled;
+    }
+
+    private readonly List<GlyphState> _glyphs = [];
+    private SolidColorBrush? _playedBrush;
+    private SolidColorBrush? _unplayedBrush;
     private LyricDisplayLine? _line;
     private bool _subscribed;
 
@@ -106,6 +118,8 @@ public sealed class RubyLyricView : UserControl
     {
         _rich.Blocks.Clear();
         _glyphs.Clear();
+        _playedBrush = null;
+        _unplayedBrush = null;
         if (_line is null) return;
 
         IReadOnlyList<LrcWord>? words =
@@ -161,7 +175,7 @@ public sealed class RubyLyricView : UserControl
             atom.Children.Add(reading);
             atom.Children.Add(glyph);
             paragraph.Inlines.Add(new InlineUIContainer { Child = atom });
-            _glyphs.Add((word, glyph));
+            _glyphs.Add(new GlyphState(word, glyph));
         }
         _rich.Blocks.Add(paragraph);
         RefreshColors();
@@ -175,37 +189,75 @@ public sealed class RubyLyricView : UserControl
         Color muted = Color.FromArgb(
             (byte)Math.Clamp(Math.Round(active.A * 0.44), 50, 200),
             active.R, active.G, active.B);
-        SolidColorBrush played = new(active);
-        SolidColorBrush unplayed = new(muted);
 
-        foreach ((LrcWord word, TextBlock glyph) in _glyphs)
+        // Do not allocate 2 brushes per word per frame. Only the currently
+        // partially-filled syllable updates two gradient-stop offsets.
+        if (_playedBrush?.Color != active || _unplayedBrush?.Color != muted)
+        {
+            _playedBrush = new SolidColorBrush(active);
+            _unplayedBrush = new SolidColorBrush(muted);
+            foreach (GlyphState item in _glyphs)
+            {
+                item.Stage = -1;
+                item.Partial = null;
+                item.Filled = null;
+                item.Unfilled = null;
+            }
+        }
+
+        foreach (GlyphState item in _glyphs)
         {
             if (!_line.IsActive)
             {
-                glyph.Foreground = Foreground;
+                if (item.Stage != -1
+                    || !ReferenceEquals(item.Glyph.Foreground, Foreground))
+                {
+                    item.Glyph.Foreground = Foreground;
+                    item.Stage = -1;
+                }
                 continue;
             }
+
             double progress = LrcKaraokeTiming.Fraction(
-                word, _line.PlaybackPosition);
-            if (progress <= 0) glyph.Foreground = unplayed;
-            else if (progress >= 1) glyph.Foreground = played;
+                item.Word, _line.PlaybackPosition);
+            int stage = progress <= 0 ? 0 : progress >= 1 ? 2 : 1;
+            if (stage == 0)
+            {
+                if (item.Stage != 0)
+                    item.Glyph.Foreground = _unplayedBrush;
+            }
+            else if (stage == 2)
+            {
+                if (item.Stage != 2)
+                    item.Glyph.Foreground = _playedBrush;
+            }
             else
             {
-                LinearGradientBrush gradient = new()
+                if (item.Partial is null)
                 {
-                    StartPoint = new Windows.Foundation.Point(0, 0),
-                    EndPoint = new Windows.Foundation.Point(1, 0),
-                };
-                gradient.GradientStops.Add(new GradientStop
-                    { Color = active, Offset = 0 });
-                gradient.GradientStops.Add(new GradientStop
-                    { Color = active, Offset = Math.Max(0, progress - 0.006) });
-                gradient.GradientStops.Add(new GradientStop
-                    { Color = muted, Offset = Math.Min(1, progress + 0.006) });
-                gradient.GradientStops.Add(new GradientStop
-                    { Color = muted, Offset = 1 });
-                glyph.Foreground = gradient;
+                    LinearGradientBrush brush = new()
+                    {
+                        StartPoint = new Windows.Foundation.Point(0, 0),
+                        EndPoint = new Windows.Foundation.Point(1, 0),
+                    };
+                    brush.GradientStops.Add(new GradientStop
+                        { Color = active, Offset = 0 });
+                    item.Filled = new GradientStop
+                        { Color = active, Offset = 0 };
+                    item.Unfilled = new GradientStop
+                        { Color = muted, Offset = 0 };
+                    brush.GradientStops.Add(item.Filled);
+                    brush.GradientStops.Add(item.Unfilled);
+                    brush.GradientStops.Add(new GradientStop
+                        { Color = muted, Offset = 1 });
+                    item.Partial = brush;
+                }
+                item.Filled!.Offset = Math.Max(0, progress - 0.006);
+                item.Unfilled!.Offset = Math.Min(1, progress + 0.006);
+                if (item.Stage != 1)
+                    item.Glyph.Foreground = item.Partial;
             }
+            item.Stage = stage;
         }
     }
 }

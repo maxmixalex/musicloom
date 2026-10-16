@@ -264,7 +264,10 @@ jobs:
               if (-not $failure) {
                 foreach ($provider in @("Netease", "QqMusic", "KugouMusic", "SearchDialog", "ImmersiveViewport", "RubyViewport")) {
                   $picture = "$matchMarker.$provider.png"
-                  if (-not (Test-Path $picture) -or (Get-Item $picture).Length -lt 1800) {
+                  # The ruby test separately asserts actual bright glyph pixels;
+                  # repeated characters compress exceptionally well in PNG.
+                  $minBytes = if ($provider -eq "RubyViewport") { 500 } else { 1800 }
+                  if (-not (Test-Path $picture) -or (Get-Item $picture).Length -lt $minBytes) {
                     $failure = "$Label failed to render $provider matching panel PNG."
                     break
                   }

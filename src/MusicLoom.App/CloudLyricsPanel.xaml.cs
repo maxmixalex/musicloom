@@ -85,13 +85,21 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
                 + (Candidate.AlbumId is { Length: > 0 } id
                     && id.All(char.IsAsciiDigit)
                     ? "&album_id=" + id : ""),
+        CloudLyricsSource.KugouMusic =>
+            "https://www.kugou.com/yy/html/search.html#searchType=song&searchKey="
+                + Uri.EscapeDataString(Candidate.Artist + " " + Candidate.Title),
         _ => null,
     };
-    public string ExternalLabel =>
-        Candidate.Source == CloudLyricsSource.QqMusic
-        && (Candidate.SongMid is not { Length: > 0 } mid
-            || !mid.All(char.IsAsciiLetterOrDigit))
-            ? _searchLabel : _linkLabel;
+    public string ExternalLabel => Candidate.Source switch
+    {
+        CloudLyricsSource.QqMusic
+            when Candidate.SongMid is not { Length: > 0 } mid
+                || !mid.All(char.IsAsciiLetterOrDigit) => _searchLabel,
+        CloudLyricsSource.KugouMusic
+            when Candidate.Hash is not { Length: >= 16 and <= 64 } hash
+                || !hash.All(UriHexDigit) => _searchLabel,
+        _ => _linkLabel,
+    };
     private static bool UriHexDigit(char c) =>
         c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
 
@@ -369,7 +377,9 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
                     candidate.Source == CloudLyricsSource.QqMusic
                         ? L("Open in QQ Music", "在QQ音乐中打开")
                         : L("Open in KuGou Music", "在酷狗音乐中打开"),
-                    L("Search in QQ Music", "在QQ音乐中搜索")))
+                    candidate.Source == CloudLyricsSource.QqMusic
+                        ? L("Search in QQ Music", "在QQ音乐中搜索")
+                        : L("Search in KuGou Music", "在酷狗音乐中搜索")))
                 .ToArray();
             CandidatesList.ItemsSource = ranked;
             ProviderStatus.Text = ranked.Length == 0

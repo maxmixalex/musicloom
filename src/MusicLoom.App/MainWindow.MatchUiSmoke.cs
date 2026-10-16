@@ -275,6 +275,29 @@ public sealed partial class MainWindow
                 && providerLink.NavigateUri.Fragment.Contains(kugou.Candidate.Hash!,
                     StringComparison.OrdinalIgnoreCase),
                 "Search result recycling: KuGou song link replaces QQ link when row reused");
+            CloudCandidateRow missingKugouHash = new(
+                new CloudLyricsCandidate(CloudLyricsSource.KugouMusic,
+                    "456", "Unrecognized hash", "Artist", "Album", 123000,
+                    Hash: "HASHABC"),
+                "Preview", "在酷狗音乐中打开", "在酷狗音乐中搜索");
+            recycled.DataContext = missingKugouHash;
+            await Task.Delay(70);
+            Assert(providerLink.Visibility == Visibility.Visible
+                && providerLink.NavigateUri?.AbsolutePath
+                    == "/yy/html/search.html"
+                && missingKugouHash.ExternalLabel == "在酷狗音乐中搜索",
+                "Search result recycling: KuGou entries without valid hash retain an honest provider search link");
+            CloudCandidateRow missingQqMid = new(
+                new CloudLyricsCandidate(CloudLyricsSource.QqMusic,
+                    "123", "Missing MID", "Artist", "Album", 123000),
+                "Preview", "在QQ音乐中打开", "在QQ音乐中搜索");
+            recycled.DataContext = missingQqMid;
+            await Task.Delay(70);
+            Assert(providerLink.Visibility == Visibility.Visible
+                && providerLink.NavigateUri?.AbsolutePath
+                    == "/n/ryqq/search"
+                && missingQqMid.ExternalLabel == "在QQ音乐中搜索",
+                "Search result recycling: QQ candidates without a valid song MID retain a search link");
             recycled.DataContext = null;
             await Task.Delay(70);
             Assert(providerLink.Visibility == Visibility.Collapsed
@@ -392,6 +415,8 @@ public sealed partial class MainWindow
                 Width = 560,
                 MinHeight = 110,
                 FontSize = 23,
+                Foreground = new SolidColorBrush(
+                    Color.FromArgb(255, 255, 255, 255)),
                 Line = new LyricDisplayLine("君が", null, "preferOriginal",
                     TimeSpan.Zero, firstWords),
             };
@@ -431,6 +456,9 @@ public sealed partial class MainWindow
                 "Ruby: long annotated lyrics retain every atom after line wrapping");
             string rubyPng = marker + ".RubyViewport.png";
             await SavePanelScreenshotAsync(rubyView, rubyPng);
+            int brightPixels = await CountRenderedTextPixelsAsync(rubyView);
+            Assert(brightPixels > 120,
+                $"Ruby: WinUI must render actual visible annotation glyphs ({brightPixels} bright pixels)");
             Assert(new FileInfo(rubyPng).Length > 500,
                 "Ruby: nonempty real WinUI annotated text screenshot captured");
 
@@ -587,6 +615,29 @@ public sealed partial class MainWindow
         BitmapImage image = new();
         await image.SetSourceAsync(stream);
         return image;
+    }
+
+    private static async Task<int> CountRenderedTextPixelsAsync(
+        FrameworkElement view)
+    {
+        // A repeated short lyric can compress into a tiny PNG. Inspect the
+        // actual RenderTargetBitmap pixels instead of treating ZIP/PNG byte
+        // size as proof that glyphs were painted.
+        RenderTargetBitmap bitmap = new();
+        await bitmap.RenderAsync(view);
+        var pixels = await bitmap.GetPixelsAsync();
+        byte[] bgra = new byte[checked((int)pixels.Length)];
+        using (DataReader reader = DataReader.FromBuffer(pixels))
+            reader.ReadBytes(bgra);
+
+        int bright = 0;
+        for (int i = 0; i + 3 < bgra.Length; i += 4)
+        {
+            if (bgra[i + 3] > 50
+                && Math.Max(bgra[i], Math.Max(bgra[i + 1], bgra[i + 2])) > 125)
+                bright++;
+        }
+        return bright;
     }
 
     private static async Task SavePanelScreenshotAsync(
