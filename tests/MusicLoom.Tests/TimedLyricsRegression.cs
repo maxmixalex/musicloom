@@ -94,9 +94,14 @@ internal static class TimedLyricsRegression
         Assert(roundtrip.Lines[0].Words![1].Ruby == "rō"
             && roundtrip.Lines[1].Words![0].Ruby == "world",
             "QQ roma annotations must survive the canonical enhanced-LRC cache.");
-        Assert(roundtrip.ToStandardLrcString().Contains("Hello")
-            && !roundtrip.ToStandardLrcString().Contains("ml-ruby"),
-            "Export must preserve ordinary lyric text without private ruby annotations.");
+        string exported = roundtrip.ToStandardLrcString();
+        LrcDocument output = LrcDocument.Parse(exported);
+        Assert(output.Lines.Count == 2
+            && output.Lines[0].Text == "Hello"
+            && output.Lines[0].Words is { Count: 2 } exportedWords
+            && exportedWords.All(static word => word.Ruby is null)
+            && !exported.Contains("[ml-ruby:", StringComparison.Ordinal),
+            "Export must preserve word-timed lyric text without private ruby annotations.");
     }
 
     private static void VerifyKrcWordTiming()
