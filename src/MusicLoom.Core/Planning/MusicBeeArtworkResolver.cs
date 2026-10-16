@@ -62,9 +62,12 @@ public static class MusicBeeArtworkResolver
         HashSet<string> yielded = new(StringComparer.OrdinalIgnoreCase);
         foreach (string template in preferences.Filters)
         {
-            if (string.Equals(template, "Embedded",
-                StringComparison.OrdinalIgnoreCase))
+            if (IsEmbeddedArtworkRule(template))
             {
+                // MusicBee serializes this entry in the UI language.
+                // "嵌入的" is the FIRST rule in real Chinese profiles;
+                // skipping it makes the broad Cover.* fallback incorrectly
+                // share a single image across unrelated albums.
                 yield return new MusicBeeArtworkCandidate(null, true);
                 continue;
             }
@@ -133,6 +136,10 @@ public static class MusicBeeArtworkResolver
             }
         }
     }
+
+    private static bool IsEmbeddedArtworkRule(string text) =>
+        string.Equals(text, "Embedded", StringComparison.OrdinalIgnoreCase)
+        || text is "嵌入的" or "内嵌" or "內嵌";
 
     private static bool IsBroadArtworkRule(string rule)
     {
@@ -204,6 +211,10 @@ public static class MusicBeeArtworkResolver
 
         // MusicBee tag templates also appear translated in localized
         // settings. These aliases are labels, not a different tag schema.
+        result = R(result, "<文件名>",
+            Path.GetFileNameWithoutExtension(audioPath));
+        result = R(result, "<檔案名稱>",
+            Path.GetFileNameWithoutExtension(audioPath));
         result = R(result, "<专辑演出者>", metadata.AlbumArtist);
         result = R(result, "<專輯演出者>", metadata.AlbumArtist);
         result = R(result, "<专辑艺术家>", metadata.AlbumArtist);

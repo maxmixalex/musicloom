@@ -85,6 +85,74 @@ internal static class MusicBeeArtworkRegression
             TrackMetadata betaMeta = new("歌手乙", "歌手乙",
                 "专辑乙", HasEmbeddedArt: false);
 
+            // Exact, ordered, localized filters extracted from an actual
+            // MusicBee 3.5 zh-CN settings file. Never commit the complete
+            // private INI: it contains personal paths, devices and plugins.
+            string actualProfile = Path.Combine(root, "actual-zh-cn-artwork.ini");
+            File.WriteAllText(actualProfile, """
+                <?xml version="1.0" encoding="utf-8"?>
+                <ApplicationSettings>
+                  <TagArtworkScanFolders>false</TagArtworkScanFolders>
+                  <TagArtworkScanFilter>
+                    <string>嵌入的</string>
+                    <string>Cover.&lt;专辑演出者&gt;.&lt;专辑&gt;.*</string>
+                    <string>Cover.&lt;演出者&gt;.&lt;专辑&gt;.*</string>
+                    <string>Cover.&lt;专辑演出者&gt;.*</string>
+                    <string>Cover.&lt;演出者&gt;.*</string>
+                    <string>Cover.*</string>
+                    <string>Artwork.*</string>
+                    <string>Front.*</string>
+                    <string>Back.*</string>
+                    <string>&lt;文件名&gt;.*</string>
+                    <string>Embedded</string>
+                    <string>Folder.jpg</string>
+                  </TagArtworkScanFilter>
+                </ApplicationSettings>
+                """);
+            MusicBeeArtworkPreferences realChinese =
+                MusicBeeArtworkPreferences.Read(actualProfile)
+                ?? throw new InvalidOperationException(
+                    "The actual MusicBee zh-CN artwork configuration failed to parse.");
+            if (realChinese.Filters.Count != 12
+                || realChinese.Filters[0] != "嵌入的"
+                || realChinese.Filters[1] != "Cover.<专辑演出者>.<专辑>.*"
+                || realChinese.Filters[9] != "<文件名>.*"
+                || realChinese.Filters[10] != "Embedded")
+                throw new InvalidOperationException(
+                    "The actual MusicBee zh-CN preference order was altered.");
+
+            MusicBeeArtworkCandidate[] actualFirstAlbum =
+                MusicBeeArtworkResolver.Enumerate(
+                    alphaSong, alphaMeta, realChinese).ToArray();
+            MusicBeeArtworkCandidate[] actualSecondAlbum =
+                MusicBeeArtworkResolver.Enumerate(
+                    betaSong, betaMeta, realChinese).ToArray();
+            if (actualFirstAlbum.Length < 2
+                || !actualFirstAlbum[0].IsEmbedded
+                || !actualSecondAlbum[0].IsEmbedded
+                || actualFirstAlbum.First(candidate => !candidate.IsEmbedded).Path
+                    != alpha
+                || actualSecondAlbum.First(candidate => !candidate.IsEmbedded).Path
+                    != beta)
+                throw new InvalidOperationException(
+                    "Actual localized MusicBee settings lost embedded priority "
+                    + "or assigned the same cover to independent albums.");
+
+            string filenameFolder = Path.Combine(root, "filename-only");
+            Directory.CreateDirectory(filenameFolder);
+            string audioByName = Path.Combine(filenameFolder, "あの曲.flac");
+            string imageByName = Path.Combine(filenameFolder, "あの曲.png");
+            File.WriteAllBytes(audioByName, [1]);
+            File.WriteAllBytes(imageByName, [2]);
+            MusicBeeArtworkCandidate[] byFilename =
+                MusicBeeArtworkResolver.Enumerate(
+                    audioByName, new TrackMetadata("Singer", "Singer", "Album",
+                        HasEmbeddedArt: false), realChinese).ToArray();
+            if (!byFilename.Any(candidate =>
+                candidate.Path == imageByName))
+                throw new InvalidOperationException(
+                    "The localized <文件名> template never matched its cover.");
+
             MusicBeeArtworkPreferences broad = new(
                 ["Cover.*", "Embedded"], true);
             string? aa = MusicBeeArtworkResolver.Enumerate(
