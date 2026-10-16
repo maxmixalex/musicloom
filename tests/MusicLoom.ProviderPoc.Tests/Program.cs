@@ -1,4 +1,5 @@
 using System.Net;
+using System.Xml;
 using System.Text;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.ProviderPoc;

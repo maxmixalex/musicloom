@@ -99,7 +99,7 @@ internal static class ProviderProtocol
 
     public static string DecodeText(byte[] raw)
     {
-        if (raw.AsSpan().StartsWith([0xEF, 0xBB, 0xBF]))
+        if (raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF)
             raw = raw[3..];
         try
         {
