@@ -104,6 +104,15 @@ internal static class MusicBeeArtworkRegression
                 throw new InvalidOperationException(
                     "Localized MusicBee album artist / album cover naming templates were not resolved.");
 
+            MusicBeeArtworkPreferences exactTemplate = new(
+                ["Cover.<专辑演出者>.<专辑>"], true);
+            if (MusicBeeArtworkResolver.Enumerate(
+                    alphaSong, alphaMeta, exactTemplate).First().Path != alpha
+                || MusicBeeArtworkResolver.Enumerate(
+                    betaSong, betaMeta, exactTemplate).First().Path != beta)
+                throw new InvalidOperationException(
+                    "MusicBee album artist/album templates without an extension must match actual .jpg files.");
+
             MusicBeeArtworkPreferences englishTemplate = new(
                 ["Cover.<Album Artist>.<Album>.*"], true);
             if (MusicBeeArtworkResolver.Enumerate(

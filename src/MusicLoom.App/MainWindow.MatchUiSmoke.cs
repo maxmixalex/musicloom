@@ -470,14 +470,14 @@ public sealed partial class MainWindow
             immersive.SetNavigationAvailable(false, remoteSource: true);
             Button previous = immersive.FindName("PreviousButton") as Button
                 ?? throw new InvalidOperationException("Previous immersive button not found");
-            Button next = immersive.FindName("NextButton") as Button
+            Button nextTransport = immersive.FindName("NextButton") as Button
                 ?? throw new InvalidOperationException("Next immersive button not found");
             Assert(previous.Visibility == Visibility.Collapsed
-                && next.Visibility == Visibility.Collapsed,
+                && nextTransport.Visibility == Visibility.Collapsed,
                 "Immersive: remote audio hides previous/next rather than disabling visible buttons");
             immersive.SetNavigationAvailable(true, remoteSource: false);
             Assert(previous.Visibility == Visibility.Visible
-                && next.Visibility == Visibility.Visible,
+                && nextTransport.Visibility == Visibility.Visible,
                 "Immersive: local queue restores visible previous/next");
 
             Assert(transport.Parent is Grid footer

@@ -97,10 +97,26 @@ public static class MusicBeeArtworkResolver
                     ? Path.GetRelativePath(directory, image)
                         .Replace('\\', '/')
                     : System.IO.Path.GetFileName(image);
-                if (!Regex.IsMatch(candidateName,
-                    pattern, RegexOptions.IgnoreCase
-                        | RegexOptions.CultureInvariant))
-                    continue;
+                bool matched = Regex.IsMatch(candidateName, pattern,
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (!matched)
+                {
+                    // "Cover.<Album Artist>.<Album>" is a legal MusicBee
+                    // filename template WITHOUT a .jpg suffix. Compare
+                    // the stem, otherwise no images can ever match it.
+                    bool hasImageExtension = ImageExtensions.Contains(
+                        Path.GetExtension(rule));
+                    if (!hasImageExtension
+                        && !rule.Contains('*') && !rule.Contains('?'))
+                    {
+                        string withoutExtension = Path.ChangeExtension(
+                            candidateName, null).TrimEnd('.');
+                        matched = Regex.IsMatch(withoutExtension, pattern,
+                            RegexOptions.IgnoreCase
+                                | RegexOptions.CultureInvariant);
+                    }
+                }
+                if (!matched) continue;
 
                 if (!preferences.LoadedFromMusicBee
                     && string.Equals(
