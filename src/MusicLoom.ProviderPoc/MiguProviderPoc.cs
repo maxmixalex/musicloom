@@ -157,8 +157,52 @@ public sealed class MiguProviderPoc : IExternalMusicProvider, IDisposable
         if (ProviderProtocol.ProviderHttpsUrl(track.PreviewUrl, "migu.cn", out Uri? preview))
             return new ProviderPlayback(PlaybackDisposition.AuthorizedPreviewUrl,
                 "Provider response supplied an HTTPS preview URL.", preview);
+        // A separate PC listen operation can grant a streaming address.
+        // It must not be called without BOTH provider-issued identifiers,
+        // and an unsuccessful response is NEVER interpreted as permission
+        // to derive or guess the audio file URL.
+        Uri? granted = await TryGetExplicitListenGrantAsync(track, ct);
+        if (granted is not null)
+            return new ProviderPlayback(PlaybackDisposition.AuthorizedAudioUrl,
+                "Migu listen/v1.0 returned a provider-granted HTTPS song URL; actual network playback still needs entitlement verification.", granted);
         return new ProviderPlayback(PlaybackDisposition.Unavailable,
             "No verified provider-granted audio URL. Song metadata is not a playback grant.");
+    }
+
+    private async Task<Uri?> TryGetExplicitListenGrantAsync(
+        ProviderTrack track, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(track.ContentId)
+            || string.IsNullOrWhiteSpace(track.CopyrightId))
+            return null;
+        string url = "https://app.c.nf.migu.cn/MIGUM3.0/strategy/pc/listen/v1.0"
+            + "?contentId=" + Uri.EscapeDataString(track.ContentId)
+            + "&copyrightId=" + Uri.EscapeDataString(track.CopyrightId)
+            + "&resourceType=2&toneFlag=PQ";
+        using HttpRequestMessage request = Request(url);
+        request.Headers.TryAddWithoutValidation("Channel", "014X031");
+        try
+        {
+            using JsonDocument json = await ProviderProtocol.JsonAsync(
+                _http, request, ct);
+            JsonElement root = json.RootElement;
+            string code = ProviderProtocol.Text(root, "code");
+            if (code.Length > 0 && code != "000000") return null;
+            JsonElement data = ProviderProtocol.Get(root, "data");
+            string remote = ProviderProtocol.Text(data, "url", "playUrl", "listenUrl");
+            return ProviderProtocol.ProviderHttpsUrl(remote, "migu.cn",
+                out Uri? authorized) ? authorized : null;
+        }
+        catch (HttpRequestException)
+        {
+            // The optional listen request is an entitlement/availability
+            // probe. A denied or obsolete endpoint is not proof of playback.
+            return null;
+        }
+        catch (InvalidDataException)
+        {
+            return null;
+        }
     }
 
     public static ProviderTrack? ParseSong(JsonElement item)

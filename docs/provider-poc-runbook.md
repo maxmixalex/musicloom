@@ -68,6 +68,7 @@ For both browser playback experiments, success means confirmed audible output on
 
 ## Playback means different things on different platforms
 
+- Migu: if details do not contain a playable URL, the PoC can attempt the independent PC listen/v1.0 endpoint *only when both contentId and copyrightId were supplied*. Only a successful, validated HTTPS URL is accepted; missing or denied grants remain unavailable.
 - Migu: only an actual server-granted HTTPS URI on an accepted Migu domain can be offered for a playable track. When no authorized stream exists, the client returns Unavailable. One successful URL resolution does not establish that an unentitled account may play it.
 - Apple Music: a catalog-provided preview is a preview, not a full song. Full subscriber playback needs an authorized MusicKit SDK session on a supported Apple/web runtime, which the standalone Windows .NET HTTP client does not supply.
 - Spotify: the Web API has no freely usable full-song MP3 URL. An explicit Premium Spotify Connect PUT command can select the song on a user's existing player; a 204 acknowledges the command, not audible playback in MusicLoom. A separate Web Playback SDK integration is possible with authorization and platform/policy limits. Deprecated preview_url is not used as full playback.

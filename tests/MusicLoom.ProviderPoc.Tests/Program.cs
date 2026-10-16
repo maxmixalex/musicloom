@@ -16,6 +16,7 @@ foreach ((string name, Func<Task> check) in new (string, Func<Task>)[]
     ("Migu lyric metadata, credits and member lines remain untouched", MiguPreservesSource),
     ("Migu search, distinct identities, detail, lyrics and authorized audio", MiguFullFlow),
     ("Migu rejects untrusted hosts and never substitutes another provider", MiguSecurity),
+    ("Migu independent listen grant endpoint never fabricates audio", MiguListenGrant),
     ("Migu GB18030 lyrics decode without corruption or metadata stripping", MiguLegacy),
     ("Apple TTML retains word times, Japanese text and credit lines", AppleTtml),
     ("Apple search/detail/private TTML and preview require scoped authorization", AppleFullFlow),
@@ -34,8 +35,8 @@ foreach ((string name, Func<Task> check) in new (string, Func<Task>)[]
         Console.Error.WriteLine("FAIL " + name + " -- " + error);
     }
 }
-Console.WriteLine($"{passed}/9 PoC checks passed");
-return passed == 9 ? 0 : 1;
+Console.WriteLine($"{passed}/10 PoC checks passed");
+return passed == 10 ? 0 : 1;
 
 static void Check(bool value, string why)
 {
@@ -149,6 +150,52 @@ static async Task MiguFullFlow()
     Check(playback.Disposition == PlaybackDisposition.AuthorizedAudioUrl
         && playback.AuthorizedUri?.Host == "d.musicapp.migu.cn",
         "Actual provider-granted HTTPS stream must be returned as such");
+}
+
+static async Task MiguListenGrant()
+{
+    int grants = 0;
+    using FakeHttp handler = new(req =>
+    {
+        Uri u = req.RequestUri!;
+        if (u.AbsolutePath.EndsWith("/resourceinfo.do", StringComparison.Ordinal))
+        {
+            return Ok("""
+                {"code":"000000","resource":[{
+                  "contentId":"cid-1","copyrightId":"copyright-2",
+                  "name":"Track without a detail stream"
+                }]}
+                """);
+        }
+        if (u.AbsolutePath.EndsWith("/strategy/pc/listen/v1.0", StringComparison.Ordinal))
+        {
+            grants++;
+            Check(req.Headers.Contains("Channel")
+                && u.Query.Contains("contentId=cid-1", StringComparison.Ordinal)
+                && u.Query.Contains("copyrightId=copyright-2", StringComparison.Ordinal)
+                && u.Query.Contains("toneFlag=PQ", StringComparison.Ordinal),
+                "Migu explicit listen grant must use two independent IDs and channel");
+            return Ok("""
+                {"code":"000000","data":{
+                  "url":"https://freetyst.nf.migu.cn/song.mp3"}}
+                """);
+        }
+        throw new InvalidOperationException("Unexpected Migu request: " + u);
+    });
+    using HttpClient http = new(handler);
+    using MiguProviderPoc poc = new(http);
+    ProviderTrack sample = new(ExternalProvider.Migu, "cid-1", "Song", "Artist", "Album",
+        ContentId: "cid-1", CopyrightId: "copyright-2");
+    ProviderPlayback allowed = await poc.ResolvePlaybackAsync(sample);
+    Check(allowed.Disposition == PlaybackDisposition.AuthorizedAudioUrl
+        && allowed.AuthorizedUri?.Host == "freetyst.nf.migu.cn"
+        && grants == 1,
+        "Migu standalone playback must honor only a real HTTPS grant");
+    ProviderPlayback denied = await poc.ResolvePlaybackAsync(sample with
+    { CopyrightId = null });
+    Check(denied.Disposition == PlaybackDisposition.Unavailable
+        && grants == 1,
+        "No second ID means NO request and NO fabricated remote playback");
 }
 
 static async Task MiguSecurity()
