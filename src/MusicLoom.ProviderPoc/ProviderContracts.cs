@@ -53,7 +53,8 @@ public sealed record ProviderLyricBundle(
     LrcDocument? Translation = null,
     string? RawTranslation = null,
     LrcDocument? WordTimed = null,
-    string? RawWordTimed = null);
+    string? RawWordTimed = null,
+    IReadOnlyDictionary<string, string>? Localizations = null);
 
 public sealed record ProviderPlayback(
     PlaybackDisposition Disposition, string Explanation, Uri? AuthorizedUri = null);
