@@ -172,10 +172,30 @@ internal static class MusicBeeArtworkRegression
                 .Where(candidate => !candidate.IsEmbedded)
                 .Select(candidate => candidate.Path)
                 .FirstOrDefault();
-            if (safeChoice != sharedGeneric)
+            // The existence of other album-specific images makes an
+            // unqualified Cover.jpg ambiguous in this flat folder. Better
+            // to report no external cover than assign the wrong album.
+            if (safeChoice is not null)
                 throw new InvalidOperationException(
-                    "Missing album artwork inherited another album instead "
-                    + "of the deliberately generic Cover.jpg.");
+                    "An ambiguous generic Cover.jpg or another album's art "
+                    + "was used for a missing album in a shared folder.");
+
+            // In an isolated album directory, the same generic filename is
+            // safe and remains a valid ordinary MusicBee fallback.
+            string isolated = Path.Combine(root, "isolated-generic");
+            Directory.CreateDirectory(isolated);
+            string isolatedSong = Path.Combine(isolated, "one.flac");
+            string isolatedCover = Path.Combine(isolated, "Cover.jpg");
+            File.WriteAllBytes(isolatedSong, [1]);
+            File.WriteAllBytes(isolatedCover, [3]);
+            string? isolatedChosen = MusicBeeArtworkResolver.Enumerate(
+                    isolatedSong, missingAlbumCover, realChinese)
+                .Where(candidate => !candidate.IsEmbedded)
+                .Select(candidate => candidate.Path)
+                .FirstOrDefault();
+            if (isolatedChosen != isolatedCover)
+                throw new InvalidOperationException(
+                    "A safe single-album generic Cover.jpg was ignored.");
 
             string filenameFolder = Path.Combine(root, "filename-only");
             Directory.CreateDirectory(filenameFolder);
