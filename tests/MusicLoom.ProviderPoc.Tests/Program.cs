@@ -4,6 +4,11 @@ using System.Text;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.ProviderPoc;
 
+// Public, independently generated MRC vector from Lyrimuse's own regression
+// fixture (synthetic test text, NOT a commercial lyric).
+const string Cipher = "31c1161be5ad108cd8f1bfa976753ccfdfd4aa7b97188cbd5a7322a000333da1450b36bc4312671a92eb81bf0e4f65e76c1e794348ec171093d0f8ead4e5a833ce520af3e26961d0b65482da18f5da530f612f25ff1508f19d4135f0123b1350f2188d0f3fed36648591dca314cba5e18e0c6c01228bacd1540e5cfa30badac6486bdb0cd5592b7cc792a3ce085eb6312dc371b310204eb1b34f63ca16677911676190ae50844901700370217fb91abb0bfa5f3c783c43fc2e50f562fb655c06eea2b6be832ba9b6dfed68e89eff328d7ac23e5864b743b2468b43e49293dd60ea36e5aebae83985e8a05e6ed7161c00";
+const string Plain = "[ti:测试]\n[0,0]测(0,0)试(0,0)\n[1000,900]你(1000,300)好(1300,300)世(1600,150)界(1750,150)\n[2500,600]Hel(2500,300)lo(2800,300)\n";
+
 int passed = 0;
 foreach ((string name, Func<Task> check) in new (string, Func<Task>)[]
 {
@@ -35,11 +40,6 @@ static void Check(bool value, string why)
 {
     if (!value) throw new InvalidOperationException(why);
 }
-
-// Public, independently generated MRC vector from Lyrimuse's own regression
-// fixture (synthetic test text, NOT a commercial lyric).
-const string Cipher = "31c1161be5ad108cd8f1bfa976753ccfdfd4aa7b97188cbd5a7322a000333da1450b36bc4312671a92eb81bf0e4f65e76c1e794348ec171093d0f8ead4e5a833ce520af3e26961d0b65482da18f5da530f612f25ff1508f19d4135f0123b1350f2188d0f3fed36648591dca314cba5e18e0c6c01228bacd1540e5cfa30badac6486bdb0cd5592b7cc792a3ce085eb6312dc371b310204eb1b34f63ca16677911676190ae50844901700370217fb91abb0bfa5f3c783c43fc2e50f562fb655c06eea2b6be832ba9b6dfed68e89eff328d7ac23e5864b743b2468b43e49293dd60ea36e5aebae83985e8a05e6ed7161c00";
-const string Plain = "[ti:测试]\n[0,0]测(0,0)试(0,0)\n[1000,900]你(1000,300)好(1300,300)世(1600,150)界(1750,150)\n[2500,600]Hel(2500,300)lo(2800,300)\n";
 
 static Task MiguCipher()
 {

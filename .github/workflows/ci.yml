@@ -43,12 +43,6 @@ jobs:
       - name: Run regression harness
         run: dotnet run --project tests/MusicLoom.Tests/MusicLoom.Tests.csproj -c Release --no-build
 
-      - name: Publish regression harness with NativeAOT
-        run: dotnet publish tests/MusicLoom.Tests/MusicLoom.Tests.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -o artifacts/regression-linux-x64
-
-      - name: Run NativeAOT regression harness
-        run: ./artifacts/regression-linux-x64/MusicLoom.Tests
-
       - name: Restore independent provider PoC tests
         run: dotnet restore tests/MusicLoom.ProviderPoc.Tests/MusicLoom.ProviderPoc.Tests.csproj
 
@@ -63,6 +57,12 @@ jobs:
 
       - name: Run NativeAOT provider PoC fixtures
         run: ./artifacts/provider-poc-linux-x64/MusicLoom.ProviderPoc.Tests
+
+      - name: Publish regression harness with NativeAOT
+        run: dotnet publish tests/MusicLoom.Tests/MusicLoom.Tests.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -o artifacts/regression-linux-x64
+
+      - name: Run NativeAOT regression harness
+        run: ./artifacts/regression-linux-x64/MusicLoom.Tests
 
       - name: Build standalone provider experiment CLI
         run: dotnet build src/MusicLoom.ProviderPoc.Cli/MusicLoom.ProviderPoc.Cli.csproj -c Release
