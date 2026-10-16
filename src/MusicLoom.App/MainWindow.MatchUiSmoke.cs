@@ -314,9 +314,17 @@ public sealed partial class MainWindow
 
             string searchPng = marker + ".SearchDialog.png";
             await SavePanelScreenshotAsync(search, searchPng);
+            double previewX = preview.TransformToVisual(search)
+                .TransformPoint(new Windows.Foundation.Point(0, 0)).X;
+            double previewWidth = preview.ActualWidth;
+            int previewPixels = await CountRenderedTextPixelsAsync(search,
+                minX: (int)Math.Max(0, Math.Round(previewX + 45)));
             Assert(search.ActualWidth > 1050
-                && await CountRenderedTextPixelsAsync(search, minX: 850) > 500,
-                "Search dialog: actual third lyric column painted inside visible window");
+                && previewWidth > 185
+                && previewX >= 750
+                && previewX + previewWidth <= search.ActualWidth + 6
+                && previewPixels > 120,
+                $"Search dialog: entire lyric column must be visible and painted (dialog={search.ActualWidth:0}, x={previewX:0}, width={previewWidth:0}, pixels={previewPixels})");
             Assert(new FileInfo(searchPng).Length > 1800,
                 "Search dialog: actual WinUI candidate and bilingual lyric columns rendered");
 
@@ -365,8 +373,14 @@ public sealed partial class MainWindow
                 "Immersive: stationary, non-intercepting edge fades outside scrolling items");
             string immersivePng = marker + ".ImmersiveViewport.png";
             await SavePanelScreenshotAsync(immersive, immersivePng);
-            Assert(await CountRenderedTextPixelsAsync(immersive, minX: 740) > 100,
-                "Immersive: right-side lyric viewport actually painted without parent clipping");
+            double rightX = rightColumn.TransformToVisual(immersive)
+                .TransformPoint(new Windows.Foundation.Point(0, 0)).X;
+            int rightPixels = await CountRenderedTextPixelsAsync(immersive,
+                minX: (int)Math.Max(0, Math.Round(rightX + 40)));
+            Assert(rightColumn.ActualWidth > 175
+                && rightX + rightColumn.ActualWidth <= immersive.ActualWidth + 6
+                && rightPixels > 120,
+                $"Immersive: lyric panel must paint inside viewport (x={rightX:0}, width={rightColumn.ActualWidth:0}, viewport={immersive.ActualWidth:0}, pixels={rightPixels})");
             Assert(new FileInfo(immersivePng).Length > 1800,
                 "Immersive: actual WinUI viewport with long bilingual lyrics rendered");
 

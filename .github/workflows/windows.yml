@@ -344,13 +344,17 @@ jobs:
           Write-Host "Runtime AppWindow icon materialized: $($runtimeIconInfo.FullName) ($($runtimeIconInfo.Length) bytes)"
 
       - name: Upload matching behavior and screenshot proof
+        # Retain screenshots even when a visual assertion fails. They are
+        # diagnostic evidence, NOT acceptance on failed workflows.
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: musicloom-match-ui-evidence
           path: |
             artifacts/*.match-ui.ok
             artifacts/*.match-ui.ok.*.png
-          if-no-files-found: error
+            artifacts/*.match-ui.ok.failed
+          if-no-files-found: warn
 
       - name: Upload Windows CLI
         uses: actions/upload-artifact@v6

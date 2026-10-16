@@ -135,6 +135,7 @@ public sealed partial class MainWindow
         {
             "matched" => matched,
             "confirmed" => matched && state?.NeteaseMatchConfirmed == true,
+            "unconfirmed" => matched && state?.NeteaseMatchConfirmed != true,
             "missing" => !matched && !suppressed,
             "empty" => suppressed,
             _ => true,
@@ -152,6 +153,7 @@ public sealed partial class MainWindow
         {
             "matched" => match?.IsMatched == true,
             "confirmed" => match?.IsMatched == true && match.Confirmed,
+            "unconfirmed" => match?.IsMatched == true && !match.Confirmed,
             "missing" => match?.IsMatched != true && match?.Suppressed != true,
             "empty" => match?.Suppressed == true,
             _ => true,
@@ -178,6 +180,7 @@ public sealed partial class MainWindow
                     "empty" => L("Explicitly empty", "已置空"),
                     "matched" => L("Matched", "已匹配"),
                     "confirmed" => L("Confirmed", "已确认"),
+                    "unconfirmed" => L("Needs confirmation", "待确认"),
                     _ => key,
                 };
                 choice.Content = L(en, zh) + " · " + value;

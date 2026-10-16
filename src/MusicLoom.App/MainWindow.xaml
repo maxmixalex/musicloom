@@ -232,6 +232,7 @@
               <ComboBoxItem Tag="all" Content="NetEase: all"/>
               <ComboBoxItem Tag="matched" Content="NetEase: matched"/>
               <ComboBoxItem Tag="confirmed" Content="NetEase: confirmed"/>
+              <ComboBoxItem Tag="unconfirmed" Content="NetEase: needs confirmation"/>
               <ComboBoxItem Tag="missing" Content="NetEase: unmatched"/>
               <ComboBoxItem Tag="empty" Content="NetEase: explicitly empty"/>
             </ComboBox>
@@ -241,6 +242,7 @@
               <ComboBoxItem Tag="all" Content="QQ Music: all"/>
               <ComboBoxItem Tag="matched" Content="QQ Music: matched"/>
               <ComboBoxItem Tag="confirmed" Content="QQ Music: confirmed"/>
+              <ComboBoxItem Tag="unconfirmed" Content="QQ Music: needs confirmation"/>
               <ComboBoxItem Tag="missing" Content="QQ Music: unmatched"/>
               <ComboBoxItem Tag="empty" Content="QQ Music: explicitly empty"/>
             </ComboBox>
@@ -250,6 +252,7 @@
               <ComboBoxItem Tag="all" Content="KuGou: all"/>
               <ComboBoxItem Tag="matched" Content="KuGou: matched"/>
               <ComboBoxItem Tag="confirmed" Content="KuGou: confirmed"/>
+              <ComboBoxItem Tag="unconfirmed" Content="KuGou: needs confirmation"/>
               <ComboBoxItem Tag="missing" Content="KuGou: unmatched"/>
               <ComboBoxItem Tag="empty" Content="KuGou: explicitly empty"/>
             </ComboBox>
