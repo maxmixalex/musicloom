@@ -16,6 +16,7 @@ foreach ((string name, Func<Task> check) in new (string, Func<Task>)[]
     ("Migu lyric metadata, credits and member lines remain untouched", MiguPreservesSource),
     ("Migu search, distinct identities, detail, lyrics and authorized audio", MiguFullFlow),
     ("Migu rejects untrusted hosts and never substitutes another provider", MiguSecurity),
+    ("Migu GB18030 lyrics decode without corruption or metadata stripping", MiguLegacy),
     ("Apple TTML retains word times, Japanese text and credit lines", AppleTtml),
     ("Apple search/detail/private TTML and preview require scoped authorization", AppleFullFlow),
     ("Spotify catalog, color-lyrics and explicit Premium device command", SpotifyFullFlow),
@@ -33,8 +34,8 @@ foreach ((string name, Func<Task> check) in new (string, Func<Task>)[]
         Console.Error.WriteLine("FAIL " + name + " -- " + error);
     }
 }
-Console.WriteLine($"{passed}/8 PoC checks passed");
-return passed == 8 ? 0 : 1;
+Console.WriteLine($"{passed}/9 PoC checks passed");
+return passed == 9 ? 0 : 1;
 
 static void Check(bool value, string why)
 {
@@ -172,6 +173,29 @@ static async Task MiguSecurity()
     }
     catch (ArgumentException) { wrongProvider = true; }
     Check(wrongProvider, "A track from another service must be rejected");
+}
+
+static async Task MiguLegacy()
+{
+    Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    byte[] legacy = Encoding.GetEncoding("GB18030").GetBytes(
+        "[00:01.000]歌曲名 银河\n[00:02.000]乐队成员：鼓手某某\n"
+        + "[00:03.000]こんにちは\n");
+    using FakeHttp handler = new(req => new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new ByteArrayContent(legacy),
+    });
+    using HttpClient http = new(handler);
+    using MiguProviderPoc poc = new(http);
+    var song = new ProviderTrack(ExternalProvider.Migu, "123",
+        "银河", "某乐队", "专辑",
+        LrcUrl: "https://d.musicapp.migu.cn/legacy.lrc");
+    var lyrics = await poc.GetLyricsAsync(song);
+    Check(lyrics is not null && lyrics.Original.Lines.Count == 3
+        && lyrics.Original.Lines[0].Text == "歌曲名 银河"
+        && lyrics.Original.Lines[1].Text == "乐队成员：鼓手某某"
+        && lyrics.Original.Lines[2].Text == "こんにちは",
+        "Legacy encoding must preserve each original UTF-16 lyric, title and member row");
 }
 
 static Task AppleTtml()

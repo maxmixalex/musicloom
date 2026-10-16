@@ -107,10 +107,23 @@ internal static class ProviderProtocol
         }
         catch (DecoderFallbackException)
         {
-            // Do not replace bytes with '?' or silently destroy multilingual lyrics.
-            // A subsequent opt-in GB18030 decoding strategy requires actual fixtures.
-            throw new InvalidDataException(
-                "Provider lyric is not valid UTF-8; legacy encoding needs a verified decoder.");
+            // Some real Migu legacy LRCs use GBK/GB18030. Decode explicitly
+            // with exception fallbacks rather than substituting '?' into
+            // Japanese/Chinese lyric text.
+            try
+            {
+                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                Encoding legacy = Encoding.GetEncoding("GB18030",
+                    EncoderFallback.ExceptionFallback,
+                    DecoderFallback.ExceptionFallback);
+                return legacy.GetString(raw);
+            }
+            catch (Exception ex) when (ex is DecoderFallbackException
+                or ArgumentException or NotSupportedException)
+            {
+                throw new InvalidDataException(
+                    "Provider lyric is neither valid UTF-8 nor valid GB18030.", ex);
+            }
         }
     }
 

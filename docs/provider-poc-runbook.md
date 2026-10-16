@@ -74,6 +74,8 @@ For both browser playback experiments, success means confirmed audible output on
 
 This separation is mandatory. Do not fabricate an audio URL from a catalog ID, assume all songs have anonymous previews, or silently substitute a local track for remote content.
 
+Migu lyric downloads decode valid UTF-8 first, then strict GB18030 when UTF-8 is invalid, preserving the original text rather than replacing unmatched bytes with question marks.
+
 ## Lyrics: never delete provider-supplied text
 
 The experiment does not special-case or strip song titles, singers, songwriter credits, composers or band members. If a timed line says "歌曲名", "歌手名", "乐队成员", "作词", or "作曲", that remains in the original and parsed data; Migu [0,0] MRC title/credit lines are also retained. Even if a source includes unusual non-lyric metadata, leave its text untouched instead of guessing what the author intended. Missing TRC or malformed MRC cannot erase LRC.
