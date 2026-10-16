@@ -138,6 +138,45 @@ internal static class MusicBeeArtworkRegression
                     "Actual localized MusicBee settings lost embedded priority "
                     + "or assigned the same cover to independent albums.");
 
+            // Same artist, MULTIPLE albums in a flat folder. The later
+            // Cover.<Album Artist>.* rule must never reuse another album's
+            // named image when the specific album template is missing.
+            string sameArtist = Path.Combine(root, "multi-album-one-artist");
+            Directory.CreateDirectory(sameArtist);
+            string firstAlbumArt = Path.Combine(sameArtist,
+                "Cover.共同演出者.第一张专辑.jpg");
+            string secondAlbumArt = Path.Combine(sameArtist,
+                "Cover.共同演出者.第二张专辑.jpg");
+            string artistGeneric = Path.Combine(sameArtist,
+                "Cover.共同演出者.jpg");
+            string sharedGeneric = Path.Combine(sameArtist, "Cover.jpg");
+            foreach (string image in new[]
+                { firstAlbumArt, secondAlbumArt, artistGeneric, sharedGeneric })
+                File.WriteAllBytes(image, [1, 2, 3]);
+            string thirdAlbumSong = Path.Combine(sameArtist, "third.flac");
+            File.WriteAllBytes(thirdAlbumSong, [1]);
+            TrackMetadata missingAlbumCover = new("共同演出者", "共同演出者",
+                "第三张专辑", HasEmbeddedArt: false);
+            string? safeChoice = MusicBeeArtworkResolver.Enumerate(
+                    thirdAlbumSong, missingAlbumCover, realChinese)
+                .Where(candidate => !candidate.IsEmbedded)
+                .Select(candidate => candidate.Path)
+                .FirstOrDefault();
+            if (safeChoice != artistGeneric)
+                throw new InvalidOperationException(
+                    "An artist-wide fallback selected a DIFFERENT album's cover.");
+
+            File.Delete(artistGeneric);
+            safeChoice = MusicBeeArtworkResolver.Enumerate(
+                    thirdAlbumSong, missingAlbumCover, realChinese)
+                .Where(candidate => !candidate.IsEmbedded)
+                .Select(candidate => candidate.Path)
+                .FirstOrDefault();
+            if (safeChoice != sharedGeneric)
+                throw new InvalidOperationException(
+                    "Missing album artwork inherited another album instead "
+                    + "of the deliberately generic Cover.jpg.");
+
             string filenameFolder = Path.Combine(root, "filename-only");
             Directory.CreateDirectory(filenameFolder);
             string audioByName = Path.Combine(filenameFolder, "あの曲.flac");

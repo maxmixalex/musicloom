@@ -84,6 +84,9 @@ public static class MusicBeeArtworkResolver
             bool hasRelativeDirectory = rule.Contains('/');
             bool broadAlbumCover = !hasRelativeDirectory
                 && IsBroadArtworkRule(rule);
+            bool artistWideRule = IsArtistScopedWildcard(template);
+            string artistWideStem = artistWideRule
+                ? rule[..^1].TrimEnd('.') : string.Empty;
             string pattern = "^" + Regex.Escape(rule)
                 .Replace("\\*", ".*", StringComparison.Ordinal)
                 .Replace("\\?", ".", StringComparison.Ordinal) + "$";
@@ -121,6 +124,15 @@ public static class MusicBeeArtworkResolver
                 }
                 if (!matched) continue;
 
+                // An artist-scoped pattern (Cover.<Album Artist>.*)
+                // must not become the cover of every other album by that
+                // performer in a shared folder. "Cover.Artist.jpg" is a
+                // genuine artist-wide fallback; "Cover.Artist.Album.jpg"
+                // belongs to THAT specific album only.
+                if (artistWideRule && !IsCorrectArtistAlbum(
+                    image, artistWideStem, metadata.Album))
+                    continue;
+
                 if (!preferences.LoadedFromMusicBee
                     && string.Equals(
                         System.IO.Path.GetFileNameWithoutExtension(image),
@@ -135,6 +147,37 @@ public static class MusicBeeArtworkResolver
                     yield return new MusicBeeArtworkCandidate(image, false);
             }
         }
+    }
+
+    private static bool IsArtistScopedWildcard(string template)
+    {
+        if (!template.EndsWith(".*", StringComparison.Ordinal))
+            return false;
+        bool artist = new[]
+        {
+            "<Artist>", "<Album Artist>", "<AlbumArtist>",
+            "<演出者>", "<专辑演出者>", "<專輯演出者>",
+            "<艺术家>", "<专辑艺术家>", "<專輯藝術家>",
+        }.Any(name => template.Contains(name,
+            StringComparison.OrdinalIgnoreCase));
+        bool album = new[] { "<Album>", "<专辑>", "<專輯>" }
+            .Any(name => template.Contains(name,
+                StringComparison.OrdinalIgnoreCase));
+        return artist && !album;
+    }
+
+    private static bool IsCorrectArtistAlbum(
+        string path, string artistStem, string? album)
+    {
+        string candidate = System.IO.Path.GetFileNameWithoutExtension(path);
+        if (string.Equals(candidate, artistStem,
+            StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (string.IsNullOrWhiteSpace(album))
+            return false;
+        return string.Equals(candidate,
+            artistStem + "." + Clean(album),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsEmbeddedArtworkRule(string text) =>
