@@ -79,12 +79,17 @@ internal static class TimedLyricsRegression
             + "[500,900]he(500,400)rō(900,500)\n"
             + "[1900,900]world(1900,900)"
             + "\" /></LyricInfo></QrcInfos>";
-        string response = JsonSerializer.Serialize(new
+        using MemoryStream responseData = new();
+        using (Utf8JsonWriter writer = new(responseData))
         {
-            lyric = QrcXml,
-            roma = qrcRoma,
-            trans = "",
-        });
+            writer.WriteStartObject();
+            writer.WriteString("lyric", QrcXml);
+            writer.WriteString("roma", qrcRoma);
+            writer.WriteString("trans", "");
+            writer.WriteEndObject();
+            writer.Flush();
+        }
+        string response = Encoding.UTF8.GetString(responseData.ToArray());
         LrcDocument? merged = CloudLyricsClient.ParseQqLyrics(response);
         Assert(merged?.Lines.Count == 2
             && merged.Lines[0].Words is { Count: 2 } words
