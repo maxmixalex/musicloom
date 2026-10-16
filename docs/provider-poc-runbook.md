@@ -57,6 +57,13 @@ The C# provider PoC is a catalog/lyrics/preview requester, not a full DRM playba
 
 File: poc/apple-musickit-playback.html. This path is based on documented MusicKit JS v3, not Apple private lyric endpoint scraping.
 
+
+## Spotify SDK full-playback browser experiment
+
+The additional static page poc/spotify-web-playback.html uses Spotify's **official Web Playback SDK**, a user's Premium OAuth token and a deliberate Connect playback command. It tests real protected audio in a supported browser without trying to extract audio URLs. Run it from a local HTTP server (not file://) and ensure the OAuth client has the required redirect/origin policy and streaming/user-modify-playback-state scope.
+
+For both browser playback experiments, success means confirmed audible output on a real authorized account. A successful promise or Spotify HTTP 204 alone is not SAT, and WinUI WebView2 protected-media support must be tested independently.
+
 ## Playback means different things on different platforms
 
 - Migu: only an actual server-granted HTTPS URI on an accepted Migu domain can be offered for a playable track. When no authorized stream exists, the client returns Unavailable. One successful URL resolution does not establish that an unentitled account may play it.
