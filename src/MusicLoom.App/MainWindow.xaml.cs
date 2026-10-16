@@ -4023,6 +4023,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        UpdateLibraryToolbarPresentation();
+
         string query =
             LibrarySearchBox.Text.Trim();
 

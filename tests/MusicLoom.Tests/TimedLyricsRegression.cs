@@ -258,6 +258,11 @@ internal static class TimedLyricsRegression
         LrcDocument? qqDoc = await client.GetLyricsAsync(qq[0]);
         Assert(qqDoc?.Lines[0].Words is { Count: 2 },
             "QQ lyric request must decrypt QRC instead of LRC-only.");
+        var qqRich = LrcPresentation.Project(qqDoc!);
+        Assert(qqRich.First().Translation == "你好"
+            && qqRich.First().Romanization == "he ro"
+            && mock.QqLegacyRequests == 1,
+            "QQ must supplement missing translation and romaji from the legacy SongMID endpoint.");
         Assert(mock.QqSessions == 1,
             "Guest QQ session should be shared between search/lyrics.");
         Assert(mock.QqRequests == 3,
@@ -334,6 +339,7 @@ internal static class TimedLyricsRegression
 
         public int QqSessions { get; private set; }
         public int QqRequests { get; private set; }
+        public int QqLegacyRequests { get; private set; }
         public int KugouSearchCount { get; private set; }
         public int KugouDownloadCount { get; private set; }
         public int MissingSignatures { get; private set; }
@@ -385,6 +391,19 @@ internal static class TimedLyricsRegression
                     throw new InvalidOperationException(
                         "Unexpected QQ Music request: " + request);
                 }
+            }
+            else if (path.Host == "c.y.qq.com")
+            {
+                QqLegacyRequests++;
+                string lyric = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+                    "[00:00.500]Hello\\n[00:01.900]World".Replace("\\\\n", "\\n")));
+                string trans = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+                    "[00:00.500]你好"));
+                string roma = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+                    "[00:00.500]he ro"));
+                payload = "{\"lyric\":\"" + lyric
+                    + "\",\"trans\":\"" + trans
+                    + "\",\"roma\":\"" + roma + "\"}";
             }
             else if (path.Host.Contains("kugou.com", StringComparison.Ordinal))
             {

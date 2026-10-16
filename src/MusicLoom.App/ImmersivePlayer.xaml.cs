@@ -53,6 +53,9 @@ public sealed partial class ImmersivePlayer : UserControl
     public event Action<string>? ModeChanged;
 
     internal ListView LyricsList => ImmersiveLyricsList;
+    internal UIElement CoverTransitionTarget => AlbumCover;
+    internal UIElement TitleTransitionTarget => TrackHeading;
+    internal UIElement InformationTransitionTarget => ImmersiveMetadataHeader;
     internal ImageSource? CurrentArtwork => AlbumCover.Source;
     internal ScrollViewer? LyricsScrollViewer => _lyricScrollViewer;
 
@@ -189,10 +192,15 @@ public sealed partial class ImmersivePlayer : UserControl
     internal void SetPlaying(bool playing) =>
         PlayPauseIcon.Symbol = playing ? Symbol.Pause : Symbol.Play;
 
-    internal void SetNavigationAvailable(bool available)
+    internal void SetNavigationAvailable(bool available,
+        bool remoteSource = false)
     {
-        PreviousButton.IsEnabled = available;
-        NextButton.IsEnabled = available;
+        PreviousButton.Visibility = remoteSource
+            ? Visibility.Collapsed : Visibility.Visible;
+        NextButton.Visibility = remoteSource
+            ? Visibility.Collapsed : Visibility.Visible;
+        PreviousButton.IsEnabled = available && !remoteSource;
+        NextButton.IsEnabled = available && !remoteSource;
     }
 
     internal async Task ApplyArtworkColorsAsync(byte[]? artwork)
@@ -519,8 +527,12 @@ public sealed partial class ImmersivePlayer : UserControl
         if (_lyricScrollViewer is not null) return;
         _lyricScrollViewer = FindNestedScrollViewer(ImmersiveLyricsList);
         if (_lyricScrollViewer is not null)
+        {
+            _lyricScrollViewer.ViewChanging += (_, args) =>
+                UpdateLyricFadeVisibility(args.NextView.VerticalOffset);
             _lyricScrollViewer.ViewChanged += (_, _) =>
                 UpdateLyricFadeVisibility();
+        }
     }
 
     private static ScrollViewer? FindNestedScrollViewer(
@@ -537,23 +549,33 @@ public sealed partial class ImmersivePlayer : UserControl
         return null;
     }
 
-    private void UpdateLyricFadeVisibility()
+    private void UpdateLyricFadeVisibility(double? nextOffset = null)
     {
         EnsureLyricScrollViewer();
         ScrollViewer? scroll = _lyricScrollViewer;
-        if (scroll is null || scroll.ScrollableHeight < 2)
+        if (scroll is null || scroll.ScrollableHeight <= 1)
         {
             LyricsTopFade.Visibility = Visibility.Collapsed;
             LyricsBottomFade.Visibility = Visibility.Collapsed;
             return;
         }
-        // Only veil an edge if there are actual offscreen lyric pixels on
-        // that side. The first and last lines stay crisp at the boundaries.
-        LyricsTopFade.Visibility = scroll.VerticalOffset > 1
+
+        // ViewChanging arrives BEFORE the compositor moves the lyrics, so
+        // update both veils for the incoming scroll offset in the same frame.
+        // A short easing range avoids abrupt full-opacity jumps near ends.
+        double offset = Math.Clamp(nextOffset ?? scroll.VerticalOffset,
+            0, scroll.ScrollableHeight);
+        double edge = Math.Max(1, Math.Min(LyricsTopFade.Height,
+            LyricsBottomFade.Height));
+        double topOpacity = Math.Clamp(offset / edge, 0, 1);
+        double bottomOpacity = Math.Clamp(
+            (scroll.ScrollableHeight - offset) / edge, 0, 1);
+        LyricsTopFade.Opacity = topOpacity;
+        LyricsBottomFade.Opacity = bottomOpacity;
+        LyricsTopFade.Visibility = topOpacity > 0.005
             ? Visibility.Visible : Visibility.Collapsed;
-        LyricsBottomFade.Visibility =
-            scroll.VerticalOffset < scroll.ScrollableHeight - 1
-                ? Visibility.Visible : Visibility.Collapsed;
+        LyricsBottomFade.Visibility = bottomOpacity > 0.005
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private Color BackgroundAt(double y)

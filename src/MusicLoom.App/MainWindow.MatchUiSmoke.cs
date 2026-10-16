@@ -43,6 +43,18 @@ public sealed partial class MainWindow
 
         try
         {
+            Assert(LibraryFacetsButton.Flyout is Flyout
+                && LibrarySortMenuButton.Flyout is Flyout
+                && LibraryLyricsFacetBox is not null
+                && LibraryNeteaseFacetBox is not null
+                && LibraryQqFacetBox is not null
+                && LibraryKugouFacetBox is not null,
+                "Library: advanced facet and sort controls are progressively disclosed in two native flyouts");
+            Assert(LyricsRomanizationToggle is not null
+                && !new MusicLoom.Core.Configuration.LyricsSettings()
+                    .IncludeRomanization,
+                "Settings: sync romanization is explicitly opt-in and defaults off");
+
             string? directory = Path.GetDirectoryName(marker);
             if (!string.IsNullOrWhiteSpace(directory))
                 Directory.CreateDirectory(directory);
@@ -455,6 +467,19 @@ public sealed partial class MainWindow
                 ?? throw new InvalidOperationException("Immersive slider not found");
             TextBlock playerTime = immersive.FindName("PlaybackTime") as TextBlock
                 ?? throw new InvalidOperationException("Player timestamp not found");
+            immersive.SetNavigationAvailable(false, remoteSource: true);
+            Button previous = immersive.FindName("PreviousButton") as Button
+                ?? throw new InvalidOperationException("Previous immersive button not found");
+            Button next = immersive.FindName("NextButton") as Button
+                ?? throw new InvalidOperationException("Next immersive button not found");
+            Assert(previous.Visibility == Visibility.Collapsed
+                && next.Visibility == Visibility.Collapsed,
+                "Immersive: remote audio hides previous/next rather than disabling visible buttons");
+            immersive.SetNavigationAvailable(true, remoteSource: false);
+            Assert(previous.Visibility == Visibility.Visible
+                && next.Visibility == Visibility.Visible,
+                "Immersive: local queue restores visible previous/next");
+
             Assert(transport.Parent is Grid footer
                 && Grid.GetRow(footer) == 1
                 && Grid.GetRow(playerTime) == 0
@@ -568,6 +593,26 @@ public sealed partial class MainWindow
                 && wrap.Blocks[0] is Microsoft.UI.Xaml.Documents.Paragraph wrapped
                 && wrapped.Inlines.Count == flow.Length,
                 "Ruby: long annotated lyrics retain every atom after line wrapping");
+            // Line-level romaji is never a giant inline atom; it is two
+            // separately wrapped rows sharing the same viewport width.
+            rubyView.Line = new LyricDisplayLine(
+                "流れてゆく星の光", null, "preferOriginal",
+                TimeSpan.FromSeconds(2), romanization:
+                    "nagarete yuku hoshi no hikari");
+            await Task.Delay(85);
+            Assert(rubyView.Content is StackPanel pronunciationLayout
+                && pronunciationLayout.Children.Count == 2
+                && pronunciationLayout.Children[0] is TextBlock topReading
+                && topReading.Text == "nagarete yuku hoshi no hikari"
+                && pronunciationLayout.Children[1] is TextBlock japanese
+                && japanese.Text == "流れてゆく星の光"
+                && japanese.TextWrapping == TextWrapping.WrapWholeWords,
+                "Ruby: line romanization and Japanese original wrap independently without stealing width");
+            rubyView.Line = new LyricDisplayLine(
+                new string('春', flow.Length), null, "preferOriginal",
+                TimeSpan.Zero, flow);
+            await Task.Delay(80);
+
             string rubyPng = marker + ".RubyViewport.png";
             await SavePanelScreenshotAsync(rubyView, rubyPng);
             int brightPixels = await CountRenderedTextPixelsAsync(rubyView);

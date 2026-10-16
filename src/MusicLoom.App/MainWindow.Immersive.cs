@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media.Animation;
 using MusicLoom.LyricsProviders;
 using MusicLoom.Netease;
 using MusicLoom.Core.Configuration;
@@ -105,6 +106,73 @@ public sealed partial class MainWindow
             AppWindow.TitleBar.ButtonBackgroundColor = background;
     }
 
+    private const string ConnectedCoverKey = "MusicLoom.Immersive.Cover";
+    private const string ConnectedTitleKey = "MusicLoom.Immersive.Title";
+
+    private void PrepareImmersiveConnectedAnimation(bool exiting)
+    {
+        try
+        {
+            if (_mediaPlayer.Source is null) return;
+            ConnectedAnimationService service =
+                ConnectedAnimationService.GetForCurrentView();
+            UIElement cover = exiting
+                ? ImmersiveView.CoverTransitionTarget : PlayerArtworkImage;
+            UIElement title = exiting
+                ? ImmersiveView.TitleTransitionTarget : PlayerTitleText;
+            if ((exiting ? ImmersiveView.CurrentArtwork
+                : PlayerArtworkImage.Source) is not null)
+            {
+                ConnectedAnimation animation = service.PrepareToAnimate(
+                    ConnectedCoverKey, cover);
+                if (exiting)
+                    animation.Configuration =
+                        new DirectConnectedAnimationConfiguration();
+            }
+            if (!string.IsNullOrWhiteSpace(PlayerTitleText.Text))
+            {
+                ConnectedAnimation animation = service.PrepareToAnimate(
+                    ConnectedTitleKey, title);
+                if (exiting)
+                    animation.Configuration =
+                        new DirectConnectedAnimationConfiguration();
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+            or System.Runtime.InteropServices.COMException)
+        {
+            AppDiagnostics.LogException(
+                "Connected transition could not be prepared; using instant navigation.",
+                ex);
+        }
+    }
+
+    private void StartImmersiveConnectedAnimation(bool exiting)
+    {
+        try
+        {
+            // ConnectedAnimation requires the destination to be measured.
+            // Start immediately after view activation, never after SQLite
+            // or network I/O; prepared animations expire if held too long.
+            AppRoot.UpdateLayout();
+            ConnectedAnimationService service =
+                ConnectedAnimationService.GetForCurrentView();
+            UIElement cover = exiting
+                ? PlayerArtworkImage : ImmersiveView.CoverTransitionTarget;
+            UIElement title = exiting
+                ? PlayerTitleText : ImmersiveView.TitleTransitionTarget;
+            service.GetAnimation(ConnectedCoverKey)?.TryStart(cover);
+            service.GetAnimation(ConnectedTitleKey)?.TryStart(title);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+            or System.Runtime.InteropServices.COMException)
+        {
+            AppDiagnostics.LogException(
+                "Connected transition could not start; displaying destination normally.",
+                ex);
+        }
+    }
+
     private async void ImmersiveOpenButton_Click(
         object sender, RoutedEventArgs e)
     {
@@ -134,6 +202,7 @@ public sealed partial class MainWindow
                     AppWindow.TitleBar.ButtonForegroundColor;
             }
 
+            PrepareImmersiveConnectedAnimation(exiting: false);
             _immersiveActive = true;
             ImmersiveWindowBorder.TrySetImmersive(this, immersive: true);
             // The WinUI title and OS window title must both survive an
@@ -148,10 +217,17 @@ public sealed partial class MainWindow
             UpdatePlayerVisualState();
             ImmersiveView.Focus(FocusState.Programmatic);
             if (_playingLibraryItem is LibraryDisplayItem playing)
-                await UpdateImmersiveTrackAsync(playing);
+            {
+                Task loading = UpdateImmersiveTrackAsync(playing);
+                StartImmersiveConnectedAnimation(exiting: false);
+                await loading;
+            }
             else if (_playingCloudPreviewCandidate is not null
                 || _playingPreviewCandidate is not null)
+            {
                 UpdateImmersiveRemoteTrack();
+                StartImmersiveConnectedAnimation(exiting: false);
+            }
             else
             {
                 // A selected library item is NOT the currently playing
@@ -179,11 +255,13 @@ public sealed partial class MainWindow
             return;
         }
 
+        PrepareImmersiveConnectedAnimation(exiting: true);
         ++_immersiveLoadVersion;
         ++_immersiveArtworkVersion;
         _immersiveActive = false;
         ImmersiveWindowBorder.TrySetImmersive(this, immersive: false);
         ImmersiveHost.Visibility = Visibility.Collapsed;
+        StartImmersiveConnectedAnimation(exiting: true);
         AppTitleBar.RequestedTheme = _previousImmersiveTitleTheme;
         AppTitleBar.Background = _previousImmersiveTitleBackground;
         AppTitleBar.Foreground = _previousImmersiveTitleForeground;
@@ -274,7 +352,7 @@ public sealed partial class MainWindow
         ImmersiveView.SetTrack(title, artist, album, cover,
             BuildLyricLines(_remotePlaybackLyrics?.ToString(),
                 _lyricsDisplayMode));
-        ImmersiveView.SetNavigationAvailable(false);
+        ImmersiveView.SetNavigationAvailable(false, remoteSource: true);
         _activePlaybackLyric?.IsActive = false;
         _activePlaybackLyric = null;
         _lastAutoScrolledLyric = null;

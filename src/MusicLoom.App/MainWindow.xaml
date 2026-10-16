@@ -136,15 +136,15 @@
             </StackPanel>
           </Grid>
 
-          <!-- Search stays adjacent to its button. The five independent
-               status filters share the first row; scrolling is confined to
-               the filter strip when the window becomes narrow. -->
-          <Grid Grid.Row="1" Margin="0,16,0,9" ColumnSpacing="12">
+          <!-- Progressive disclosure keeps the song list dominant:
+               common sync status is one compact field; four independent
+               provider filters and sort choices live inside focused flyouts. -->
+          <Grid Grid.Row="1" Margin="0,16,0,8" ColumnSpacing="14">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto"/>
               <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" Spacing="4"
+            <StackPanel Orientation="Horizontal" Spacing="6"
                         VerticalAlignment="Center">
               <Button x:Name="LibrarySearchButton" Width="32" Height="32"
                       Padding="0" Background="Transparent" BorderThickness="0"
@@ -152,83 +152,124 @@
                       ToolTipService.ToolTip="Focus library search">
                 <SymbolIcon Symbol="Find"/>
               </Button>
-              <TextBox x:Name="LibrarySearchBox"
-                       Width="228" HorizontalAlignment="Left"
+              <TextBox x:Name="LibrarySearchBox" Width="235"
                        PlaceholderText="Search title, artist, album or path"
                        TextChanged="LibrarySearchBox_TextChanged"/>
             </StackPanel>
-            <ScrollViewer Grid.Column="1" MinHeight="44"
-                          HorizontalScrollMode="Enabled"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollMode="Disabled"
-                          VerticalScrollBarVisibility="Disabled">
-              <StackPanel Orientation="Horizontal" Spacing="8"
-                          VerticalAlignment="Center">
-                <ComboBox x:Name="LibraryFilterBox" MinWidth="135"
-                          SelectionChanged="LibraryFilterBox_SelectionChanged">
-                  <ComboBoxItem x:Name="LibraryFilterAllItem" Content="All statuses" Tag="all"/>
-                  <ComboBoxItem x:Name="LibraryFilterPendingItem" Content="Pending" Tag="pending"/>
-                  <ComboBoxItem x:Name="LibraryFilterSyncedItem" Content="Synced" Tag="synced"/>
-                  <ComboBoxItem x:Name="LibraryFilterWarningsItem" Content="Warnings" Tag="warning"/>
-                  <ComboBoxItem x:Name="LibraryFilterErrorsItem" Content="Errors" Tag="error"/>
-                </ComboBox>
-                <ComboBox x:Name="LibraryLyricsFacetBox" MinWidth="150"
-                          SelectionChanged="LibraryFacetFilter_SelectionChanged">
-                  <ComboBoxItem Tag="all" Content="All lyric statuses"/>
-                  <ComboBoxItem Tag="present" Content="Has lyrics"/>
-                  <ComboBoxItem Tag="missing" Content="No lyrics"/>
-                </ComboBox>
-                <ComboBox x:Name="LibraryNeteaseFacetBox" MinWidth="162"
-                          SelectionChanged="LibraryFacetFilter_SelectionChanged">
-                  <ComboBoxItem Tag="all" Content="All NetEase matches"/>
-                  <ComboBoxItem Tag="matched" Content="Matched on NetEase"/>
-                  <ComboBoxItem Tag="confirmed" Content="NetEase confirmed"/>
-                  <ComboBoxItem Tag="unconfirmed" Content="NetEase needs confirmation"/>
-                  <ComboBoxItem Tag="missing" Content="Not matched on NetEase"/>
-                  <ComboBoxItem Tag="empty" Content="NetEase match cleared"/>
-                </ComboBox>
-                <ComboBox x:Name="LibraryQqFacetBox" MinWidth="162"
-                          SelectionChanged="LibraryFacetFilter_SelectionChanged">
-                  <ComboBoxItem Tag="all" Content="All QQ Music matches"/>
-                  <ComboBoxItem Tag="matched" Content="Matched on QQ Music"/>
-                  <ComboBoxItem Tag="confirmed" Content="QQ Music confirmed"/>
-                  <ComboBoxItem Tag="unconfirmed" Content="QQ Music needs confirmation"/>
-                  <ComboBoxItem Tag="missing" Content="Not matched on QQ Music"/>
-                  <ComboBoxItem Tag="empty" Content="QQ Music match cleared"/>
-                </ComboBox>
-                <ComboBox x:Name="LibraryKugouFacetBox" MinWidth="162"
-                          SelectionChanged="LibraryFacetFilter_SelectionChanged">
-                  <ComboBoxItem Tag="all" Content="All KuGou matches"/>
-                  <ComboBoxItem Tag="matched" Content="Matched on KuGou"/>
-                  <ComboBoxItem Tag="confirmed" Content="KuGou confirmed"/>
-                  <ComboBoxItem Tag="unconfirmed" Content="KuGou needs confirmation"/>
-                  <ComboBoxItem Tag="missing" Content="Not matched on KuGou"/>
-                  <ComboBoxItem Tag="empty" Content="KuGou match cleared"/>
-                </ComboBox>
-              </StackPanel>
-            </ScrollViewer>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                        Spacing="10" VerticalAlignment="Center"
+                        HorizontalAlignment="Left">
+              <ComboBox x:Name="LibraryFilterBox" MinWidth="140"
+                        SelectionChanged="LibraryFilterBox_SelectionChanged">
+                <ComboBoxItem x:Name="LibraryFilterAllItem" Content="All statuses" Tag="all"/>
+                <ComboBoxItem x:Name="LibraryFilterPendingItem" Content="Pending" Tag="pending"/>
+                <ComboBoxItem x:Name="LibraryFilterSyncedItem" Content="Synced" Tag="synced"/>
+                <ComboBoxItem x:Name="LibraryFilterWarningsItem" Content="Warnings" Tag="warning"/>
+                <ComboBoxItem x:Name="LibraryFilterErrorsItem" Content="Errors" Tag="error"/>
+              </ComboBox>
+
+              <Button x:Name="LibraryFacetsButton" Padding="12,8"
+                      MinWidth="93" Content="Filters">
+                <Button.Flyout>
+                  <Flyout Placement="Bottom">
+                    <StackPanel Width="272" Spacing="9">
+                      <TextBlock x:Name="LibraryFacetPanelHeading"
+                                 Text="Filter by" FontSize="16" FontWeight="SemiBold"/>
+                      <TextBlock x:Name="LibraryLyricsFacetLabel"
+                                 Text="Lyrics" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                      <ComboBox x:Name="LibraryLyricsFacetBox"
+                                HorizontalAlignment="Stretch"
+                                SelectionChanged="LibraryFacetFilter_SelectionChanged">
+                        <ComboBoxItem Tag="all" Content="All lyric statuses"/>
+                        <ComboBoxItem Tag="present" Content="Has lyrics"/>
+                        <ComboBoxItem Tag="missing" Content="No lyrics"/>
+                      </ComboBox>
+                      <TextBlock x:Name="LibraryNeteaseFacetLabel"
+                                 Text="NetEase Music" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                      <ComboBox x:Name="LibraryNeteaseFacetBox"
+                                HorizontalAlignment="Stretch"
+                                SelectionChanged="LibraryFacetFilter_SelectionChanged">
+                        <ComboBoxItem Tag="all" Content="All NetEase matches"/>
+                        <ComboBoxItem Tag="matched" Content="Matched on NetEase"/>
+                        <ComboBoxItem Tag="confirmed" Content="NetEase confirmed"/>
+                        <ComboBoxItem Tag="unconfirmed" Content="NetEase needs confirmation"/>
+                        <ComboBoxItem Tag="missing" Content="Not matched on NetEase"/>
+                        <ComboBoxItem Tag="empty" Content="NetEase match cleared"/>
+                      </ComboBox>
+                      <TextBlock x:Name="LibraryQqFacetLabel"
+                                 Text="QQ Music" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                      <ComboBox x:Name="LibraryQqFacetBox"
+                                HorizontalAlignment="Stretch"
+                                SelectionChanged="LibraryFacetFilter_SelectionChanged">
+                        <ComboBoxItem Tag="all" Content="All QQ Music matches"/>
+                        <ComboBoxItem Tag="matched" Content="Matched on QQ Music"/>
+                        <ComboBoxItem Tag="confirmed" Content="QQ Music confirmed"/>
+                        <ComboBoxItem Tag="unconfirmed" Content="QQ Music needs confirmation"/>
+                        <ComboBoxItem Tag="missing" Content="Not matched on QQ Music"/>
+                        <ComboBoxItem Tag="empty" Content="QQ Music match cleared"/>
+                      </ComboBox>
+                      <TextBlock x:Name="LibraryKugouFacetLabel"
+                                 Text="KuGou Music" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                      <ComboBox x:Name="LibraryKugouFacetBox"
+                                HorizontalAlignment="Stretch"
+                                SelectionChanged="LibraryFacetFilter_SelectionChanged">
+                        <ComboBoxItem Tag="all" Content="All KuGou matches"/>
+                        <ComboBoxItem Tag="matched" Content="Matched on KuGou"/>
+                        <ComboBoxItem Tag="confirmed" Content="KuGou confirmed"/>
+                        <ComboBoxItem Tag="unconfirmed" Content="KuGou needs confirmation"/>
+                        <ComboBoxItem Tag="missing" Content="Not matched on KuGou"/>
+                        <ComboBoxItem Tag="empty" Content="KuGou match cleared"/>
+                      </ComboBox>
+                      <Button x:Name="LibraryClearFacetsButton"
+                              HorizontalAlignment="Right"
+                              Content="Clear filters"
+                              Click="LibraryClearFacetsButton_Click"/>
+                    </StackPanel>
+                  </Flyout>
+                </Button.Flyout>
+              </Button>
+              <Button x:Name="LibrarySortMenuButton"
+                      Padding="12,8" MinWidth="108" Content="Sort">
+                <Button.Flyout>
+                  <Flyout Placement="Bottom">
+                    <StackPanel Width="225" Spacing="9">
+                      <TextBlock x:Name="LibrarySortPanelHeading"
+                                 FontSize="16" FontWeight="SemiBold"
+                                 Text="Sort songs"/>
+                      <ComboBox x:Name="LibrarySortBox"
+                                HorizontalAlignment="Stretch"
+                                SelectionChanged="LibrarySortBox_SelectionChanged">
+                        <ComboBoxItem x:Name="SortTitleItem" Content="Sort by title" Tag="title"/>
+                        <ComboBoxItem x:Name="SortAlbumItem" Content="Sort by album" Tag="album"/>
+                        <ComboBoxItem x:Name="SortArtistItem" Content="Sort by artist" Tag="artist"/>
+                      </ComboBox>
+                      <ComboBox x:Name="LibrarySortDirectionBox"
+                                HorizontalAlignment="Stretch"
+                                SelectionChanged="LibrarySortDirectionBox_SelectionChanged">
+                        <ComboBoxItem x:Name="LibrarySortAscendingItem" Content="Ascending" Tag="asc"/>
+                        <ComboBoxItem x:Name="LibrarySortDescendingItem" Content="Descending" Tag="desc"/>
+                      </ComboBox>
+                    </StackPanel>
+                  </Flyout>
+                </Button.Flyout>
+              </Button>
+            </StackPanel>
           </Grid>
 
-          <!-- Sorting and library counters occupy a quieter second row. -->
-          <Grid Grid.Row="2" ColumnSpacing="12" Margin="0,0,0,12">
+          <Grid Grid.Row="2" ColumnSpacing="12" Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="175"/>
-              <ColumnDefinition Width="112"/>
-              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <ComboBox x:Name="LibrarySortBox" Grid.Column="0"
-                      SelectionChanged="LibrarySortBox_SelectionChanged">
-              <ComboBoxItem x:Name="SortTitleItem" Content="Sort by title" Tag="title"/>
-              <ComboBoxItem x:Name="SortAlbumItem" Content="Sort by album" Tag="album"/>
-              <ComboBoxItem x:Name="SortArtistItem" Content="Sort by artist" Tag="artist"/>
-            </ComboBox>
-            <ComboBox x:Name="LibrarySortDirectionBox" Grid.Column="1"
-                      SelectionChanged="LibrarySortDirectionBox_SelectionChanged">
-              <ComboBoxItem x:Name="LibrarySortAscendingItem" Content="Ascending" Tag="asc"/>
-              <ComboBoxItem x:Name="LibrarySortDescendingItem" Content="Descending" Tag="desc"/>
-            </ComboBox>
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12"
-                        VerticalAlignment="Center" HorizontalAlignment="Right">
+            <TextBlock x:Name="LibraryActiveFilterSummary"
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Visibility="Collapsed"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                        Spacing="12" VerticalAlignment="Center"
+                        HorizontalAlignment="Right">
               <StackPanel Orientation="Horizontal" Spacing="5">
                 <FontIcon x:Name="PendingSummaryIcon" Glyph="&#xE823;" FontSize="12"
                           Foreground="#CA7400" ToolTipService.ToolTip="Pending"/>

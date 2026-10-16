@@ -25,6 +25,74 @@ public sealed partial class MainWindow
     private void LibrarySearchButton_Click(object sender, RoutedEventArgs args) =>
         LibrarySearchBox.Focus(FocusState.Programmatic);
 
+    private void LibraryClearFacetsButton_Click(
+        object sender, RoutedEventArgs e)
+    {
+        bool previous = _refreshingLocalizedChoices;
+        _refreshingLocalizedChoices = true;
+        try
+        {
+            LibraryLyricsFacetBox.SelectedIndex = 0;
+            LibraryNeteaseFacetBox.SelectedIndex = 0;
+            LibraryQqFacetBox.SelectedIndex = 0;
+            LibraryKugouFacetBox.SelectedIndex = 0;
+        }
+        finally
+        {
+            _refreshingLocalizedChoices = previous;
+        }
+        ApplyLibraryFilter();
+    }
+
+    private void UpdateLibraryToolbarPresentation()
+    {
+        if (LibraryFacetsButton is null || LibrarySortMenuButton is null
+            || LibraryLyricsFacetBox is null)
+            return;
+
+        ComboBox[] facets =
+        [
+            LibraryLyricsFacetBox, LibraryNeteaseFacetBox,
+            LibraryQqFacetBox, LibraryKugouFacetBox,
+        ];
+        var chosen = facets
+            .Select(static box => box.SelectedItem as ComboBoxItem)
+            .Where(static item => item is not null
+                && item.Tag?.ToString() != "all")
+            .Select(static item => item!.Content?.ToString() ?? "")
+            .Where(static label => label.Length > 0)
+            .ToArray();
+        LibraryFacetsButton.Content = chosen.Length == 0
+            ? L("Filters", "筛选")
+            : L($"Filters ({chosen.Length})", $"筛选（{chosen.Length}）");
+        LibraryActiveFilterSummary.Visibility = chosen.Length == 0
+            ? Visibility.Collapsed : Visibility.Visible;
+        LibraryActiveFilterSummary.Text = string.Join(
+            IsChinese ? "，" : ", ", chosen);
+
+        string field =
+            (LibrarySortBox.SelectedItem as ComboBoxItem)?.Tag?.ToString()
+            switch
+            {
+                "title" => L("Title", "歌名"),
+                "album" => L("Album", "专辑"),
+                _ => L("Artist", "歌手"),
+            };
+        bool descending =
+            (LibrarySortDirectionBox.SelectedItem as ComboBoxItem)
+                ?.Tag?.ToString() == "desc";
+        LibrarySortMenuButton.Content =
+            L("Sort: ", "排序：") + field + (descending ? " ↓" : " ↑");
+
+        LibraryFacetPanelHeading.Text = L("Filter by", "筛选条件");
+        LibrarySortPanelHeading.Text = L("Sort songs", "歌曲排序");
+        LibraryLyricsFacetLabel.Text = L("Lyrics", "歌词状态");
+        LibraryNeteaseFacetLabel.Text = L("NetEase Music", "网易云匹配");
+        LibraryQqFacetLabel.Text = L("QQ Music", "QQ音乐匹配");
+        LibraryKugouFacetLabel.Text = L("KuGou Music", "酷狗音乐匹配");
+        LibraryClearFacetsButton.Content = L("Clear filters", "清除筛选");
+    }
+
     private static string FacetValue(ComboBox? box) =>
         (box?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "all";
 

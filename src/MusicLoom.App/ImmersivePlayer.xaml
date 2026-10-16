@@ -96,7 +96,7 @@
           <RowDefinition Height="128" />
           <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <Grid Grid.Row="0" ColumnSpacing="14">
+        <Grid x:Name="ImmersiveMetadataHeader" Grid.Row="0" ColumnSpacing="14">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
