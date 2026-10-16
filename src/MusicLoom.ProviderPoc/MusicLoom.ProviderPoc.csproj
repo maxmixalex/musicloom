@@ -4,7 +4,6 @@
     <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.12" />
     <ProjectReference Include="../MusicLoom.Core/MusicLoom.Core.csproj" />
   </ItemGroup>
 </Project>
