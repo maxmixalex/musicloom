@@ -189,23 +189,21 @@ public sealed class RubyLyricView : UserControl
 
         foreach (LrcWord word in words)
         {
-            // Both annotated and unannotated words reserve the same ruby
-            // ascent, so mixed words cannot jump vertically on wrap.
-            StackPanel atom = new()
-            {
-                Spacing = 0,
-                Orientation = Orientation.Vertical,
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
+            // The inline advance must be determined ONLY by the Japanese
+            // glyph. A StackPanel makes its width the MAX of ruby and base;
+            // a long reading therefore steals horizontal layout space and
+            // forces the original Japanese text to wrap unexpectedly.
+            // Canvas lets the ruby overhang its base without contributing to
+            // RichTextBlock's measured inline width.
+            double rubyHeight = Math.Max(10, baseSize * 0.72);
             TextBlock reading = new()
             {
                 Text = string.IsNullOrWhiteSpace(word.Ruby) ? " " : word.Ruby,
                 FontSize = Math.Max(7, baseSize * 0.46),
-                Height = baseSize * 0.55,
+                Height = rubyHeight,
                 Opacity = string.IsNullOrWhiteSpace(word.Ruby) ? 0 : 0.78,
                 TextWrapping = TextWrapping.NoWrap,
                 TextAlignment = TextAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center,
                 Foreground = Foreground,
             };
             TextBlock glyph = new()
@@ -215,9 +213,23 @@ public sealed class RubyLyricView : UserControl
                 FontWeight = FontWeight,
                 TextWrapping = TextWrapping.NoWrap,
                 TextAlignment = TextAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center,
                 Foreground = Foreground,
             };
+            var unconstrained = new Windows.Foundation.Size(
+                double.PositiveInfinity, double.PositiveInfinity);
+            reading.Measure(unconstrained);
+            glyph.Measure(unconstrained);
+            double glyphWidth = Math.Max(1, glyph.DesiredSize.Width);
+            double glyphHeight = Math.Max(1, glyph.DesiredSize.Height);
+            Canvas atom = new()
+            {
+                Width = glyphWidth,
+                Height = rubyHeight + glyphHeight,
+            };
+            Canvas.SetLeft(reading, (glyphWidth - reading.DesiredSize.Width) / 2);
+            Canvas.SetTop(reading, 0);
+            Canvas.SetLeft(glyph, 0);
+            Canvas.SetTop(glyph, rubyHeight);
             atom.Children.Add(reading);
             atom.Children.Add(glyph);
             paragraph.Inlines.Add(new InlineUIContainer { Child = atom });

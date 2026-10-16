@@ -581,6 +581,28 @@ public sealed partial class MainWindow
                 && secondRuby.Blocks[0] is Microsoft.UI.Xaml.Documents.Paragraph next
                 && next.Inlines.Count == 1,
                 "Ruby: changing the lyric line rebuilds inline layout without losing the next line");
+            // A romanization syllable may be much wider than one Kanji.
+            // Measure the REAL inline element, not just source formatting:
+            // the ruby must overhang but must not widen its Japanese base.
+            rubyView.Line = new LyricDisplayLine("春", null, "preferOriginal",
+                TimeSpan.Zero,
+                [new LrcWord(TimeSpan.Zero, TimeSpan.FromSeconds(1),
+                    "春", "harunoyoukinagare")]);
+            await Task.Delay(85);
+            Assert(rubyView.Content is RichTextBlock measuredRuby
+                && measuredRuby.Blocks[0]
+                    is Microsoft.UI.Xaml.Documents.Paragraph measuredParagraph
+                && measuredParagraph.Inlines[0]
+                    is Microsoft.UI.Xaml.Documents.InlineUIContainer
+                        { Child: Canvas measuredAtom }
+                && measuredAtom.Children.Count == 2
+                && measuredAtom.Children[0] is TextBlock longPronunciation
+                && measuredAtom.Children[1] is TextBlock japaneseBase
+                && measuredAtom.Width > 5
+                && longPronunciation.DesiredSize.Width > measuredAtom.Width * 1.3
+                && Math.Abs(measuredAtom.Width
+                    - japaneseBase.DesiredSize.Width) < 1,
+                "Ruby: long romanization overhangs the Kanji instead of widening and wrapping the original");
             // Render many ruby+base atoms so the browser-style reading
             // row must wrap naturally. A one-character transparent PNG may
             // compress below 1.8 KB despite being correctly rendered.
