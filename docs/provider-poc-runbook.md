@@ -2,6 +2,8 @@
 
 This repository includes **three experimental providers in standalone .NET 10 projects**. MusicLoom.App does not reference these PoCs and its existing three matching panels are intentionally unchanged while the user performs SAT. PoC code only demonstrates a method and its protocol behavior; it is not a promise of online availability, lyric licensing or seamless WinUI playback.
 
+PoC executables will be uploaded as separate GitHub Actions artifacts named musicloom-provider-poc-win-x64 and musicloom-provider-poc-linux-x64. These standalone apps do not overwrite MusicLoom.exe or change the existing SAT binary.
+
 ## Build, tests and offline evidence
 
 Run the independent eight-fixture suite:

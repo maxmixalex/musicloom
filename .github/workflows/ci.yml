@@ -67,6 +67,16 @@ jobs:
       - name: Build standalone provider experiment CLI
         run: dotnet build src/MusicLoom.ProviderPoc.Cli/MusicLoom.ProviderPoc.Cli.csproj -c Release
 
+      - name: Publish isolated provider PoC CLI (Linux NativeAOT)
+        run: dotnet publish src/MusicLoom.ProviderPoc.Cli/MusicLoom.ProviderPoc.Cli.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -o artifacts/provider-poc-cli-linux-x64
+
+      - name: Upload isolated provider CLI (Linux)
+        uses: actions/upload-artifact@v6
+        with:
+          name: musicloom-provider-poc-linux-x64
+          path: artifacts/provider-poc-cli-linux-x64/**
+          if-no-files-found: error
+
       - name: Publish CLI with NativeAOT
         run: dotnet publish src/MusicLoom.Cli/MusicLoom.Cli.csproj -c Release -r linux-x64 --self-contained true -o artifacts/cli-linux-x64
 
