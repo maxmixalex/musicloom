@@ -3,11 +3,15 @@
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Grid RowSpacing="12">
     <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-    <Grid Height="500" MaxWidth="1140" HorizontalAlignment="Stretch" ColumnSpacing="12">
+    <!-- Wide windows keep the original three-column information hierarchy.
+         Below ~1100px the candidates/lyrics columns shrink proportionally;
+         fixed 270+500+220 widths used to clip the entire lyrics pane. -->
+    <Grid Height="500" MaxWidth="1140"
+          HorizontalAlignment="Stretch" ColumnSpacing="12">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="270" />
-        <ColumnDefinition Width="500" />
-        <ColumnDefinition Width="1*" MinWidth="220" />
+        <ColumnDefinition Width="225" />
+        <ColumnDefinition Width="1.55*" MinWidth="345" />
+        <ColumnDefinition Width="1*" MinWidth="180" />
       </Grid.ColumnDefinitions>
       <Border Grid.Column="0" Padding="14" CornerRadius="9" BorderThickness="1"
         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"

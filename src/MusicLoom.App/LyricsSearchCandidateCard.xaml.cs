@@ -107,6 +107,7 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
         {
             ExternalLinkButton.NavigateUri = null;
             ExternalLinkButton.Content = null;
+            _linkText = null;
             ExternalLinkButton.Visibility = Visibility.Collapsed;
             return;
         }
@@ -129,6 +130,27 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
             PreviewButton, PreviewTooltip);
     }
 
+    private TextBlock? _linkText;
+
+    // Preserve the pre-provider 220px action rail on a wide results pane,
+    // but return space to the song title when the whole dialog narrows.
+    private void CandidateLayout_SizeChanged(
+        object sender, SizeChangedEventArgs e)
+    {
+        double available = e.NewSize.Width;
+        if (available <= 0 || !double.IsFinite(available))
+            return;
+        const double StructuralWidth = 52 + 24 + 22 + 16;
+        double rail = Math.Clamp(available - StructuralWidth - 158, 125, 220);
+        if (Math.Abs(MetadataRailColumn.Width.Value - rail) > 0.5)
+            MetadataRailColumn.Width = new GridLength(rail);
+
+        // The full link still opens on compact cards. Ellipsize its
+        // visible caption rather than shrinking the track title to 20px.
+        if (_linkText is not null)
+            _linkText.MaxWidth = Math.Max(45, rail - 48);
+    }
+
     public void SetExternalLink(Uri uri, string label)
     {
         StackPanel content = new()
@@ -136,7 +158,15 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
         };
-        content.Children.Add(new TextBlock { Text = label, FontSize = 11 });
+        _linkText = new TextBlock
+        {
+            Text = label,
+            FontSize = 11,
+            MaxWidth = Math.Max(45, MetadataRailColumn.Width.Value - 48),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
+        };
+        content.Children.Add(_linkText);
         content.Children.Add(new FontIcon { Glyph = "\uE8A7", FontSize = 11 });
         ExternalLinkButton.NavigateUri = uri;
         ExternalLinkButton.Content = content;

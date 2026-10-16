@@ -229,8 +229,8 @@ public sealed partial class MainWindow
             Assert(searchCard.Content is Grid cardGrid
                 && cardGrid.ColumnDefinitions.Count == 3
                 && cardGrid.ColumnDefinitions[0].Width.Value == 52
-                && cardGrid.ColumnDefinitions[2].Width.Value == 220,
-                "Search dialog: original NetEase 52px cover and 220px metadata/actions rail");
+                && cardGrid.ColumnDefinitions[2].Width.Value is >= 125 and <= 220,
+                "Search dialog: original NetEase 52px cover and responsive metadata/actions rail");
             Assert(ReferenceEquals(preview.LyricsList.ItemTemplate,
                     LyricsList.ItemTemplate)
                 && ReferenceEquals(preview.LyricsList.ItemContainerStyle,
@@ -319,10 +319,10 @@ public sealed partial class MainWindow
             double previewWidth = preview.ActualWidth;
             int previewPixels = await CountRenderedTextPixelsAsync(search,
                 minX: (int)Math.Max(0, Math.Round(previewX + 45)));
-            Assert(search.ActualWidth > 1050
-                && previewWidth > 185
-                && previewX >= 750
-                && previewX + previewWidth <= search.ActualWidth + 6
+            Assert(search.ActualWidth >= 780
+                && previewWidth >= 180
+                && previewX >= search.ActualWidth * 0.60
+                && previewX + previewWidth <= search.ActualWidth + 2
                 && previewPixels > 120,
                 $"Search dialog: entire lyric column must be visible and painted (dialog={search.ActualWidth:0}, x={previewX:0}, width={previewWidth:0}, pixels={previewPixels})");
             Assert(new FileInfo(searchPng).Length > 1800,

@@ -5,11 +5,13 @@
     MinHeight="76">
   <!-- Restored from the pre-QQ/KuGou NetEase candidate in 41fcf8c:
        52px artwork | title, artist, album | ID/duration, link, preview. -->
-  <Grid MinHeight="76" Padding="22,8,16,8" ColumnSpacing="12">
+  <Grid x:Name="CandidateLayout" MinHeight="76"
+        Padding="22,8,16,8" ColumnSpacing="12"
+        SizeChanged="CandidateLayout_SizeChanged">
     <Grid.ColumnDefinitions>
       <ColumnDefinition Width="52"/>
       <ColumnDefinition Width="*"/>
-      <ColumnDefinition Width="220"/>
+      <ColumnDefinition x:Name="MetadataRailColumn" Width="220"/>
     </Grid.ColumnDefinitions>
     <Border Width="52" Height="52" CornerRadius="6"
             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
