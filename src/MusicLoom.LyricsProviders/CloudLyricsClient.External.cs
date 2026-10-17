@@ -40,15 +40,28 @@ public static class CloudLyricsSourceNames
 
     public static Uri? SongPage(CloudLyricsCandidate candidate)
     {
-        if (candidate.Source != CloudLyricsSource.MiguMusic
-            || !Uri.TryCreate(candidate.ExternalUrl, UriKind.Absolute,
-                out Uri? uri)
-            || uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort
-            || uri.UserInfo.Length > 0)
+        if (candidate.Source != CloudLyricsSource.MiguMusic)
             return null;
-        return uri.Host.Equals("migu.cn", StringComparison.OrdinalIgnoreCase)
-               || uri.Host.EndsWith(".migu.cn",
-                   StringComparison.OrdinalIgnoreCase) ? uri : null;
+
+        // An explicit provider link takes priority only when it belongs to
+        // Migu and uses a secure, credential-free URL.
+        if (Uri.TryCreate(candidate.ExternalUrl, UriKind.Absolute, out Uri? uri)
+            && uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort
+            && uri.UserInfo.Length == 0
+            && (uri.Host.Equals("migu.cn", StringComparison.OrdinalIgnoreCase)
+                || uri.Host.EndsWith(".migu.cn",
+                    StringComparison.OrdinalIgnoreCase)))
+            return uri;
+
+        // Anonymous Migu search normally returns copyrightId but no page
+        // URL. This is the site's *actual* song-detail route, not an audio
+        // CDN or a guessed songId/contentId mapping.
+        string? copyrightId = candidate.CopyrightId;
+        if (copyrightId is { Length: >= 6 and <= 32 }
+            && copyrightId.All(char.IsAsciiDigit))
+            return new Uri("https://music.migu.cn/v3/music/song/"
+                + copyrightId);
+        return null;
     }
 }
 

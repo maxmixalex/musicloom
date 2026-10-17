@@ -24,6 +24,7 @@ internal static class ExternalProviderIntegrationRegression
         // Packaging is enforced by the LyricsProviders csproj dependency
         // graph and the anonymous-only dispatch assertions below.
         TestAuthenticatedProvidersNotExposed();
+        TestMiguSongPageLinks();
         await TestLegacyDbAndMiguAsync();
         await TestAnonymousMiguFlowAsync();
         await TestMiguFallbackAsync();
@@ -74,6 +75,31 @@ internal static class ExternalProviderIntegrationRegression
             Assert(searchBlocked && lyricsBlocked && playbackBlocked,
                 "Removed account-dependent provider remains callable in release.");
         }
+    }
+
+    private static void TestMiguSongPageLinks()
+    {
+        CloudLyricsCandidate song = new(CloudLyricsSource.MiguMusic,
+            "content-123", "Title", "Singer", "Album", 0,
+            CopyrightId: "600929000001520013");
+        Assert(CloudLyricsSourceNames.SongPage(song)?.AbsoluteUri
+            == "https://music.migu.cn/v3/music/song/600929000001520013",
+            "Migu copyrightId should resolve to the provider's own song page.");
+        Assert(CloudLyricsSourceNames.SongPage(song with
+            { CopyrightId = "invalid/../id" }) is null
+            && CloudLyricsSourceNames.SongPage(song with
+            { CopyrightId = null }) is null
+            && CloudLyricsSourceNames.SongPage(song with
+            { ExternalUrl = "https://migu.cn.evil.example/track",
+              CopyrightId = null }) is null,
+            "Do not construct links from untrusted hosts or non-copyright IDs.");
+        Assert(CloudLyricsSourceNames.SongPage(song with
+            { ExternalUrl = "https://music.migu.cn/v3/music/song/123456" })
+            ?.AbsolutePath == "/v3/music/song/123456",
+            "A verified provider song URL should take priority.");
+        Assert(CloudLyricsSourceNames.SongPage(song with
+            { Source = CloudLyricsSource.QqMusic }) is null,
+            "Migu song links must never be used for another provider.");
     }
 
     private static async Task TestLegacyDbAndMiguAsync()

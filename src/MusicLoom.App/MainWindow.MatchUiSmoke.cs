@@ -399,6 +399,25 @@ public sealed partial class MainWindow
                 && linkContainer.Children[0] is TextBlock linkCaption
                 && linkCaption.MaxWidth >= 130,
                 "Search result recycling: compact KuGou song link stays full-width when row reused");
+            CloudCandidateRow migu = new(
+                new CloudLyricsCandidate(CloudLyricsSource.MiguMusic,
+                    "content-123", "Migu candidate", "Artist", "Album", 0,
+                    CopyrightId: "600929000001520013"),
+                "Preview", "在咪咕音乐上打开", "在咪咕音乐中搜索");
+            Assert(migu.DisplayMetadata == "#content-123"
+                && !migu.DisplayMetadata.Contains("·", StringComparison.Ordinal)
+                && migu.ExternalLabel == "在咪咕音乐上打开",
+                "Migu: missing duration omits the meaningless dot and dash.");
+            recycled.DataContext = migu;
+            await Task.Delay(70);
+            Assert(providerLink.Visibility == Visibility.Visible
+                && providerLink.NavigateUri?.AbsoluteUri ==
+                    "https://music.migu.cn/v3/music/song/600929000001520013"
+                && providerLink.Content is StackPanel miguLink
+                && miguLink.Children[0] is TextBlock miguText
+                && miguText.Text == "在咪咕音乐上打开",
+                "Migu: song detail link is displayed using real copyrightId.");
+
             CloudCandidateRow missingKugouHash = new(
                 new CloudLyricsCandidate(CloudLyricsSource.KugouMusic,
                     "456", "Unrecognized hash", "Artist", "Album", 123000,

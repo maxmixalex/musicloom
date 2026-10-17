@@ -67,8 +67,12 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
                 : $"{(int)time.TotalMinutes}:{time.Seconds:00}";
         }
     }
-    public string DisplayMetadata => string.IsNullOrWhiteSpace(Candidate.Id)
-        ? Duration : $"#{Candidate.Id} · {Duration}";
+    // Unknown duration is not metadata. Never render "#id · —".
+    public string DisplayMetadata => Candidate.DurationMilliseconds > 0
+        ? (string.IsNullOrWhiteSpace(Candidate.Id)
+            ? Duration : $"#{Candidate.Id} · {Duration}")
+        : (string.IsNullOrWhiteSpace(Candidate.Id)
+            ? string.Empty : "#" + Candidate.Id);
     public string? ExternalUrl => Candidate.Source switch
     {
         CloudLyricsSource.QqMusic
@@ -385,7 +389,9 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
                         CloudLyricsSourceNames.Chinese(candidate.Source));
                     return new CloudCandidateRow(candidate,
                         L("Play remote preview", "播放远程试听"),
-                        L("Open in ", "在") + name + L("", "中打开"),
+                        candidate.Source == CloudLyricsSource.MiguMusic
+                            ? L("Open in Migu Music", "在咪咕音乐上打开")
+                            : L("Open in ", "在") + name + L("", "中打开"),
                         L("Search in ", "在") + name + L(" search", "中搜索"));
                 })
                 .ToArray();

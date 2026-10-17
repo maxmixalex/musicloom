@@ -107,8 +107,9 @@ public sealed partial class ProviderMatchTabView : UserControl
             $"No {en} match", $"置空{zh}匹配");
         RefreshMatchedLyricsButtonText.Text =
             translate("Update lyrics", "更新歌词");
-        CurrentMatchOpenLinkText.Text = translate(
-            $"Open in {en}", $"在{zh}中打开");
+        CurrentMatchOpenLinkText.Text = kind == MatchProviderKind.MiguMusic
+            ? translate("Open in Migu Music", "在咪咕音乐上打开")
+            : translate($"Open in {en}", $"在{zh}中打开");
         MatchHelpText.Text = kind switch
         {
             MatchProviderKind.Netease => translate(
