@@ -116,6 +116,47 @@ public sealed partial class MainWindow
                 && !new MusicLoom.Core.Configuration.LyricsSettings()
                     .IncludeRomanization,
                 "Settings: sync romanization is explicitly opt-in and defaults off");
+            // Real go-librespot audio is decoded out of process. The WinUI
+            // MediaPlayer has no Source, but transport, timeline, source
+            // label and hidden previous/next must still reflect playback.
+            MusicLoom.ProviderPoc.SpotifyLocalStreamBridge fakeSpotify = new();
+            CloudLyricsCandidate? previousCloud = _playingCloudPreviewCandidate;
+            try
+            {
+                _spotifyLocalPolling = true; // prevent background HTTP
+                _spotifyLocalBackend = fakeSpotify;
+                _spotifyLocalTrack = new CloudLyricsCandidate(
+                    CloudLyricsSource.Spotify,
+                    "4iV5W9uYEdYUVa79Axb7Rh",
+                    "SAT remote song", "Artist", "Album", 200000);
+                _playingCloudPreviewCandidate = _spotifyLocalTrack;
+                _spotifyLocalStatus =
+                    new MusicLoom.ProviderPoc.SpotifyLocalPlayerStatus(
+                        "spotify:track:4iV5W9uYEdYUVa79Axb7Rh",
+                        false, false, false, 42000, 200000);
+                _spotifyLocalStatusObservedAt = DateTimeOffset.UtcNow;
+                UpdatePlayerProgress();
+                UpdatePlayerVisualState();
+                Assert(PlayerSourceText.Text == "Spotify"
+                    && PlayerPlayPauseIcon.Symbol == Symbol.Pause
+                    && PlayerPreviousButton.Visibility == Visibility.Collapsed
+                    && PlayerNextButton.Visibility == Visibility.Collapsed
+                    && Math.Abs(PlayerProgressSlider.Value - 42) < 1.1
+                    && Math.Abs(PlayerProgressSlider.Maximum - 200) < 1,
+                    "Player: Spotify locally decoded full song drives source label, progress, pause icon and hides remote navigation without MediaPlayer.Source");
+            }
+            finally
+            {
+                _spotifyLocalBackend = null;
+                _spotifyLocalTrack = null;
+                _spotifyLocalStatus = null;
+                _spotifyLocalPolling = false;
+                _playingCloudPreviewCandidate = previousCloud;
+                fakeSpotify.Dispose();
+                UpdatePlayerProgress();
+                UpdatePlayerVisualState();
+            }
+
 
             string? directory = Path.GetDirectoryName(marker);
             if (!string.IsNullOrWhiteSpace(directory))
