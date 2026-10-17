@@ -88,8 +88,7 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
         CloudLyricsSource.KugouMusic =>
             "https://www.kugou.com/yy/html/search.html#searchType=song&searchKey="
                 + Uri.EscapeDataString(Candidate.Artist + " " + Candidate.Title),
-        CloudLyricsSource.MiguMusic or CloudLyricsSource.AppleMusic
-            or CloudLyricsSource.Spotify =>
+        CloudLyricsSource.MiguMusic =>
             CloudLyricsSourceNames.SongPage(Candidate)?.AbsoluteUri,
         _ => null,
     };
@@ -101,8 +100,7 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
         CloudLyricsSource.KugouMusic
             when Candidate.Hash is not { Length: >= 16 and <= 64 } hash
                 || !hash.All(UriHexDigit) => _searchLabel,
-        CloudLyricsSource.MiguMusic or CloudLyricsSource.AppleMusic
-            or CloudLyricsSource.Spotify
+        CloudLyricsSource.MiguMusic
             when CloudLyricsSourceNames.SongPage(Candidate) is null => _searchLabel,
         _ => _linkLabel,
     };
@@ -386,10 +384,7 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
                         CloudLyricsSourceNames.English(candidate.Source),
                         CloudLyricsSourceNames.Chinese(candidate.Source));
                     return new CloudCandidateRow(candidate,
-                        candidate.Source == CloudLyricsSource.Spotify
-                            ? L("Play Spotify through the local decoder",
-                                "通过本机 Spotify 解码器播放")
-                            : L("Play remote preview", "播放远程试听"),
+                        L("Play remote preview", "播放远程试听"),
                         L("Open in ", "在") + name + L("", "中打开"),
                         L("Search in ", "在") + name + L(" search", "中搜索"));
                 })
@@ -408,12 +403,6 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         }
         catch (OperationCanceledException)
         {
-        }
-        catch (MusicLoom.ProviderPoc.ProviderAuthorizationException)
-        {
-            ProviderStatus.Text = L(
-                "Sign-in required. Supply your own provider token through the documented environment variables and restart MusicLoom.",
-                "需要账户授权。请按 Provider PoC 文档设置自己的环境变量令牌，然后重启 MusicLoom。");
         }
         catch (Exception error)
         {
@@ -488,12 +477,6 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
         }
         catch (OperationCanceledException)
         {
-        }
-        catch (MusicLoom.ProviderPoc.ProviderAuthorizationException)
-        {
-            ShowPreviewMessage(L(
-                "This provider needs your authorized account to retrieve lyrics.",
-                "当前音源需要账户授权才能获取歌词。"));
         }
         catch (Exception error)
         {
