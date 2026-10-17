@@ -619,6 +619,90 @@ internal static class AncillaryPlanningRegression
             File.Delete(wmpTrack);
             File.Delete(legacyTrack);
 
+            // When one album contains a mixture of tagged and untagged
+            // tracks, MusicBee's first-ranked Embedded rule can satisfy the
+            // tagged tracks but must not suppress the album's cover sidecar
+            // for the untagged ones.
+            string mixedSrc = Path.Combine(root, "mixed-art-src");
+            string mixedTarget = Path.Combine(root, "mixed-art-target");
+            Directory.CreateDirectory(mixedSrc);
+            Directory.CreateDirectory(mixedTarget);
+            string embeddedSong = Path.Combine(mixedSrc, "tagged.flac");
+            string untaggedSong = Path.Combine(mixedSrc, "untagged.flac");
+            File.WriteAllBytes(embeddedSong, [1, 2]);
+            File.WriteAllBytes(untaggedSong, [3, 4]);
+            string mixedArtwork = Path.Combine(
+                mixedSrc, "Cover.Artist.Mixed Album.jpg");
+            File.WriteAllBytes(mixedArtwork, [6, 7, 8]);
+            string mixedAlbumOutput = Path.Combine(
+                mixedTarget, "Artist", "Mixed Album");
+            PlanEntry taggedEntry = new(
+                embeddedSong,
+                Path.Combine(mixedAlbumOutput, "tagged.flac"),
+                PlanEntryStatus.Unchanged,
+                new TrackMetadata("Artist", "Artist", "Mixed Album",
+                    HasEmbeddedArt: true), NeedsAudioCopy: false);
+            PlanEntry untaggedEntry = new(
+                untaggedSong,
+                Path.Combine(mixedAlbumOutput, "untagged.flac"),
+                PlanEntryStatus.Unchanged,
+                new TrackMetadata("Artist", "Artist", "Mixed Album",
+                    HasEmbeddedArt: false), NeedsAudioCopy: false);
+            MusicLoomSettings mixedSettings = new()
+            {
+                Path = new PathSettings
+                {
+                    SourceDirectory = mixedSrc,
+                    DestinationDirectory = mixedTarget,
+                    SourcePlaylistDirectory = string.Empty,
+                    DestinationPlaylistBase = "/storage/emulated/0/Music/",
+                },
+                Organizer = new OrganizerSettings
+                {
+                    Lyrics = new LyricsSettings { Enabled = false },
+                },
+            };
+            string realRuleFixture = Path.Combine(
+                root, "embedded-first-settings.ini");
+            File.WriteAllText(realRuleFixture, """
+                <ApplicationSettings>
+                  <TagArtworkScanFilter>
+                    <string>嵌入的</string>
+                    <string>Cover.&lt;专辑演出者&gt;.&lt;专辑&gt;.*</string>
+                  </TagArtworkScanFilter>
+                </ApplicationSettings>
+                """);
+            string? oldProfile = Environment.GetEnvironmentVariable(
+                "MUSICBEE_SETTINGS_PATH");
+            try
+            {
+                Environment.SetEnvironmentVariable(
+                    "MUSICBEE_SETTINGS_PATH", realRuleFixture);
+                AncillaryPlan onlyEmbedded =
+                    await AncillaryPlanner.BuildAsync(mixedSettings,
+                        [taggedEntry]);
+                if (onlyEmbedded.Covers.Any(static cover =>
+                    !cover.DeleteDestination))
+                    throw new InvalidOperationException(
+                        "Embedded-first albums with every track tagged "
+                        + "must not redundantly write a shared cover.");
+
+                AncillaryPlan partiallyEmbedded =
+                    await AncillaryPlanner.BuildAsync(mixedSettings,
+                        [taggedEntry, untaggedEntry]);
+                if (partiallyEmbedded.Covers.Count != 1
+                    || partiallyEmbedded.Covers[0].SourcePath != mixedArtwork
+                    || !partiallyEmbedded.Covers[0].NeedsWrite)
+                    throw new InvalidOperationException(
+                        "Embedded-first rules discarded the required cover "
+                        + "for untagged tracks sharing an album.");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(
+                    "MUSICBEE_SETTINGS_PATH", oldProfile);
+            }
+
             CountingReader finalReader = new();
             LibraryPlan finalPlan =
                 await new LibraryScanner(finalReader)

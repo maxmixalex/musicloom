@@ -70,7 +70,7 @@ internal static class KugouAudioRecognitionRegression
         {
             Requests++;
             if (request.Method != HttpMethod.Post
-                || request.RequestUri?.Host != "tracker.kugou.com"
+                || request.RequestUri?.Host != "gateway.kugou.com"
                 || request.RequestUri.AbsolutePath
                     != "/fingerprint.service/v1/music_trackid_mulit"
                 || request.Content?.Headers.ContentType?.MediaType
@@ -96,6 +96,12 @@ internal static class KugouAudioRecognitionRegression
                 fields, body);
             if (!string.Equals(received, expected,
                 StringComparison.Ordinal)
+                || fields["mid"] !=
+                    KugouAudioRecognitionClient.CalculateNativeMid("-")
+                || fields["uuid"] != Convert.ToHexString(
+                    System.Security.Cryptography.MD5.HashData(
+                        Encoding.UTF8.GetBytes("-" + fields["mid"])))
+                    .ToLowerInvariant()
                 || fields["appid"] != "1005"
                 || fields["clientver"] != "20489"
                 || fields["multi_result"] != "1"

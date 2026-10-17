@@ -53,6 +53,10 @@ public enum LibraryLyricsOrigin
     ManualNetease,
     ManualEdited,
     ManualEmpty,
+    // Metadata-only matches are automatic sources, not user edits.
+    // Append these values: existing SQLite origin integers are stable.
+    AutoQq,
+    AutoKugou,
 }
 
 public sealed record LibraryLyricsRecord(

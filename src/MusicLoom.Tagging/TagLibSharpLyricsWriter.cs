@@ -81,7 +81,7 @@ public sealed class TagLibSharpLyricsWriter :
         cancellationToken.ThrowIfCancellationRequested();
 
         string extension = Path.GetExtension(path);
-        string lrc = lyrics.ToString();
+        string lrc = lyrics.ToStandardLrcString();
 
         LyricsWriteResult result;
         if (IsId3(extension))

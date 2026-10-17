@@ -13,8 +13,13 @@ namespace MusicLoom.LyricsProviders;
 /// </summary>
 public enum CloudLyricsSource
 {
-    QqMusic,
-    KugouMusic,
+    QqMusic = 0,
+    KugouMusic = 1,
+    MiguMusic = 2,
+    // Reserved IDs for short-lived experimental builds. Keep these values
+    // for existing SQLite rows; these are NOT available product providers.
+    AppleMusic = 3,
+    Spotify = 4,
 }
 
 public sealed record CloudLyricsCandidate(
@@ -25,7 +30,19 @@ public sealed record CloudLyricsCandidate(
     string Album,
     int DurationMilliseconds,
     string? Hash = null,
-    string? SongMid = null);
+    string? SongMid = null,
+    string? CoverUrl = null,
+    string? AlbumId = null,
+    string? MediaMid = null,
+    string? ContentId = null,
+    string? CopyrightId = null,
+    string? ProviderSongId = null,
+    string? PreviewUrl = null,
+    string? StreamUrl = null,
+    string? ExternalUrl = null,
+    string? LrcUrl = null,
+    string? TrcUrl = null,
+    string? MrcUrl = null);
 
 public sealed partial class CloudLyricsClient : IDisposable
 {
@@ -51,6 +68,8 @@ public sealed partial class CloudLyricsClient : IDisposable
                 SearchQqAsync(keywords, cancellationToken),
             CloudLyricsSource.KugouMusic =>
                 SearchKugouAsync(keywords, cancellationToken),
+            CloudLyricsSource.MiguMusic =>
+                SearchExternalProviderAsync(source, keywords, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(source)),
         };
 
@@ -63,6 +82,8 @@ public sealed partial class CloudLyricsClient : IDisposable
                 GetQqLyricsAsync(selected, cancellationToken),
             CloudLyricsSource.KugouMusic =>
                 GetKugouLyricsAsync(selected, cancellationToken),
+            CloudLyricsSource.MiguMusic =>
+                GetExternalProviderLyricsAsync(selected, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(selected)),
         };
 
@@ -183,7 +204,7 @@ public sealed partial class CloudLyricsClient : IDisposable
         string artist = Convert.ToBase64String(Encoding.UTF8.GetBytes(track.Artist));
         string album = Convert.ToBase64String(Encoding.UTF8.GetBytes(track.Album));
         string parameters = $$"""
-            {"albumName":{{J(album)}},"crypt":1,"ct":19,"cv":2111,"interval":{{Math.Max(0,track.DurationMilliseconds/1000)}},"lrc_t":0,"qrc":1,"qrc_t":0,"roma":1,"roma_t":0,"singerName":{{J(artist)}},"songID":{{songId}},"songName":{{J(title)}},"trans":1,"trans_t":0,"type":0}
+            {"albumName":{{J(album)}},"crypt":1,"ct":19,"cv":2111,"format":"json","interval":{{Math.Max(0,track.DurationMilliseconds/1000)}},"lrc_t":0,"qrc":1,"qrc_t":0,"roma":1,"roma_t":0,"singerName":{{J(artist)}},"songID":{{songId}},"songMID":{{J(track.SongMid ?? "")}},"songName":{{J(title)}},"trans":1,"trans_t":0,"type":-1,"platform":0,"needNew":1}
             """;
         try
         {
@@ -191,7 +212,29 @@ public sealed partial class CloudLyricsClient : IDisposable
                 "GetPlayLyricInfo",
                 "music.musichallSong.PlayLyricInfo",
                 parameters, ct);
-            return ParseQqLyrics(response);
+            LrcDocument? modern = ParseQqLyrics(response);
+            if (modern is null)
+                return await GetQqLegacyLyricsAsync(track, ct);
+
+            // Newer QQ Lite responses may return word-timed originals but
+            // omit trans/roma even though the legacy MID endpoint still
+            // has them. Retrieve missing supplemental channels instead of
+            // treating the presence of original lyrics as complete.
+            if (HasTranslationAndReading(modern)
+                || string.IsNullOrWhiteSpace(track.SongMid))
+                return modern;
+            try
+            {
+                LrcDocument? legacy = await GetQqLegacyLyricsAsync(track, ct);
+                return legacy is null ? modern :
+                    MergeQqSupplementalLyrics(modern, legacy);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception error) when (error is HttpRequestException
+                or InvalidDataException or System.Text.Json.JsonException)
+            {
+                return modern;
+            }
         }
         catch (HttpRequestException)
         {
@@ -202,6 +245,87 @@ public sealed partial class CloudLyricsClient : IDisposable
             return await GetQqLegacyLyricsAsync(track, ct);
         }
     }
+
+    private static bool HasTranslationAndReading(LrcDocument lyrics)
+    {
+        IReadOnlyList<LrcPresentationLine> lines = LrcPresentation.Project(lyrics);
+        bool translated = lines.Any(static line =>
+            !string.IsNullOrWhiteSpace(line.Translation));
+        bool reading = lines.Any(static line =>
+            !string.IsNullOrWhiteSpace(line.Romanization)
+            || line.OriginalWords is { Count: > 0 } words
+                && words.Any(static word => !string.IsNullOrWhiteSpace(word.Ruby)));
+        return translated && reading;
+    }
+
+    internal static LrcDocument MergeQqSupplementalLyrics(
+        LrcDocument main, LrcDocument supplemental)
+    {
+        LrcDocument output = LrcDocument.Parse(main.ToString());
+        var originals = LrcPresentation.Project(main);
+        LrcPresentationLine[] alternatives =
+            LrcPresentation.Project(supplemental).ToArray();
+        // The modern QRC and legacy LRC services often serialize the same
+        // Japanese sentence with different spacing/full-width punctuation.
+        // A strict ordinal comparison loses otherwise valid translations
+        // and readings. Compare normalized letters/numbers instead, but
+        // still require nearby timing and a ONE-TO-ONE supplemental row.
+        string[] normalizedAlternatives = alternatives
+            .Select(static line => NormalizeQqLyricMatchKey(line.Original))
+            .ToArray();
+        HashSet<int> claimed = [];
+        foreach (LrcPresentationLine line in originals)
+        {
+            if (!line.Timestamp.HasValue) continue;
+            string identity = NormalizeQqLyricMatchKey(line.Original);
+            if (identity.Length == 0) continue;
+            int extraIndex = Enumerable.Range(0, alternatives.Length)
+                .Where(index => !claimed.Contains(index)
+                    && string.Equals(normalizedAlternatives[index],
+                        identity, StringComparison.Ordinal)
+                    && alternatives[index].Timestamp is TimeSpan timestamp
+                    && (timestamp - line.Timestamp.Value).Duration()
+                        <= TimeSpan.FromMilliseconds(750))
+                .OrderBy(index =>
+                    (alternatives[index].Timestamp!.Value
+                        - line.Timestamp.Value).Duration())
+                .DefaultIfEmpty(-1)
+                .First();
+            if (extraIndex < 0) continue;
+            claimed.Add(extraIndex);
+            LrcPresentationLine extra = alternatives[extraIndex];
+            int primaryIndex = output.Lines.FindIndex(candidate =>
+                candidate.Timestamp == line.Timestamp.Value
+                && candidate.Text == line.Original);
+            if (primaryIndex < 0) continue;
+
+            if (string.IsNullOrWhiteSpace(line.Romanization)
+                && extra.Romanization is string romaji
+                && output.Lines[primaryIndex].Words?.Any(
+                    static word => !string.IsNullOrWhiteSpace(word.Ruby)) != true)
+            {
+                output.Lines[primaryIndex] =
+                    output.Lines[primaryIndex] with { Romanization = romaji };
+            }
+            if (string.IsNullOrWhiteSpace(line.Translation)
+                && !string.IsNullOrWhiteSpace(extra.Translation))
+            {
+                output.Lines.Add(new LrcLine(line.Timestamp.Value,
+                    extra.Translation));
+            }
+        }
+        LrcLine[] stable = output.Lines.OrderBy(
+            static line => line.Timestamp).ToArray();
+        output.Lines.Clear();
+        output.Lines.AddRange(stable);
+        return output;
+    }
+
+    private static string NormalizeQqLyricMatchKey(string text) =>
+        new(text.Normalize(NormalizationForm.FormKC)
+            .Where(static character => char.IsLetterOrDigit(character))
+            .Select(static character => char.ToLowerInvariant(character))
+            .ToArray());
 
     private async Task<LrcDocument?> GetQqLegacyLyricsAsync(
         CloudLyricsCandidate track, CancellationToken ct)
@@ -329,9 +453,22 @@ public sealed partial class CloudLyricsClient : IDisposable
             {
                 continue;
             }
+            // The Android Lite and desktop/Web search responses expose
+            // different album MID / image field names.
+            string? cover = QqArtworkUrl(song);
+            string albumId = Find(song, "album", out JsonElement albumNode)
+                ? ValidNumericFrom(albumNode, "id", "albumID", "albumId")
+                : "";
+            if (albumId.Length == 0)
+            {
+                albumId = ValidNumericFrom(song, "albumid", "albumId", "albumID");
+            }
             entries.Add(new CloudLyricsCandidate(
                 CloudLyricsSource.QqMusic, id, title, artist,
-                album, checked(seconds * 1000), SongMid: mid));
+                album, checked(seconds * 1000), SongMid: mid,
+                CoverUrl: cover, AlbumId: albumId,
+                MediaMid: Find(song, "file", out JsonElement fileInfo)
+                    ? Str(fileInfo, "media_mid", "mediaMid") : null));
         }
         return entries;
     }
@@ -375,11 +512,13 @@ public sealed partial class CloudLyricsClient : IDisposable
                 artist = SingerNames(song, "Singers");
             }
 
+            string albumId = KugouAlbumId(song);
+            string? cover = KugouArtworkUrl(song);
             entries.Add(new CloudLyricsCandidate(
                 CloudLyricsSource.KugouMusic, id, title, artist,
                 Str(song, "album_name", "AlbumName"),
                 checked(Int(song, "duration", "Duration") * 1000),
-                Hash: hash));
+                Hash: hash, CoverUrl: cover, AlbumId: albumId));
         }
         return entries;
     }
@@ -391,56 +530,66 @@ public sealed partial class CloudLyricsClient : IDisposable
         {
             int start = raw.IndexOf('{');
             int end = raw.LastIndexOf('}');
-            if (start < 0 || end < start)
-            {
-                return null;
-            }
+            if (start < 0 || end < start) return null;
             raw = raw[start..(end + 1)];
         }
 
         using JsonDocument document = JsonDocument.Parse(raw);
         JsonElement response = document.RootElement;
-        JsonElement data = Find(response, "request", out _)
-            ? QqData(response) : response;
-        LrcDocument primary = DecodeQqContent(Str(data, "lyric"));
-        if (primary.Lines.Count == 0)
+        JsonElement data = response;
+        if (Find(response, "request", out _))
         {
-            return null;
+            data = QqData(response);
         }
-        LrcDocument translated = DecodeQqContent(
-            Str(data, "trans", "tlyric"));
-        LrcDocument romanized = DecodeQqContent(Str(data, "roma"));
-        LrcDocument merged = translated.Lines.Count > 0
-            ? LrcDocument.Merge(primary, translated) : primary;
+        else if (Find(response, "req_0", out JsonElement request)
+            && Find(request, "data", out JsonElement wrapper))
+        {
+            data = wrapper;
+        }
+        else if (Find(response, "data", out JsonElement nested)
+            && nested.ValueKind == JsonValueKind.Object)
+        {
+            data = nested;
+        }
 
+        LrcDocument primary = FirstQqLyricPart(data,
+            "lyric", "qrc", "lrc");
+        if (primary.Lines.Count == 0)
+            return null;
+
+        LrcDocument translated = FirstQqLyricPart(data,
+            "trans", "tlyric", "transLyric", "translation");
+        LrcDocument romanized = FirstQqLyricPart(data,
+            "roma", "romalrc", "romaLyric", "romalyric");
+        LrcDocument merged = translated.Lines.Count > 0
+            ? LrcDocument.Merge(primary, translated)
+            : primary;
         if (romanized.Lines.Count > 0)
-        {
-            // QQ romaji timestamps normally match the original QRC lines.
-            // Keep them separate for a later choice of display modes.
-            foreach (LrcLine roma in romanized.Lines)
-            {
-                LrcLine? aligned = primary.Lines
-                    .OrderBy(line =>
-                        (line.Timestamp - roma.Timestamp).Duration())
-                    .FirstOrDefault();
-                if (aligned is not null
-                    && (aligned.Timestamp - roma.Timestamp).Duration()
-                        <= TimeSpan.FromMilliseconds(600)
-                    && !string.Equals(aligned.Text, roma.Text,
-                        StringComparison.Ordinal))
-                {
-                    merged.Lines.Add(roma with
-                    {
-                        Timestamp = aligned.Timestamp,
-                    });
-                }
-            }
-            LrcLine[] ordered = merged.Lines
-                .OrderBy(static line => line.Timestamp).ToArray();
-            merged.Lines.Clear();
-            merged.Lines.AddRange(ordered);
-        }
+            LrcRomanization.Attach(merged, primary, romanized);
         return merged;
+    }
+
+    private static LrcDocument FirstQqLyricPart(
+        JsonElement data, params string[] fields)
+    {
+        foreach (string field in fields)
+        {
+            string? value = Str(data, field);
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            try
+            {
+                LrcDocument result = DecodeQqContent(value);
+                if (result.Lines.Count > 0) return result;
+            }
+            catch (Exception error) when (
+                error is FormatException or InvalidDataException
+                    or System.Security.Cryptography.CryptographicException)
+            {
+                // An empty or obsolete QRC variant must not suppress a
+                // valid LRC fallback in another response field.
+            }
+        }
+        return new LrcDocument();
     }
 
     private static LrcDocument DecodeQqContent(string content)

@@ -5,138 +5,258 @@
     xmlns:local="using:MusicLoom.App"
     IsTabStop="True"
     KeyDown="ImmersivePlayer_KeyDown">
-  <Grid Padding="42,24,42,32">
-    <Grid.Background>
-      <LinearGradientBrush x:Name="ArtworkGradient"
-                           StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#386C8A" Offset="0" />
-        <GradientStop Color="#2B5575" Offset="0.52" />
-        <GradientStop Color="#183A55" Offset="1" />
-      </LinearGradientBrush>
-    </Grid.Background>
+  <!-- Immersive overlays the app client area, NOT the system monitor. -->
+  <Grid x:Name="ImmersiveLayoutRoot"
+        MinHeight="0" SizeChanged="ImmersiveLayoutRoot_SizeChanged">
+    <!-- Independent background fades, without touching the connected cover. -->
+    <Border x:Name="ImmersiveBackdrop" IsHitTestVisible="False">
+      <Border.OpacityTransition>
+        <ScalarTransition Duration="0:0:0.56"/>
+      </Border.OpacityTransition>
+      <Border.Background>
+        <LinearGradientBrush x:Name="ArtworkGradient"
+                             StartPoint="0,0" EndPoint="0,1">
+          <GradientStop Color="#386C8A" Offset="0" />
+          <GradientStop Color="#2B5575" Offset="0.5" />
+          <GradientStop Color="#183A55" Offset="1" />
+        </LinearGradientBrush>
+      </Border.Background>
+    </Border>
+    <Grid x:Name="ImmersiveContentRoot" Padding="34,12,34,20">
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
-    <Button x:Name="ExitButton" Grid.Row="0" Width="40" Height="40"
-            HorizontalAlignment="Right" Padding="0"
-            Background="#25FFFFFF" BorderBrush="#50FFFFFF"
-            Click="ExitButton_Click" ToolTipService.ToolTip="Exit fullscreen">
-      <FontIcon Glyph="&#xE8A7;" FontSize="17" Foreground="White" />
-    </Button>
 
-    <Grid Grid.Row="1" ColumnSpacing="54" VerticalAlignment="Center">
+    <!-- The window's real, theme-aware MusicLoom title bar remains visible
+         above this content. Never duplicate it inside the player. -->
+
+    <Grid x:Name="PlayerColumns" Grid.Row="0"
+          HorizontalAlignment="Center" VerticalAlignment="Center"
+          SizeChanged="PlayerColumns_SizeChanged"
+          ColumnSpacing="38">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="5*" MinWidth="260" />
-        <ColumnDefinition Width="6*" MinWidth="300" />
+        <ColumnDefinition Width="1*" />
+        <ColumnDefinition Width="1*" />
       </Grid.ColumnDefinitions>
 
-      <!-- Left: generous cover, padded and softly elevated like the reference. -->
-      <Grid Grid.Column="0" MaxWidth="550" RowSpacing="21"
-            VerticalAlignment="Center">
+      <Grid x:Name="LeftPanel" Grid.Column="0"
+            VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+            RowSpacing="15">
         <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
           <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Border Grid.Row="0" Padding="11" CornerRadius="22"
-                Background="#2CFFFFFF" BorderBrush="#52FFFFFF"
-                BorderThickness="1" Translation="0,0,15">
-          <Border.Shadow>
-            <ThemeShadow />
-          </Border.Shadow>
-          <Border CornerRadius="13" Background="#25000000">
-            <Image x:Name="AlbumCover" Stretch="Uniform" />
+
+        <!-- The outer square is just a layout slot. The inner rounded
+             cover surface is connected, including its clip, not its Image. -->
+        <Border Grid.Row="0" x:Name="ImmersiveArtworkFrame"
+                Width="0" Height="0"
+                HorizontalAlignment="Center" VerticalAlignment="Top"
+                Background="Transparent" BorderThickness="0">
+          <Border x:Name="AlbumCoverSurface"
+                  HorizontalAlignment="Center" VerticalAlignment="Top"
+                  Width="0" Height="0" CornerRadius="10"
+                  BorderThickness="0">
+            <!-- ThemeShadow casts a rectangular shadow, visibly detached
+                 from the clipped cover while connected images move. -->
+            <Image x:Name="AlbumCover" Stretch="UniformToFill"/>
           </Border>
         </Border>
-        <Grid Grid.Row="1">
+
+        <Grid x:Name="ImmersiveProgressPanel"
+              Grid.Row="1" RowSpacing="2" Margin="0,0,0,1">
+          <Grid.OpacityTransition>
+            <ScalarTransition Duration="0:0:0.56"/>
+          </Grid.OpacityTransition>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
-          <Slider x:Name="ProgressSlider" Grid.Row="0"
-                  Minimum="0" Maximum="1"
-                  ValueChanged="ProgressSlider_ValueChanged" />
-          <TextBlock x:Name="PlaybackTime" Grid.Row="1"
+          <TextBlock x:Name="PlaybackTime" Grid.Row="0"
                      Foreground="#D9FFFFFF"
-                     HorizontalAlignment="Right"
+                     HorizontalAlignment="Center"
                      FontSize="12" Text="0:00 / 0:00" />
+          <!-- A 38px track viewport prevents the native thumb from being
+               clipped during pointer-over and dragging. -->
+          <Slider x:Name="ProgressSlider" Grid.Row="1"
+                  Height="38" Margin="0" Padding="0"
+                  Minimum="0" Maximum="1"
+                  ValueChanged="ProgressSlider_ValueChanged">
+            <Slider.ThumbToolTipValueConverter>
+              <local:TimeSliderValueConverter />
+            </Slider.ThumbToolTipValueConverter>
+            <Slider.Resources>
+              <SolidColorBrush x:Key="SliderTrackFill" Color="#42FFFFFF" />
+              <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#54FFFFFF" />
+              <SolidColorBrush x:Key="SliderTrackFillPressed" Color="#54FFFFFF" />
+              <SolidColorBrush x:Key="SliderTrackValueFill" Color="#E8FFFFFF" />
+              <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="#FFFFFFFF" />
+              <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="#FFFFFFFF" />
+              <SolidColorBrush x:Key="SliderThumbBackground" Color="#FFFFFFFF" />
+              <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#FFFFFFFF" />
+              <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#FFFFFFFF" />
+            </Slider.Resources>
+          </Slider>
         </Grid>
-        <StackPanel Grid.Row="2" Orientation="Horizontal"
-                    HorizontalAlignment="Center" Spacing="15">
-          <Button Width="44" Height="44" Padding="0"
-                  Click="PreviousButton_Click"
-                  Background="#24FFFFFF" BorderBrush="#44FFFFFF">
-            <FontIcon Glyph="&#xE892;" FontSize="17" Foreground="White" />
-          </Button>
-          <Button Width="52" Height="52" Padding="0"
-                  Click="PlayPauseButton_Click"
-                  Background="#38FFFFFF" BorderBrush="#70FFFFFF">
-            <SymbolIcon x:Name="PlayPauseIcon" Symbol="Play"
-                        Foreground="White" />
-          </Button>
-          <Button Width="44" Height="44" Padding="0"
-                  Click="NextButton_Click"
-                  Background="#24FFFFFF" BorderBrush="#44FFFFFF">
-            <FontIcon Glyph="&#xE893;" FontSize="17" Foreground="White" />
-          </Button>
-        </StackPanel>
       </Grid>
 
-      <!-- Right: heading and lyrics. No duplicated audio player state. -->
-      <Grid Grid.Column="1" VerticalAlignment="Stretch" RowSpacing="18">
+      <Grid x:Name="RightPanel" Grid.Column="1"
+            VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+            RowSpacing="16">
+        <Grid.OpacityTransition>
+          <ScalarTransition Duration="0:0:0.56"/>
+        </Grid.OpacityTransition>
         <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
+          <RowDefinition Height="128" />
           <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <Grid ColumnSpacing="14">
+        <Grid x:Name="ImmersiveMetadataHeader" Grid.Row="0" ColumnSpacing="14">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
-          <StackPanel Grid.Column="0" Spacing="6">
+          <!-- Track, artist and album share one left alignment and
+               a bounded header, independent of lyric count. -->
+          <StackPanel Grid.Column="0" Spacing="5"
+                      VerticalAlignment="Top" HorizontalAlignment="Stretch">
             <TextBlock x:Name="TrackHeading" Text="Nothing playing"
-                       FontSize="24" FontWeight="SemiBold"
+                       FontSize="25" FontWeight="SemiBold"
                        Foreground="White" MaxLines="2"
                        TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="ArtistHeading" Text=""
+                       Foreground="#E0FFFFFF"
+                       FontSize="16" TextTrimming="CharacterEllipsis" />
             <TextBlock x:Name="AlbumHeading" Text=""
-                       Foreground="#BFFFFFFF"
-                       FontSize="15" TextTrimming="CharacterEllipsis" />
+                       Foreground="#A8FFFFFF"
+                       FontSize="13" TextTrimming="CharacterEllipsis" />
           </StackPanel>
-          <ComboBox x:Name="LyricModeBox" Grid.Column="1"
-                    MinWidth="140" VerticalAlignment="Top"
-                    Background="#25FFFFFF" BorderBrush="#64FFFFFF"
-                    Foreground="White"
-                    SelectionChanged="LyricModeBox_SelectionChanged">
-            <ComboBoxItem x:Name="OriginalOnlyChoice" Tag="originalOnly" Content="Original only" />
-            <ComboBoxItem x:Name="PreferTranslationChoice" Tag="preferTranslation" Content="Prefer translation" />
-            <ComboBoxItem x:Name="PreferOriginalChoice" Tag="preferOriginal" Content="Prefer original" />
-          </ComboBox>
+          <!-- One compact action cycles through all three lyric modes. -->
+          <Button x:Name="LyricModeButton" Grid.Column="1"
+                  Width="38" Height="38" VerticalAlignment="Center"
+                  Padding="0" BorderThickness="0"
+                  Background="Transparent"
+                  Click="LyricModeButton_Click">
+            <FontIcon x:Name="LyricModeIcon" Glyph="&#xE8C1;"
+                      FontSize="18" Foreground="White"/>
+          </Button>
         </Grid>
-        <ListView x:Name="ImmersiveLyricsList" Grid.Row="1"
-                  SelectionMode="None" Background="Transparent"
-                  HorizontalContentAlignment="Stretch"
-                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-          <ListView.ItemTemplate>
-            <DataTemplate>
-              <StackPanel Padding="1,10" Spacing="7"
-                          Opacity="{Binding ImmersiveOpacity}">
-                <TextBlock x:Name="PrimaryLyricText"
-                           local:KaraokeLyricText.Line="{Binding}"
-                           FontSize="{Binding ImmersiveFontSize}"
-                           FontWeight="SemiBold" Foreground="White"
-                           TextWrapping="WrapWholeWords" />
-                <TextBlock x:Name="SecondaryLyricText"
-                           local:KaraokeLyricText.Line="{Binding}"
-                           local:KaraokeLyricText.IsSecondary="True"
-                           Visibility="{Binding SecondaryVisibility}"
-                           FontSize="16" Foreground="#CBFFFFFF"
-                           TextWrapping="WrapWholeWords" />
-              </StackPanel>
-            </DataTemplate>
-          </ListView.ItemTemplate>
-        </ListView>
+        <!-- The lyric viewport, including template recycling, is always
+             transparent; its items crossfade only after fresh lyrics load. -->
+        <Grid x:Name="ImmersiveLyricsViewport" Grid.Row="1"
+              MinHeight="0" Background="Transparent">
+          <Grid.OpacityTransition>
+            <ScalarTransition Duration="0:0:0.18"/>
+          </Grid.OpacityTransition>
+          <ListView x:Name="ImmersiveLyricsList"
+                    SelectionMode="None" Background="Transparent"
+                    Padding="0"
+                    DoubleTapped="ImmersiveLyricsList_DoubleTapped"
+                    HorizontalContentAlignment="Stretch"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    ScrollViewer.VerticalScrollBarVisibility="Hidden">
+            <ListView.ItemContainerStyle>
+              <Style TargetType="ListViewItem">
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+              </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Padding="0,10" Spacing="7"
+                            Opacity="{Binding ImmersiveOpacity}">
+                  <TextBlock x:Name="PrimaryLyricText"
+                             local:KaraokeLyricText.Line="{Binding}"
+                             Visibility="{Binding PrimaryPlainVisibility}"
+                             FontSize="{Binding ImmersiveFontSize}"
+                             FontWeight="SemiBold" Foreground="White"
+                             TextWrapping="WrapWholeWords" />
+                  <local:RubyLyricView Line="{Binding}"
+                             Visibility="{Binding PrimaryRubyVisibility}"
+                             FontSize="{Binding ImmersiveFontSize}"
+                             FontWeight="SemiBold" Foreground="White"/>
+                  <TextBlock x:Name="SecondaryLyricText"
+                             local:KaraokeLyricText.Line="{Binding}"
+                             local:KaraokeLyricText.IsSecondary="True"
+                             Visibility="{Binding SecondaryPlainVisibility}"
+                             FontSize="{Binding ImmersiveSecondaryFontSize}"
+                             Foreground="#CBFFFFFF"
+                             TextWrapping="WrapWholeWords" />
+                  <local:RubyLyricView Line="{Binding}"
+                             IsSecondary="True"
+                             Visibility="{Binding SecondaryRubyVisibility}"
+                             FontSize="{Binding ImmersiveSecondaryFontSize}"
+                             Foreground="#CBFFFFFF"/>
+                </StackPanel>
+              </DataTemplate>
+            </ListView.ItemTemplate>
+          </ListView>
+          <!-- Stationary viewport-edge veils: these are siblings of the
+               scrolling ListView, never items inside its scroll content.
+               Palette sampling keeps the veils flush with the background. -->
+          <Border x:Name="LyricsTopFade" Canvas.ZIndex="1"
+                  Visibility="Collapsed" Height="90" VerticalAlignment="Top"
+                  HorizontalAlignment="Stretch" IsHitTestVisible="False">
+            <Border.Background>
+              <LinearGradientBrush x:Name="LyricsTopFadeBrush"
+                                   StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#FF386C8A" Offset="0"/>
+                <GradientStop Color="#00386C8A" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <Border x:Name="LyricsBottomFade" Canvas.ZIndex="1"
+                  Visibility="Collapsed" Height="90" VerticalAlignment="Bottom"
+                  HorizontalAlignment="Stretch" IsHitTestVisible="False">
+            <Border.Background>
+              <LinearGradientBrush x:Name="LyricsBottomFadeBrush"
+                                   StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#00183A55" Offset="0"/>
+                <GradientStop Color="#FF183A55" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+        </Grid>
       </Grid>
+    </Grid>
+
+    <!-- Transport controls belong to the shared footer, not the left
+         column. Exit remains on the same vertical center line at right. -->
+    <Grid x:Name="ImmersiveFooter" Grid.Row="1"
+          HorizontalAlignment="Stretch" MinHeight="52">
+      <Grid.OpacityTransition>
+        <ScalarTransition Duration="0:0:0.56"/>
+      </Grid.OpacityTransition>
+      <StackPanel x:Name="TransportControls" Orientation="Horizontal"
+                  VerticalAlignment="Center" HorizontalAlignment="Center"
+                  Spacing="18">
+        <Button x:Name="PreviousButton" Width="40" Height="40" Padding="0"
+                BorderThickness="0" Background="Transparent"
+                Click="PreviousButton_Click" ToolTipService.ToolTip="Previous">
+          <FontIcon Glyph="&#xE892;" FontSize="18" Foreground="White" />
+        </Button>
+        <Button Width="50" Height="50" Padding="0"
+                BorderThickness="0" Background="Transparent"
+                Click="PlayPauseButton_Click" ToolTipService.ToolTip="Play or pause">
+          <SymbolIcon x:Name="PlayPauseIcon" Symbol="Play" Foreground="White" />
+        </Button>
+        <Button x:Name="NextButton" Width="40" Height="40" Padding="0"
+                BorderThickness="0" Background="Transparent"
+                Click="NextButton_Click" ToolTipService.ToolTip="Next">
+          <FontIcon Glyph="&#xE893;" FontSize="18" Foreground="White" />
+        </Button>
+      </StackPanel>
+
+    <Button x:Name="ExitButton"
+            HorizontalAlignment="Right"
+            Width="40" Height="38" Padding="0"
+            BorderThickness="0" Background="Transparent"
+            Click="ExitButton_Click" ToolTipService.ToolTip="Exit immersive view">
+      <FontIcon Glyph="&#xE8A7;" FontSize="18" Foreground="White" />
+    </Button>
+    </Grid>
     </Grid>
   </Grid>
 </UserControl>

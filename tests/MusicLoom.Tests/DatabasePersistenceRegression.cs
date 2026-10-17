@@ -47,6 +47,7 @@ internal static class DatabasePersistenceRegression
                                 {
                                     Enabled = true,
                                     OverrideExisting = true,
+                                    IncludeRomanization = true,
                                     RefreshIntervalHours = 6.5,
                                     StorageMode =
                                         LyricsStorageModes.Sidecar,

@@ -57,6 +57,23 @@ internal static class AppearanceManager
             Color dark2 = Blend(accent, Color.FromArgb(255, 0, 0, 0), 0.30);
             Color dark3 = Blend(accent, Color.FromArgb(255, 0, 0, 0), 0.46);
 
+            string theme = UiThemeModes.Normalize(settings.Theme);
+            bool dark = theme == UiThemeModes.Dark
+                || (theme is not UiThemeModes.Light
+                    && window.Content is FrameworkElement root
+                    && root.ActualTheme == ElementTheme.Dark);
+            // Fluent surfaces are theme-aware, but accent text was
+            // previously always assigned dark shades. On a dark surface
+            // those shades became nearly invisible. Respect the user's
+            // chosen accent for buttons, only toning text for contrast.
+            Color readable = EnsureAccentTextContrast(accent, dark);
+            Color readableSecondary = Blend(readable,
+                dark ? Color.FromArgb(255, 255, 255, 255)
+                     : Color.FromArgb(255, 0, 0, 0), 0.12);
+            Color readableTertiary = Blend(readable,
+                dark ? Color.FromArgb(255, 255, 255, 255)
+                     : Color.FromArgb(255, 0, 0, 0), 0.22);
+
             resources["SystemAccentColor"] = accent;
             resources["SystemAccentColorLight1"] = light1;
             resources["SystemAccentColorLight2"] = light2;
@@ -68,15 +85,15 @@ internal static class AppearanceManager
             resources["AccentFillColorDefaultBrush"] =
                 new SolidColorBrush(accent);
             resources["AccentFillColorSecondaryBrush"] =
-                new SolidColorBrush(WithAlpha(accent, 230));
+                new SolidColorBrush(WithAlpha(accent, dark ? (byte)207 : (byte)230));
             resources["AccentFillColorTertiaryBrush"] =
-                new SolidColorBrush(WithAlpha(accent, 205));
+                new SolidColorBrush(WithAlpha(accent, dark ? (byte)162 : (byte)205));
             resources["AccentTextFillColorPrimaryBrush"] =
-                new SolidColorBrush(accent);
+                new SolidColorBrush(readable);
             resources["AccentTextFillColorSecondaryBrush"] =
-                new SolidColorBrush(dark1);
+                new SolidColorBrush(readableSecondary);
             resources["AccentTextFillColorTertiaryBrush"] =
-                new SolidColorBrush(dark2);
+                new SolidColorBrush(readableTertiary);
             resources["ProgressBarForegroundThemeBrush"] =
                 new SolidColorBrush(accent);
         }
@@ -151,6 +168,44 @@ internal static class AppearanceManager
         }
 
         _capturedDefaults = true;
+    }
+
+    private static Color EnsureAccentTextContrast(
+        Color accent, bool dark)
+    {
+        // Match at least 4.5:1 against a neutral Fluent card surface.
+        // This changes text only, not the user's selected accent color.
+        Color background = dark
+            ? Color.FromArgb(255, 30, 30, 34)
+            : Color.FromArgb(255, 250, 250, 250);
+        Color target = dark
+            ? Color.FromArgb(255, 255, 255, 255)
+            : Color.FromArgb(255, 0, 0, 0);
+
+        static double Channel(byte value)
+        {
+            double x = value / 255.0;
+            return x <= 0.04045
+                ? x / 12.92 : Math.Pow((x + 0.055) / 1.055, 2.4);
+        }
+
+        static double Luminance(Color color) =>
+            0.2126 * Channel(color.R)
+            + 0.7152 * Channel(color.G)
+            + 0.0722 * Channel(color.B);
+
+        double surface = Luminance(background);
+        for (int step = 0; step <= 20; step++)
+        {
+            Color candidate = Blend(accent, target, step / 20d);
+            double value = Luminance(candidate);
+            double ratio = (Math.Max(value, surface) + 0.05)
+                / (Math.Min(value, surface) + 0.05);
+            if (ratio >= 4.5)
+                return candidate;
+        }
+
+        return target;
     }
 
     private static Color Blend(

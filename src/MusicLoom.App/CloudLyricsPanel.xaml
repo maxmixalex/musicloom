@@ -1,90 +1,73 @@
-<UserControl
-    x:Class="MusicLoom.App.CloudLyricsPanel"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:MusicLoom.App">
-  <Grid Padding="8,14" RowSpacing="12">
-    <Grid.RowDefinitions>
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="*" />
-      <RowDefinition Height="Auto" />
-    </Grid.RowDefinitions>
-    <Grid Grid.Row="0" ColumnSpacing="8">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="Auto" />
-      </Grid.ColumnDefinitions>
-      <TextBox x:Name="ArtistBox" Grid.Column="0"
-               PlaceholderText="Artist" />
-      <TextBox x:Name="TitleBox" Grid.Column="1"
-               PlaceholderText="Title" />
-      <Button x:Name="SearchButton" Grid.Column="2"
-              Content="Search" Click="SearchButton_Click"
-              Padding="14,7" />
-    </Grid>
-    <Grid Grid.Row="1" ColumnSpacing="8">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="Auto" />
-      </Grid.ColumnDefinitions>
-      <TextBlock x:Name="ProviderStatus" Grid.Column="0"
-                 VerticalAlignment="Center"
-                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                 TextTrimming="CharacterEllipsis" />
-      <Button x:Name="AudioRecognizeButton" Grid.Column="1"
-              Content="Audio recognize (experimental)"
-              Click="AudioRecognizeButton_Click"
-              Visibility="Collapsed" Padding="10,5" />
-    </Grid>
-
-    <Grid Grid.Row="2" ColumnSpacing="12">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="1*" />
-        <ColumnDefinition Width="1*" />
-      </Grid.ColumnDefinitions>
-      <Border Grid.Column="0" CornerRadius="8"
-              BorderThickness="1"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
-        <ListView x:Name="CandidatesList"
+<UserControl x:Class="MusicLoom.App.CloudLyricsPanel"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:local="using:MusicLoom.App"
+  xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives" MinWidth="760">
+  <local:LyricsSearchDialogView x:Name="SearchLayout">
+    <local:LyricsSearchDialogView.SearchContent>
+      <local:LyricsSearchFormView x:Name="SearchInputs"/>
+    </local:LyricsSearchDialogView.SearchContent>
+    <local:LyricsSearchDialogView.CandidatesContent>
+      <ListView x:Name="CandidatesList"
                   SelectionMode="Single"
                   SelectionChanged="CandidatesList_SelectionChanged"
-                  HorizontalContentAlignment="Stretch">
+                  HorizontalContentAlignment="Stretch"
+                  Padding="12,0,22,0"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListView.ItemContainerStyle>
+            <Style TargetType="ListViewItem">
+              <Setter Property="Padding" Value="0" />
+              <Setter Property="Margin" Value="6,1,12,1" />
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+              <!-- Restore NetEase-like native selection indicator. The
+                   candidate itself remains the same shared XAML control. -->
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="ListViewItem">
+                    <primitives:ListViewItemPresenter
+                        Content="{TemplateBinding Content}"
+                        ContentTemplate="{TemplateBinding ContentTemplate}"
+                        Padding="{TemplateBinding Padding}"
+                        HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                        VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                        SelectionIndicatorVisualEnabled="True"
+                        SelectionIndicatorMode="Inline"
+                        SelectionIndicatorBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                        SelectionIndicatorPointerOverBrush="{ThemeResource AccentFillColorSecondaryBrush}"
+                        SelectionIndicatorPressedBrush="{ThemeResource AccentFillColorTertiaryBrush}"/>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+          </ListView.ItemContainerStyle>
           <ListView.ItemTemplate>
             <DataTemplate>
-              <StackPanel Padding="8" Spacing="3">
-                <TextBlock Text="{Binding Title}"
-                           FontWeight="SemiBold"
-                           TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding Artist}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding Album}"
-                           FontSize="12"
-                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                           TextTrimming="CharacterEllipsis" />
-              </StackPanel>
+              <local:LyricsSearchCandidateCard
+                  SongTitle="{Binding Title}"
+                  ArtistName="{Binding Artist}"
+                  AlbumName="{Binding Album}"
+                  DurationText="{Binding Duration}"
+                  ArtworkSource="{Binding Artwork}"
+                  PreviewTooltip="{Binding PreviewTooltip}"
+                  IsPreviewPlaying="{Binding PreviewIsPlaying, Mode=OneWay}"
+                  ExternalUrl="{Binding ExternalUrl}"
+                  ExternalLabel="{Binding ExternalLabel}"
+                  PreviewRequested="CandidateCard_PreviewRequested"/>
             </DataTemplate>
           </ListView.ItemTemplate>
         </ListView>
-      </Border>
-      <Border Grid.Column="1" CornerRadius="8"
-              Padding="12" BorderThickness="1"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
-        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-          <TextBlock x:Name="LyricsPreview"
-                     TextWrapping="Wrap"
-                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        </ScrollViewer>
-      </Border>
-    </Grid>
-    <Grid Grid.Row="3">
-      <Button x:Name="UseLyricsButton"
-              HorizontalAlignment="Right"
-              Content="Use selected lyrics"
-              Click="UseLyricsButton_Click"
-              IsEnabled="False" />
-    </Grid>
-  </Grid>
+    </local:LyricsSearchDialogView.CandidatesContent>
+    <local:LyricsSearchDialogView.LyricsContent>
+      <local:LyricsSearchPreviewView x:Name="LyricsPreview"/>
+    </local:LyricsSearchDialogView.LyricsContent>
+    <local:LyricsSearchDialogView.FooterContent>
+      <Button x:Name="UseMatchButton"
+            HorizontalAlignment="Right"
+            Content="Use selected"
+            Style="{ThemeResource AccentButtonStyle}"
+            Click="UseMatchButton_Click"
+            IsEnabled="False" />
+    </local:LyricsSearchDialogView.FooterContent>
+  </local:LyricsSearchDialogView>
 </UserControl>

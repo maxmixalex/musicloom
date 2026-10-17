@@ -18,6 +18,8 @@
              Link="AppPersistence/SqliteStateStore.cs" />
     <Compile Include="../../src/MusicLoom.App/SqliteLyricsCache.cs"
              Link="AppPersistence/SqliteLyricsCache.cs" />
+    <Compile Include="../../src/MusicLoom.App/SqliteProviderMatchStore.cs"
+             Link="AppPersistence/SqliteProviderMatchStore.cs" />
     <Compile Include="../../src/MusicLoom.App/LibraryLyricsIndexer.cs"
              Link="AppPersistence/LibraryLyricsIndexer.cs" />
     <Compile Include="../../src/MusicLoom.App/UserFacingErrors.cs"

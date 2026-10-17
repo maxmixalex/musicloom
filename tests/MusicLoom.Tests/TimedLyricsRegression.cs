@@ -32,6 +32,9 @@ internal static class TimedLyricsRegression
     private static async Task RunAsync()
     {
         VerifyQrcWordTiming();
+        VerifyQqRubyAnnotation();
+        VerifyRomanizationExportOptIn();
+        VerifyUnequalRubySyllables();
         VerifyKrcWordTiming();
         await VerifyUnofficialTransportAsync();
     }
@@ -40,7 +43,10 @@ internal static class TimedLyricsRegression
     {
         string ciphertext = BuildQrcCipher(QrcXml);
         string decrypted = TimedLyricsCodec.DecryptQrc(ciphertext);
-        Assert(decrypted == QrcXml, "QRC 3DES/zlib roundtrip failed.");
+        Assert(decrypted == QrcXml, "QRC standard 3DES/zlib roundtrip failed.");
+        string qqCompat = BuildBuggyQrcCipher(QrcXml);
+        Assert(TimedLyricsCodec.DecryptQrc(qqCompat) == QrcXml,
+            "Real QQ Music's historical DES S-box variant must decrypt QRC.");
 
         LrcDocument doc = TimedLyricsCodec.ParseQrc(decrypted);
         Assert(doc.Lines.Count == 2, "QRC line count wrong.");
@@ -72,6 +78,109 @@ internal static class TimedLyricsRegression
             "Output-only offset must not modify canonical words.");
     }
 
+    private static void VerifyQqRubyAnnotation()
+    {
+        string qrcRoma = "<QrcInfos><LyricInfo><Lyric_1 LyricType=\"1\" LyricContent=\""
+            + "[500,900]he(500,400)rō(900,500)\n"
+            + "[1900,900]world(1900,900)"
+            + "\" /></LyricInfo></QrcInfos>";
+        using MemoryStream responseData = new();
+        using (Utf8JsonWriter writer = new(responseData))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("lyric", QrcXml);
+            writer.WriteString("roma", qrcRoma);
+            writer.WriteString("trans", "");
+            writer.WriteEndObject();
+            writer.Flush();
+        }
+        string response = Encoding.UTF8.GetString(responseData.ToArray());
+        LrcDocument? merged = CloudLyricsClient.ParseQqLyrics(response);
+        Assert(merged?.Lines.Count == 2
+            && merged.Lines[0].Words is { Count: 2 } words
+            && words[0].Ruby == "he" && words[1].Ruby == "rō",
+            "QQ's romaji QRC should align to the original words, not appear as a third lyric row.");
+        LrcDocument roundtrip = LrcDocument.Parse(merged!.ToString());
+        Assert(roundtrip.Lines[0].Words![1].Ruby == "rō"
+            && roundtrip.Lines[1].Words![0].Ruby == "world",
+            "QQ roma annotations must survive the canonical enhanced-LRC cache.");
+        string exported = roundtrip.ToStandardLrcString();
+        LrcDocument output = LrcDocument.Parse(exported);
+        Assert(output.Lines.Count == 2
+            && output.Lines[0].Text == "Hello"
+            && output.Lines[0].Words is { Count: 2 } exportedWords
+            && exportedWords.All(static word => word.Ruby is null)
+            && !exported.Contains("[ml-ruby:", StringComparison.Ordinal),
+            "Export must preserve word-timed lyric text without private ruby annotations.");
+    }
+
+    private static void VerifyRomanizationExportOptIn()
+    {
+        LrcDocument original = LrcDocument.Parse(
+            "[00:01.000]<00:01.000>君<00:01.300>が<00:01.800>");
+        LrcWord[] words = original.Lines[0].Words!
+            .Select((word, index) => word with
+                { Ruby = index == 0 ? "kimi" : "ga" }).ToArray();
+        original.Lines[0] = original.Lines[0] with { Words = words };
+        string normal = original.ForSynchronization(false).ToStandardLrcString();
+        string selected = original.ForSynchronization(true).ToStandardLrcString();
+        if (normal.Contains("kimi", StringComparison.Ordinal)
+            || normal.Contains("ga", StringComparison.Ordinal)
+            || !selected.Contains("[00:01.000]kimi ga",
+                StringComparison.Ordinal)
+            || selected.Contains("[ml-ruby:", StringComparison.Ordinal)
+            || original.Lines.Count != 1)
+            throw new InvalidOperationException(
+                "The romanization export preference must default off and must never mutate canonical lyrics.");
+        LrcDocument line = LrcDocument.Parse("[00:02.000]春");
+        line.Lines[0] = line.Lines[0] with
+            { Romanization = "haru" };
+        if (!line.ForSynchronization(true).ToStandardLrcString()
+                .Contains("[00:02.000]haru", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Plain LRC romanization must be included when the user opts in.");
+    }
+
+    private static void VerifyUnequalRubySyllables()
+    {
+        LrcWord[] originals =
+        [
+            new(TimeSpan.FromMilliseconds(500),
+                TimeSpan.FromMilliseconds(900), "Hel"),
+            new(TimeSpan.FromMilliseconds(900),
+                TimeSpan.FromMilliseconds(1400), "lo"),
+        ];
+        LrcWord[] romaji =
+        [
+            new(TimeSpan.FromMilliseconds(500),
+                TimeSpan.FromMilliseconds(680), "he"),
+            new(TimeSpan.FromMilliseconds(680),
+                TimeSpan.FromMilliseconds(900), "r"),
+            new(TimeSpan.FromMilliseconds(900),
+                TimeSpan.FromMilliseconds(1400), "ō"),
+        ];
+        IReadOnlyList<LrcWord>? result =
+            RubyWordAlignment.Attach(originals, romaji);
+        Assert(result is { Count: 2 }
+            && result[0].Ruby == "her"
+            && result[1].Ruby == "ō",
+            "Unequal original/romanization syllable counts must use word timestamps, not drop ruby.");
+        Assert(originals.All(static word => word.Ruby is null),
+            "Ruby alignment must not mutate the source word timings or annotations.");
+
+        LrcWord[] unrelated =
+        [
+            new(TimeSpan.FromSeconds(10),
+                TimeSpan.FromSeconds(11), "different"),
+            new(TimeSpan.FromSeconds(12),
+                TimeSpan.FromSeconds(13), "song"),
+            new(TimeSpan.FromSeconds(14),
+                TimeSpan.FromSeconds(15), "line"),
+        ];
+        Assert(RubyWordAlignment.Attach(originals, unrelated) is null,
+            "Unrelated romanization must not be attached across distant timestamps.");
+    }
+
     private static void VerifyKrcWordTiming()
     {
         string romanization = """
@@ -87,8 +196,8 @@ internal static class TimedLyricsRegression
         Assert(actual == input, "KuGou XOR/zlib roundtrip failed.");
 
         LrcDocument decoded = TimedLyricsCodec.ParseKrc(actual);
-        Assert(decoded.Lines.Count == 6,
-            "KRC original/romanization/translation should all survive.");
+        Assert(decoded.Lines.Count == 4,
+            "KRC must keep two originals and two translations; romanization belongs in ruby, not extra lyric lines.");
         LrcLine original = decoded.Lines.First(
             line => line.Words is { Count: > 0 });
         Assert(original.Text == "Hello"
@@ -99,17 +208,29 @@ internal static class TimedLyricsRegression
             "KuGou word times must be relative to line start.");
         Assert(decoded.Lines.Any(line => line.Text == "你好"),
             "KRC line translation is missing.");
-        Assert(decoded.Lines.Any(line => line.Text == "Herō"
-            && line.Words is null),
-            "KRC aligned romanization is missing.");
+        Assert(original.Words![0].Ruby == "He"
+            && original.Words![1].Ruby == "rō",
+            "KRC romanization must align to the two original timed words.");
+        Assert(decoded.Lines.Any(line => line.Text == "World"
+            && line.Words is { Count: 1 } w && w[0].Ruby == "Wōrudo"),
+            "The following KRC line must retain its own ruby annotation.");
+        Assert(!decoded.Lines.Any(line => line.Text == "Herō"),
+            "Romanization must not leak into a translated lyric row.");
         Assert(decoded.Metadata["ar"] == "Artist",
             "KRC album/artist tags should be preserved.");
 
         LrcDocument persistence = LrcDocument.Parse(decoded.ToString());
         Assert(persistence.Lines.Count == decoded.Lines.Count
             && persistence.Lines.First(line => line.Words is not null)
-                .Words![1].End == TimeSpan.FromMilliseconds(1400),
-            "KRC timed words were lost through SQLite-style serialization.");
+                .Words![1].End == TimeSpan.FromMilliseconds(1400)
+            && persistence.Lines.First(line => line.Words is not null)
+                .Words![1].Ruby == "rō",
+            "KRC word times or ruby annotations were lost through canonical serialization.");
+        Assert(!decoded.ToStandardLrcString().Contains("[ml-ruby:",
+            StringComparison.Ordinal),
+            "Private ruby metadata must never be written to destination LRC/audio tags.");
+        Assert(LrcPresentation.Project(persistence).Count == 2,
+            "Ruby annotations must not invent additional scrolled lyric rows.");
 
         bool rejected = false;
         try
@@ -127,7 +248,7 @@ internal static class TimedLyricsRegression
     {
         string lyricKrc = Convert.ToBase64String(
             BuildKrcCipher(KrcText));
-        string encryptedQrc = BuildQrcCipher(QrcXml);
+        string encryptedQrc = BuildBuggyQrcCipher(QrcXml);
         FakeLyricsTransport mock = new(encryptedQrc, lyricKrc);
         using HttpClient http = new(mock);
         using CloudLyricsClient client = new(http);
@@ -140,6 +261,11 @@ internal static class TimedLyricsRegression
         LrcDocument? qqDoc = await client.GetLyricsAsync(qq[0]);
         Assert(qqDoc?.Lines[0].Words is { Count: 2 },
             "QQ lyric request must decrypt QRC instead of LRC-only.");
+        var qqRich = LrcPresentation.Project(qqDoc!);
+        Assert(qqRich.First().Translation == "你好"
+            && qqRich.First().Romanization == "he ro"
+            && mock.QqLegacyRequests == 1,
+            $"QQ must supplement missing translation and romaji from the legacy SongMID endpoint (translation={qqRich.First().Translation}, reading={qqRich.First().Romanization}, requests={mock.QqLegacyRequests}).");
         Assert(mock.QqSessions == 1,
             "Guest QQ session should be shared between search/lyrics.");
         Assert(mock.QqRequests == 3,
@@ -169,6 +295,32 @@ internal static class TimedLyricsRegression
         triple.Mode = CipherMode.ECB;
         return Convert.ToHexString(
             triple.EncryptEcb(padded, PaddingMode.None));
+    }
+
+    private static string BuildBuggyQrcCipher(string plaintext)
+    {
+        byte[] compressed = Deflate(plaintext);
+        byte[] padded = new byte[(compressed.Length + 7) / 8 * 8];
+        compressed.CopyTo(padded, 0);
+        byte[][][] schedule = new byte[3][][];
+        for (int k = 0; k < 3; k++)
+        {
+            schedule[k] = new byte[16][];
+            for (int j = 0; j < 16; j++) schedule[k][j] = new byte[6];
+        }
+        QqMusicBuggyDes.TripleDESKeySetup(
+            Encoding.ASCII.GetBytes("!@#)(*$%123ZXC!@!@#)(NHL"),
+            schedule, QqMusicBuggyDes.ENCRYPT);
+        byte[] encrypted = new byte[padded.Length];
+        byte[] input = new byte[8];
+        byte[] output = new byte[8];
+        for (int i = 0; i < padded.Length; i += 8)
+        {
+            Buffer.BlockCopy(padded, i, input, 0, 8);
+            QqMusicBuggyDes.TripleDESCrypt(input, output, schedule);
+            Buffer.BlockCopy(output, 0, encrypted, i, 8);
+        }
+        return Convert.ToHexString(encrypted);
     }
 
     private static byte[] BuildKrcCipher(string plaintext)
@@ -216,6 +368,7 @@ internal static class TimedLyricsRegression
 
         public int QqSessions { get; private set; }
         public int QqRequests { get; private set; }
+        public int QqLegacyRequests { get; private set; }
         public int KugouSearchCount { get; private set; }
         public int KugouDownloadCount { get; private set; }
         public int MissingSignatures { get; private set; }
@@ -258,6 +411,15 @@ internal static class TimedLyricsRegression
                     Assert(request.Contains("\"songID\":98123",
                         StringComparison.Ordinal),
                         "QRC must request numeric songID rather than MID.");
+                    Assert(request.Contains("\"songMID\":\"mid-123\"",
+                        StringComparison.Ordinal)
+                        && request.Contains("\"type\":-1",
+                            StringComparison.Ordinal)
+                        && request.Contains("\"trans\":1",
+                            StringComparison.Ordinal)
+                        && request.Contains("\"roma\":1",
+                            StringComparison.Ordinal),
+                        "QQ lyric request must ask for all three QRC/translation/romanization channels and include the stable song MID.");
                     payload = "{\"code\":0,\"request\":{\"code\":0,"
                         + "\"data\":{\"qrc_t\":1,\"lyric\":\""
                         + _qrc + "\",\"trans\":\"\",\"roma\":\"\"}}}";
@@ -267,6 +429,20 @@ internal static class TimedLyricsRegression
                     throw new InvalidOperationException(
                         "Unexpected QQ Music request: " + request);
                 }
+            }
+            else if (path.Host == "c.y.qq.com")
+            {
+                QqLegacyRequests++;
+                string lyric = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+                    "[00:00.500]Hello" + Environment.NewLine
+                    + "[00:01.900]World"));
+                string trans = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+                    "[00:00.500]你好"));
+                string roma = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+                    "[00:00.500]he ro"));
+                payload = "{\"lyric\":\"" + lyric
+                    + "\",\"trans\":\"" + trans
+                    + "\",\"roma\":\"" + roma + "\"}";
             }
             else if (path.Host.Contains("kugou.com", StringComparison.Ordinal))
             {

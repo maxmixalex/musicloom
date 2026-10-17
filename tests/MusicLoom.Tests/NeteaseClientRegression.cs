@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using MusicLoom.AudioFingerprint;
 using MusicLoom.Netease;
+using MusicLoom.Core.Lyrics;
 
 internal static class NeteaseClientRegression
 {
@@ -81,6 +82,27 @@ internal static class NeteaseClientRegression
             throw new InvalidOperationException(
                 "NetEase text search did not send the expected query.");
         }
+
+        LrcDocument? downloaded = await client.GetLyricsAsync(123456789);
+        if (downloaded is null
+            || downloaded.Lines.Count != 4
+            || downloaded.Lines[0].Text != "流れる星"
+            || downloaded.Lines[0].Romanization != "na ga re ru ho shi"
+            || downloaded.Lines[1].Text != "流星"
+            || downloaded.Lines[1].Romanization is not null)
+        {
+            throw new InvalidOperationException(
+                "NetEase romalrc must annotate the original, not pollute the translation.");
+        }
+        LrcDocument persisted = LrcDocument.Parse(downloaded.ToString());
+        if (LrcPresentation.Project(persisted)[0].Romanization
+                != "na ga re ru ho shi"
+            || persisted.ToStandardLrcString().Contains("ml-romaji",
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "NetEase romalrc was lost in the canonical cache or leaked into ordinary LRC.");
+        }
     }
 
     private static void Equal<T>(T expected, T actual)
@@ -134,8 +156,9 @@ internal static class NeteaseClientRegression
                 : null;
 
             string json =
-                request.RequestUri?.AbsolutePath
-                    == "/api/cloudsearch/pc"
+                request.RequestUri?.AbsolutePath == "/weapi/song/lyric"
+                    ? "{\"code\":200,\"lrc\":{\"lyric\":\"[00:01.000]流れる星\\n[00:02.000]君の空\"},\"tlyric\":{\"lyric\":\"[00:01.000]流星\\n[00:02.000]你的天空\"},\"romalrc\":{\"lyric\":\"[00:01.000]na ga re ru ho shi\\n[00:02.000]ki mi no so ra\"}}"
+                : request.RequestUri?.AbsolutePath == "/api/cloudsearch/pc"
                     ? "{\"code\":200,\"result\":{\"songs\":[{\"id\":246810121,\"name\":\"Search Song\",\"ar\":[{\"name\":\"Search Artist\"}],\"al\":{\"name\":\"Search Album\"}}]}}"
                     : "{\"code\":200,\"data\":{\"result\":[" +
                       "{\"score\":0.98,\"song\":{\"id\":123456789,\"name\":\"First Song\",\"artists\":[{\"name\":\"Artist A\"},{\"name\":\"Artist B\"}],\"album\":{\"name\":\"Album One\"}}}," +

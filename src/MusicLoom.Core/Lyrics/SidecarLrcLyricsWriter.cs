@@ -51,7 +51,7 @@ public sealed class SidecarLrcLyricsWriter : ITrackLyricsWriter
         {
             await File.WriteAllTextAsync(
                 temporary,
-                lyrics.ToString(),
+                lyrics.ToStandardLrcString(),
                 new UTF8Encoding(
                     encoderShouldEmitUTF8Identifier: false),
                 cancellationToken);

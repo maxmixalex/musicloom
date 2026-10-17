@@ -54,6 +54,9 @@ public sealed record LyricsSettings
     [JsonPropertyName("overrideExisting")]
     public bool OverrideExisting { get; init; }
 
+    [JsonPropertyName("includeRomanization")]
+    public bool IncludeRomanization { get; init; } = false;
+
     [JsonPropertyName("refreshIntervalHours")]
     public double RefreshIntervalHours { get; init; } = 24;
 
