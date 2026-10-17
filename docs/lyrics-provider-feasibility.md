@@ -1,4 +1,4 @@
-# Additional lyric provider feasibility (2026-10-16)
+# Additional lyric provider feasibility (2026-10-17)
 
 **Research only, no provider activated by this document.** Keep MusicLoom's NetEase, QQ Music and KuGou independent match records, user-approved choices, ManualEmpty state, and canonical SQLite lyrics as the single source of truth. This revision corrects the earlier false implication that absence of a *public official* lyrics API means the service has no working community reverse-engineered API.
 
@@ -65,3 +65,41 @@ See [Migu provider protocol and offline verification](migu-provider-research.md)
 - Spotify public API: https://developer.spotify.com/documentation/web-api/reference/
 - Migu official cooperation portal: https://open.migu.cn/portal/
 - LrcAPI: https://docs.lrc.cx/docs/APIv1/lyrics/
+
+
+## 2026-10-17: anonymous-only source qualification
+
+Acceptance requires **no account, OAuth, developer JWT, borrowed session cookie,
+separate account-bearing daemon, or user-run script**. A metadata match alone is
+never evidence for full playable audio.
+
+| Capability | Apple Music | Spotify |
+| --- | --- | --- |
+| Anonymous catalog | iTunes Search/Lookup provides public store metadata. Apple Music API catalog requires a signed developer token. | Official Web API search uses OAuth client credentials, not credential-free access. An undocumented page/embed may expose limited metadata. |
+| Timed lyrics | Community AMP TTML methods rely on an authenticated web-player session. | Community color-lyrics/v2 methods rely on an authenticated Spotify session. |
+| Complete audio | Protected MusicKit/HLS requires playback authorization. iTunes previews are not entire tracks. | librespot/go-librespot require Spotify login and Premium; a local process cannot eliminate those requirements. |
+| Preview | iTunes preview resources are licensed for store promotion, not unrestricted standalone playback. | The nullable 30-second preview_url field is deprecated; coverage is unreliable. |
+
+**Release decision:** Keep Apple and Spotify numeric identities reserved for
+existing SQLite records, but do not expose functional provider tabs or falsely
+label third-party audio as Apple/Spotify playback. They remain research topics
+until every required capability is demonstrated anonymously against live
+service responses, with appropriate rights for use.
+
+**Migu engineering correction:** Use MIGUM3.0 anonymous search, with MIGUM2.0
+fallback on request/envelope failure (not on a genuine empty search).
+Read details through the two observed first-party hosts, recover missing LRC
+and optional TRC/MRC URLs from the independent guest listen response, and do
+not discard an explicitly granted song URL if detail lookup is unavailable.
+All media/lyric URLs remain restricted to HTTPS first-party Migu hosts. These
+code paths have offline mock regressions, not yet authenticated live-SAT
+evidence or proof that every song is streamable.
+
+Evidence:
+- https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide
+- https://developer.spotify.com/documentation/web-api/reference/get-track
+- https://developer.apple.com/documentation/AppleMusicAPI/generating-developer-tokens
+- https://performance-partners.apple.com/search-api
+- https://github.com/librespot-org/librespot/blob/dev/README.md
+- https://github.com/CharlesPikachu/musicdl/blob/master/musicdl/modules/sources/migu.py
+- https://huggingface.co/spaces/soliar/katamusic/blob/main/app.py

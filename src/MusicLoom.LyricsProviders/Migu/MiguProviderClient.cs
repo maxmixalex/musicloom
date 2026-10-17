@@ -28,18 +28,52 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         string query, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query)) return [];
-        string url = "https://pd.musicapp.migu.cn/MIGUM2.0/v1.0/content/search_all.do"
-            + "?text=" + Uri.EscapeDataString(query.Trim())
+        string parameters = "?text=" + Uri.EscapeDataString(query.Trim())
             + "&pageNo=1&pageSize=20&searchSwitch=%7B%22song%22%3A1%7D&isCorrect=1";
-        using HttpRequestMessage request = Request(url);
+        // Current anonymous clients use MIGUM3.0; keep the older protocol as
+        // a fallback for HTTP failures and changed response envelopes.
+        try
+        {
+            return await SearchAtAsync(
+                "https://pd.musicapp.migu.cn/MIGUM3.0/v1.0/content/search_all.do",
+                parameters, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException
+            or InvalidDataException or JsonException)
+        {
+            return await SearchAtAsync(
+                "https://pd.musicapp.migu.cn/MIGUM2.0/v1.0/content/search_all.do",
+                parameters, ct);
+        }
+    }
+
+    private async Task<IReadOnlyList<ProviderTrack>> SearchAtAsync(
+        string endpoint, string parameters, CancellationToken ct)
+    {
+        using HttpRequestMessage request = Request(endpoint + parameters);
         using JsonDocument json = await ProviderProtocol.JsonAsync(_http, request, ct);
         JsonElement root = json.RootElement;
         string code = ProviderProtocol.Text(root, "code");
         if (code.Length > 0 && code != "000000")
             throw new InvalidDataException("Migu search returned a non-success result.");
-        JsonElement songs = ProviderProtocol.Path(root, "songResultData", "result");
+
+        JsonElement data = ProviderProtocol.Get(root, "songResultData");
+        JsonElement songs = ProviderProtocol.Get(data, "result");
         if (songs.ValueKind != JsonValueKind.Array)
-            songs = ProviderProtocol.Path(root, "songResultData", "resultList");
+            songs = ProviderProtocol.Get(data, "resultList");
+        if (songs.ValueKind != JsonValueKind.Array)
+        {
+            // A valid empty result does not trigger needless fallback,
+            // whereas an incomplete JSON document does.
+            JsonElement total = ProviderProtocol.Get(data, "totalCount");
+            if (data.ValueKind == JsonValueKind.Object
+                && (total.ValueKind == JsonValueKind.String
+                    || total.ValueKind == JsonValueKind.Number)
+                && ProviderProtocol.Number(data, "totalCount") == 0)
+                return [];
+            throw new InvalidDataException("Migu search payload omitted its song list.");
+        }
+
         List<ProviderTrack> results = [];
         foreach (JsonElement songOrGroup in ProviderProtocol.Array(songs))
         {
@@ -66,17 +100,47 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
             key = "resourceId=" + Uri.EscapeDataString(track.ContentId);
         else if (!string.IsNullOrWhiteSpace(track.CopyrightId))
             key = "copyrightId=" + Uri.EscapeDataString(track.CopyrightId);
-        else return track; // Never pass a songId as though it were a contentId.
+        else return track; // Never pass songId as contentId.
 
-        string url = "https://app.u.nf.migu.cn/MIGUM2.0/v1.0/content/resourceinfo.do?"
-            + key + "&resourceType=2";
-        using HttpRequestMessage request = Request(url);
+        string parameters = "?" + key + "&resourceType=2";
+        try
+        {
+            return await DetailsAtAsync(
+                "https://app.c.nf.migu.cn/MIGUM2.0/v1.0/content/resourceinfo.do",
+                parameters, track, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException
+            or InvalidDataException or JsonException)
+        {
+            return await DetailsAtAsync(
+                "https://app.u.nf.migu.cn/MIGUM2.0/v1.0/content/resourceinfo.do",
+                parameters, track, ct);
+        }
+    }
+
+    private async Task<ProviderTrack> DetailsAtAsync(
+        string endpoint, string parameters, ProviderTrack track,
+        CancellationToken ct)
+    {
+        using HttpRequestMessage request = Request(endpoint + parameters);
         using JsonDocument json = await ProviderProtocol.JsonAsync(_http, request, ct);
         JsonElement root = json.RootElement;
-        if (ProviderProtocol.Text(root, "code") != "000000")
+        string code = ProviderProtocol.Text(root, "code");
+        if (code.Length > 0 && code != "000000")
             throw new InvalidDataException("Migu details returned a non-success result.");
 
-        JsonElement item = ProviderProtocol.First(ProviderProtocol.Get(root, "resource"));
+        JsonElement item = ProviderProtocol.Get(root, "resource");
+        if (item.ValueKind == JsonValueKind.Array)
+            item = ProviderProtocol.First(item);
+        if (item.ValueKind != JsonValueKind.Object)
+        {
+            JsonElement data = ProviderProtocol.Get(root, "data");
+            item = ProviderProtocol.Get(data, "resource");
+            if (item.ValueKind == JsonValueKind.Array)
+                item = ProviderProtocol.First(item);
+            if (item.ValueKind != JsonValueKind.Object)
+                item = data;
+        }
         if (item.ValueKind != JsonValueKind.Object) return track;
         return track with
         {
@@ -98,8 +162,27 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         ProviderTrack track, CancellationToken ct = default)
     {
         ProviderProtocol.RequireSameProvider(track, Provider);
-        if (string.IsNullOrEmpty(track.LrcUrl))
-            track = await GetDetailsAsync(track, ct) ?? track;
+        if (string.IsNullOrWhiteSpace(track.LrcUrl))
+        {
+            try { track = await GetDetailsAsync(track, ct) ?? track; }
+            catch (Exception ex) when (ex is HttpRequestException
+                or InvalidDataException or JsonException)
+            {
+                // Metadata is optional; a separate listen response may still
+                // supply a genuine anonymous lyric URL.
+            }
+        }
+        if (string.IsNullOrWhiteSpace(track.LrcUrl))
+        {
+            MiguListenGrant? grant = await TryGetListenGrantAsync(track, ct);
+            if (grant is not null)
+                track = track with
+                {
+                    LrcUrl = FirstNonempty(grant.LrcUrl, track.LrcUrl),
+                    TrcUrl = FirstNonempty(grant.TrcUrl, track.TrcUrl),
+                    MrcUrl = FirstNonempty(grant.MrcUrl, track.MrcUrl),
+                };
+        }
         if (string.IsNullOrWhiteSpace(track.LrcUrl))
             return null;
 
@@ -149,27 +232,37 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         ProviderTrack track, CancellationToken ct = default)
     {
         ProviderProtocol.RequireSameProvider(track, Provider);
-        ProviderTrack? detail = await GetDetailsAsync(track, ct);
-        track = detail ?? track;
+        // An explicit grant already returned by search must not depend
+        // on whether a separate metadata endpoint is online.
+        if (ProviderProtocol.ProviderHttpsUrl(track.StreamUrl, "migu.cn", out Uri? direct))
+            return new ProviderPlayback(PlaybackDisposition.AuthorizedAudioUrl,
+                "Provider response supplied a song URL; live availability is unverified.", direct);
+
+        try { track = await GetDetailsAsync(track, ct) ?? track; }
+        catch (Exception ex) when (ex is HttpRequestException
+            or InvalidDataException or JsonException)
+        {
+            // Continue with provider-issued identifiers; never guess audio.
+        }
         if (ProviderProtocol.ProviderHttpsUrl(track.StreamUrl, "migu.cn", out Uri? stream))
             return new ProviderPlayback(PlaybackDisposition.AuthorizedAudioUrl,
-                "Provider response supplied an HTTPS playback URL; accessibility/entitlement still requires a real test.", stream);
+                "Provider details supplied an HTTPS song URL.", stream);
+
+        MiguListenGrant? grant = await TryGetListenGrantAsync(track, ct);
+        if (grant?.Stream is Uri playable)
+            return new ProviderPlayback(PlaybackDisposition.AuthorizedAudioUrl,
+                "Migu listen/v1.0 supplied a song URL; actual playback is unverified.", playable);
         if (ProviderProtocol.ProviderHttpsUrl(track.PreviewUrl, "migu.cn", out Uri? preview))
             return new ProviderPlayback(PlaybackDisposition.AuthorizedPreviewUrl,
-                "Provider response supplied an HTTPS preview URL.", preview);
-        // A separate PC listen operation can grant a streaming address.
-        // It must not be called without BOTH provider-issued identifiers,
-        // and an unsuccessful response is NEVER interpreted as permission
-        // to derive or guess the audio file URL.
-        Uri? granted = await TryGetExplicitListenGrantAsync(track, ct);
-        if (granted is not null)
-            return new ProviderPlayback(PlaybackDisposition.AuthorizedAudioUrl,
-                "Migu listen/v1.0 returned a provider-granted HTTPS song URL; actual network playback still needs entitlement verification.", granted);
+                "Only the provider-granted short preview is available.", preview);
         return new ProviderPlayback(PlaybackDisposition.Unavailable,
-            "No verified provider-granted audio URL. Song metadata is not a playback grant.");
+            "No provider-granted audio URL. Metadata is not playback authorization.");
     }
 
-    private async Task<Uri?> TryGetExplicitListenGrantAsync(
+    private sealed record MiguListenGrant(
+        Uri? Stream, string? LrcUrl, string? TrcUrl, string? MrcUrl);
+
+    private async Task<MiguListenGrant?> TryGetListenGrantAsync(
         ProviderTrack track, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(track.ContentId)
@@ -183,24 +276,23 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         request.Headers.TryAddWithoutValidation("Channel", "014X031");
         try
         {
-            using JsonDocument json = await ProviderProtocol.JsonAsync(
-                _http, request, ct);
+            using JsonDocument json = await ProviderProtocol.JsonAsync(_http, request, ct);
             JsonElement root = json.RootElement;
             string code = ProviderProtocol.Text(root, "code");
             if (code.Length > 0 && code != "000000") return null;
             JsonElement data = ProviderProtocol.Get(root, "data");
             string remote = ProviderProtocol.Text(data, "url", "playUrl", "listenUrl");
-            return ProviderProtocol.ProviderHttpsUrl(remote, "migu.cn",
-                out Uri? authorized) ? authorized : null;
+            Uri? playable = ProviderProtocol.ProviderHttpsUrl(remote, "migu.cn",
+                out Uri? safeStream) ? safeStream : null;
+            return new MiguListenGrant(playable,
+                ProviderProtocol.Text(data, "lrcUrl", "lyricUrl"),
+                ProviderProtocol.Text(data, "trcUrl"),
+                ProviderProtocol.Text(data, "mrcUrl", "mrcurl"));
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException
+            or InvalidDataException or JsonException)
         {
-            // The optional listen request is an entitlement/availability
-            // probe. A denied or obsolete endpoint is not proof of playback.
-            return null;
-        }
-        catch (InvalidDataException)
-        {
+            // A denied guest request is not permission to synthesize audio.
             return null;
         }
     }

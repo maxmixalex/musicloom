@@ -25,6 +25,8 @@ internal static class ExternalProviderIntegrationRegression
         TestAuthenticatedProvidersNotExposed();
         await TestLegacyDbAndMiguAsync();
         await TestAnonymousMiguFlowAsync();
+        await TestMiguFallbackAsync();
+        await TestMiguDirectGrantAsync();
         TestLyricsIntegrity();
     }
 
@@ -212,6 +214,93 @@ internal static class ExternalProviderIntegrationRegression
             && play.StreamUrl?.Host == "freetyst.nf.migu.cn"
             && requests >= 5,
             "Migu may play only the actual guest-granted HTTPS audio stream.");
+    }
+
+    private static async Task TestMiguFallbackAsync()
+    {
+        int modern = 0, legacy = 0, details = 0, listens = 0;
+        using HttpClient http = new(new GuardHandler(req =>
+        {
+            Uri uri = req.RequestUri!;
+            Assert(uri.Scheme == "https"
+                && uri.IdnHost.EndsWith(".migu.cn", StringComparison.OrdinalIgnoreCase)
+                && req.Headers.Authorization is null,
+                "All Migu requests must remain anonymous and first-party.");
+            if (uri.AbsolutePath.Contains("/MIGUM3.0/v1.0/content/search_all.do",
+                    StringComparison.Ordinal))
+            {
+                modern++;
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+            }
+            if (uri.AbsolutePath.Contains("/MIGUM2.0/v1.0/content/search_all.do",
+                    StringComparison.Ordinal))
+            {
+                legacy++;
+                return Json("""
+                    {"code":"000000","songResultData":{"result":[{
+                      "name":"回退歌曲","contentId":"cid","copyrightId":"copy",
+                      "singers":[{"name":"歌手"}],"albums":[{"name":"专辑"}]
+                    }]}}
+                    """);
+            }
+            if (uri.AbsolutePath.EndsWith("/resourceinfo.do",
+                    StringComparison.Ordinal))
+            {
+                details++;
+                return new HttpResponseMessage(HttpStatusCode.BadGateway);
+            }
+            if (uri.AbsolutePath.EndsWith("/listen/v1.0",
+                    StringComparison.Ordinal))
+            {
+                listens++;
+                Assert(uri.Query.Contains("contentId=cid", StringComparison.Ordinal)
+                    && uri.Query.Contains("copyrightId=copy", StringComparison.Ordinal),
+                    "Listen grants must pass separate real content/copyright identifiers.");
+                return Json("""
+                    {"code":"000000","data":{
+                      "url":"https://freetyst.nf.migu.cn/full.mp3",
+                      "lrcUrl":"https://d.musicapp.migu.cn/guest.lrc",
+                      "trcUrl":"https://d.musicapp.migu.cn/guest.trc"}}
+                    """);
+            }
+            if (uri.AbsolutePath == "/guest.lrc")
+                return Json("[00:00.000]歌曲名 回退歌曲\n[00:01.000]演奏者 某乐队");
+            if (uri.AbsolutePath == "/guest.trc")
+                return Json("[00:00.000]Guest Song");
+            throw new InvalidOperationException("Unexpected anonymous endpoint: "
+                + uri.AbsolutePath);
+        }));
+        using CloudLyricsClient client = new(http);
+        IReadOnlyList<CloudLyricsCandidate> found =
+            await client.SearchAsync(CloudLyricsSource.MiguMusic, "回退歌曲");
+        Assert(found.Count == 1 && modern == 1 && legacy == 1,
+            "Migu search must fall back from MIGUM3.0 to MIGUM2.0.");
+        LrcDocument? lyrics = await client.GetLyricsAsync(found[0]);
+        Assert(lyrics is not null
+            && lyrics.Lines.Any(l => l.Text == "歌曲名 回退歌曲")
+            && lyrics.Lines.Any(l => l.Text == "演奏者 某乐队")
+            && lyrics.Lines.Any(l => l.Text == "Guest Song"),
+            "A listen grant must recover missing timed lyrics without metadata.");
+        CloudAudioPreviewResult playback = await client.GetAudioPreviewAsync(found[0]);
+        Assert(playback.CanPlay
+            && playback.StreamUrl?.Host == "freetyst.nf.migu.cn"
+            && details >= 4 && listens == 2,
+            "Guest playback must survive metadata outages with only granted URLs.");
+    }
+
+    private static async Task TestMiguDirectGrantAsync()
+    {
+        using HttpClient http = new(new GuardHandler(_ =>
+            throw new InvalidOperationException(
+                "Provider-granted stream must not require a metadata request.")));
+        using CloudLyricsClient client = new(http);
+        CloudLyricsCandidate candidate = new(
+            CloudLyricsSource.MiguMusic, "cid", "Song", "Artist", "Album",
+            180000, StreamUrl: "https://freetyst.nf.migu.cn/full.mp3");
+        CloudAudioPreviewResult playback = await client.GetAudioPreviewAsync(candidate);
+        Assert(playback.CanPlay
+            && playback.StreamUrl?.Host == "freetyst.nf.migu.cn",
+            "Direct stream was lost during unnecessary detail lookup.");
     }
 
     private static void TestLyricsIntegrity()
