@@ -74,6 +74,56 @@ public static class CloudLyricsSourceNames
 /// </summary>
 public sealed partial class CloudLyricsClient
 {
+    private async Task<IExternalMusicProvider> CreateExternalProviderAsync(
+        CloudLyricsSource source, CancellationToken ct)
+    {
+        if (source != CloudLyricsSource.Spotify)
+            return CreateExternalProvider(source);
+
+        string? oauth = Environment.GetEnvironmentVariable(
+            "MUSICLOOM_SPOTIFY_OAUTH_TOKEN");
+        string? lyrics = Environment.GetEnvironmentVariable(
+            "MUSICLOOM_SPOTIFY_LYRICS_BEARER");
+        if (string.IsNullOrWhiteSpace(oauth)
+            || string.IsNullOrWhiteSpace(lyrics))
+        {
+            try
+            {
+                string address = Environment.GetEnvironmentVariable(
+                    "MUSICLOOM_GO_LIBRESPOT_URL")
+                    ?? "http://127.0.0.1:3678";
+                // Exactly the same authenticated local session controls
+                // actual Spotify audio. Do not make the user configure a
+                // second account or copy a login cookie for metadata search.
+                using SpotifyLocalStreamBridge local = new(address, _http);
+                using CancellationTokenSource limit =
+                    CancellationTokenSource.CreateLinkedTokenSource(ct);
+                limit.CancelAfter(TimeSpan.FromSeconds(2));
+                string? ephemeral = await local.GetSessionTokenAsync(
+                    limit.Token);
+                if (!string.IsNullOrWhiteSpace(ephemeral))
+                {
+                    oauth = string.IsNullOrWhiteSpace(oauth)
+                        ? ephemeral : oauth;
+                    lyrics = string.IsNullOrWhiteSpace(lyrics)
+                        ? ephemeral : lyrics;
+                }
+            }
+            catch (HttpRequestException) { /* Local player not running. */ }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // A missing/slow loopback player should not hang the search
+                // dialog. The existing provider authorization message applies.
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // A stale local daemon without a valid /token payload is
+                // unavailable; do not treat its reply as an OAuth token.
+            }
+        }
+        return new SpotifyProviderPoc(oauth, lyrics, http: _http);
+    }
+
     private IExternalMusicProvider CreateExternalProvider(
         CloudLyricsSource source) => source switch
         {
@@ -131,7 +181,7 @@ public sealed partial class CloudLyricsClient
         SearchExternalProviderAsync(CloudLyricsSource source, string query,
             CancellationToken ct)
     {
-        IExternalMusicProvider adapter = CreateExternalProvider(source);
+        IExternalMusicProvider adapter = await CreateExternalProviderAsync(source, ct);
         try
         {
             IReadOnlyList<ProviderTrack> matches =
@@ -147,7 +197,7 @@ public sealed partial class CloudLyricsClient
     private async Task<LrcDocument?> GetExternalProviderLyricsAsync(
         CloudLyricsCandidate candidate, CancellationToken ct)
     {
-        IExternalMusicProvider adapter = CreateExternalProvider(candidate.Source);
+        IExternalMusicProvider adapter = await CreateExternalProviderAsync(candidate.Source, ct);
         try
         {
             ProviderLyricBundle? bundle = await adapter.GetLyricsAsync(
@@ -232,7 +282,7 @@ public sealed partial class CloudLyricsClient
         GetExternalAudioPreviewAsync(CloudLyricsCandidate candidate,
             CancellationToken ct)
     {
-        IExternalMusicProvider adapter = CreateExternalProvider(candidate.Source);
+        IExternalMusicProvider adapter = await CreateExternalProviderAsync(candidate.Source, ct);
         try
         {
             ProviderPlayback grant = await adapter.ResolvePlaybackAsync(
@@ -261,7 +311,7 @@ public sealed partial class CloudLyricsClient
         string? cover = NormalizeExternalArtwork(
             candidate.CoverUrl, candidate.Source);
         if (cover is not null) return cover;
-        IExternalMusicProvider adapter = CreateExternalProvider(candidate.Source);
+        IExternalMusicProvider adapter = await CreateExternalProviderAsync(candidate.Source, ct);
         try
         {
             ProviderTrack? details = await adapter.GetDetailsAsync(

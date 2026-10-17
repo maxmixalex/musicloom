@@ -50,6 +50,32 @@ public sealed class SpotifyLocalStreamBridge : IDisposable
     }
 
     /// <summary>
+    /// Read an ephemeral user-session token from the locally authenticated
+    /// go-librespot player. The service's /token endpoint requires POST.
+    /// Neither the token nor a raw HTTP payload is logged or persisted.
+    /// An unauthenticated local player returns 204.
+    /// </summary>
+    public async Task<string?> GetSessionTokenAsync(
+        CancellationToken ct = default)
+    {
+        using HttpRequestMessage request = new(HttpMethod.Post, Route("/token"));
+        using HttpResponseMessage response = await _http.SendAsync(
+            request, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (response.StatusCode == HttpStatusCode.NoContent)
+            return null;
+        response.EnsureSuccessStatusCode();
+        const int maxBytes = 32 * 1024;
+        if (response.Content.Headers.ContentLength > maxBytes)
+            throw new InvalidDataException("Local Spotify token response too large.");
+        byte[] data = await response.Content.ReadAsByteArrayAsync(ct);
+        if (data.Length > maxBytes)
+            throw new InvalidDataException("Local Spotify token response too large.");
+        using JsonDocument json = JsonDocument.Parse(data);
+        string result = ProviderProtocol.Text(json.RootElement, "token");
+        return string.IsNullOrWhiteSpace(result) ? null : result;
+    }
+
+    /// <summary>
     /// go-librespot receives /player/play and DECODES Spotify audio on this
     /// PC. A successful HTTP status is just receipt; follow /status to
     /// verify active playback and track identity.
