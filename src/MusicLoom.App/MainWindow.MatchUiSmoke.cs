@@ -412,6 +412,8 @@ public sealed partial class MainWindow
                 new Binding { Path = new PropertyPath(nameof(CloudCandidateRow.ExternalUrl)) });
             recycled.SetBinding(LyricsSearchCandidateCard.ExternalLabelProperty,
                 new Binding { Path = new PropertyPath(nameof(CloudCandidateRow.ExternalLabel)) });
+            recycled.SetBinding(LyricsSearchCandidateCard.DurationTextProperty,
+                new Binding { Path = new PropertyPath(nameof(CloudCandidateRow.DisplayMetadata)) });
             host.Children.Clear();
             host.Children.Add(recycled);
             recycled.DataContext = qq;
@@ -444,6 +446,22 @@ public sealed partial class MainWindow
                 && !migu.DisplayMetadata.Contains("·", StringComparison.Ordinal)
                 && migu.ExternalLabel == "在咪咕音乐上打开",
                 "Migu: missing duration omits the meaningless dot and dash.");
+            recycled.DataContext = migu;
+            await Task.Delay(70);
+            TextBlock renderedDuration = recycled.FindName("CandidateDurationText")
+                as TextBlock
+                ?? throw new InvalidOperationException(
+                    "Shared candidate duration TextBlock is missing.");
+            Assert(renderedDuration.Text == "#content-123",
+                "Migu: unknown duration initially has no meaningless dot/dash "
+                + "in the actual shared WinUI card");
+            Assert(providerLink.Visibility == Visibility.Visible
+                && providerLink.NavigateUri?.AbsoluteUri ==
+                    "https://music.migu.cn/v3/music/song/600929000001520013"
+                && providerLink.Content is StackPanel miguLink
+                && miguLink.Children[0] is TextBlock miguText
+                && miguText.Text == "在咪咕音乐上打开",
+                "Migu: song detail link is rendered using real copyrightId.");
             int durationNotifications = 0;
             migu.PropertyChanged += (_, args) =>
             {
@@ -454,27 +472,21 @@ public sealed partial class MainWindow
             {
                 DurationMilliseconds = 193000,
             });
+            await Task.Delay(85);
             Assert(migu.DisplayMetadata == "#content-123 · 3:13"
+                && renderedDuration.Text == "#content-123 · 3:13"
+                && recycled.DurationText == "#content-123 · 3:13"
                 && migu.Candidate.DurationMilliseconds == 193000
                 && durationNotifications == 1,
-                "Migu: asynchronous provider duration updates rendered "
-                + "candidate metadata and the match candidate itself");
+                "Migu: background metadata updates BOTH the visible text "
+                + "and the stored candidate using the real provider duration");
             migu.ApplyMetadata(migu.Candidate with
             {
                 Source = CloudLyricsSource.QqMusic,
                 DurationMilliseconds = 999000,
             });
             Assert(migu.Candidate.DurationMilliseconds == 193000,
-                "Migu: metadata from a different provider must be ignored");
-            recycled.DataContext = migu;
-            await Task.Delay(70);
-            Assert(providerLink.Visibility == Visibility.Visible
-                && providerLink.NavigateUri?.AbsoluteUri ==
-                    "https://music.migu.cn/v3/music/song/600929000001520013"
-                && providerLink.Content is StackPanel miguLink
-                && miguLink.Children[0] is TextBlock miguText
-                && miguText.Text == "在咪咕音乐上打开",
-                "Migu: song detail link is displayed using real copyrightId.");
+                "Migu: a different provider cannot overwrite enriched metadata");
 
             CloudCandidateRow missingKugouHash = new(
                 new CloudLyricsCandidate(CloudLyricsSource.KugouMusic,

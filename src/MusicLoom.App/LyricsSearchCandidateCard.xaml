@@ -46,7 +46,7 @@
       </Grid.ColumnDefinitions>
       <StackPanel Spacing="2" VerticalAlignment="Center"
                   HorizontalAlignment="Right">
-        <TextBlock Text="{x:Bind DurationText, Mode=OneWay}"
+        <TextBlock x:Name="CandidateDurationText" Text="{x:Bind DurationText, Mode=OneWay}"
                    FontSize="11" TextTrimming="CharacterEllipsis"
                    HorizontalAlignment="Right"
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
