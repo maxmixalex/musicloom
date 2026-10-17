@@ -342,8 +342,16 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
             albumId.Length == 0 ? null : albumId,
             ProviderProtocol.Text(item, "lyricUrl", "lrcUrl"),
             ProviderProtocol.Text(item, "trcUrl"),
-            ProviderProtocol.Text(item, "mrcurl", "mrcUrl"));
+            ProviderProtocol.Text(item, "mrcurl", "mrcUrl"),
+            PreviewUrl: TrustedGuestUrl(
+                ProviderProtocol.Text(item, "previewUrl", "auditionUrl")),
+            StreamUrl: TrustedGuestUrl(
+                ProviderProtocol.Text(item, "listenUrl", "playUrl")));
     }
+
+    private static string? TrustedGuestUrl(string? url) =>
+        ProviderProtocol.ProviderHttpsUrl(url, "migu.cn", out Uri? safe)
+            ? safe!.AbsoluteUri : null;
 
     private async Task<string> FetchLyricsTextAsync(
         string url, int maxBytes, CancellationToken ct)

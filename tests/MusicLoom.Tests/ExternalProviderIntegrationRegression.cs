@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using MusicLoom.App;
 using MusicLoom.Core.Lyrics;
@@ -27,6 +28,7 @@ internal static class ExternalProviderIntegrationRegression
         await TestAnonymousMiguFlowAsync();
         await TestMiguFallbackAsync();
         await TestMiguDirectGrantAsync();
+        await TestSearchResultAudioGrantAsync();
         TestLyricsIntegrity();
     }
 
@@ -301,6 +303,48 @@ internal static class ExternalProviderIntegrationRegression
         Assert(playback.CanPlay
             && playback.StreamUrl?.Host == "freetyst.nf.migu.cn",
             "Direct stream was lost during unnecessary detail lookup.");
+    }
+
+    private static async Task TestSearchResultAudioGrantAsync()
+    {
+        int requestCount = 0;
+        using HttpClient http = new(new GuardHandler(req =>
+        {
+            Assert(req.RequestUri?.AbsolutePath.EndsWith("/search_all.do",
+                    StringComparison.Ordinal) == true,
+                "Already-granted Migu audio must not issue a detail/play request.");
+            requestCount++;
+            return Json("""
+                {"code":"000000","songResultData":{"result":[{
+                  "name":"歌曲","contentId":"cid","copyrightId":"copy",
+                  "playUrl":"https://freetyst.nf.migu.cn/direct.mp3",
+                  "auditionUrl":"https://freetyst.nf.migu.cn/preview.mp3"
+                }]}}
+                """);
+        }));
+        using CloudLyricsClient client = new(http);
+        IReadOnlyList<CloudLyricsCandidate> songs =
+            await client.SearchAsync(CloudLyricsSource.MiguMusic, "歌曲");
+        Assert(songs.Count == 1
+            && songs[0].StreamUrl == "https://freetyst.nf.migu.cn/direct.mp3"
+            && songs[0].PreviewUrl == "https://freetyst.nf.migu.cn/preview.mp3",
+            "Migu search discarded its own authorized playback address.");
+
+        CloudAudioPreviewResult play = await client.GetAudioPreviewAsync(songs[0]);
+        Assert(play.CanPlay
+            && play.StreamUrl?.AbsoluteUri == "https://freetyst.nf.migu.cn/direct.mp3"
+            && requestCount == 1,
+            "Search's full guest audio grant must play without redundant requests.");
+
+        using JsonDocument untrusted = JsonDocument.Parse("""
+            {"contentId":"cid","name":"Song",
+             "playUrl":"https://migu.cn.evil.example/song.mp3",
+             "auditionUrl":"http://freetyst.nf.migu.cn/preview.mp3"}
+            """);
+        ProviderTrack? rejected = MiguProviderClient.ParseSong(untrusted.RootElement);
+        Assert(rejected is not null
+            && rejected.StreamUrl is null && rejected.PreviewUrl is null,
+            "Search parser must not preserve untrusted audio URLs in match records.");
     }
 
     private static void TestLyricsIntegrity()
