@@ -9,7 +9,7 @@ namespace MusicLoom.ProviderPoc;
 /// Auth strings are supplied by the caller and NEVER persisted by this PoC.
 /// Full subscriber playback is MusicKit-only, not a freely downloadable URL.
 /// </summary>
-public sealed class AppleMusicProviderPoc : IExternalMusicProvider, IDisposable
+public sealed partial class AppleMusicProviderPoc : IExternalMusicProvider, IDisposable
 {
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
