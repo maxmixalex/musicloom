@@ -94,6 +94,10 @@ internal static class StreamingProtocolRegression
                             == """{"uri":"spotify:track:4iV5W9uYEdYUVa79Axb7Rh"}""",
                         "Local Spotify player should receive a correct track URI.");
                     return Json("""{"ok":true}""");
+                case "/token":
+                    Must(req.Method == HttpMethod.Post,
+                        "Local token is requested with POST, not anonymous GET.");
+                    return Json("""{"token":"user-owned-session-token"}""");
                 case "/status":
                     return Json("""
                         {"track":{"uri":"spotify:track:4iV5W9uYEdYUVa79Axb7Rh",
@@ -125,6 +129,8 @@ internal static class StreamingProtocolRegression
         }));
         using SpotifyLocalStreamBridge local =
             new("http://127.0.0.1:3678", http);
+        Must(await local.GetSessionTokenAsync() == "user-owned-session-token",
+            "Local go-librespot exposes an ephemeral authenticated user token.");
         Must(await local.IsReadyAsync(), "Spotify local decoded player can report readiness.");
         Must(await local.PlayTrackAsync(id), "Spotify local playback command must be dispatched.");
         SpotifyLocalPlayerStatus? status = await local.GetStatusAsync();
@@ -172,6 +178,16 @@ internal static class StreamingProtocolRegression
         try { await local.PlayTrackAsync("bad-id"); }
         catch (ArgumentException) { invalid = true; }
         Must(invalid && plays == 1, "Invalid Spotify track IDs must not cause playback.");
+
+        using HttpClient noSessionHttp = new(new Handler(req =>
+            req.RequestUri!.AbsolutePath == "/token"
+                ? new HttpResponseMessage(HttpStatusCode.NoContent)
+                : throw new InvalidOperationException(
+                    "No-session token probe must not request playback.")));
+        using SpotifyLocalStreamBridge noSession =
+            new(http: noSessionHttp);
+        Must(await noSession.GetSessionTokenAsync() is null,
+            "Unauthenticated local player must not invent a session token.");
 
         using HttpClient deniedHttp = new(new Handler(req =>
             req.RequestUri!.AbsolutePath == "/" ? Json("""{"playback_ready":false}""")

@@ -22,6 +22,7 @@ internal static class ExternalProviderIntegrationRegression
         await TestPersistenceAsync();
         await TestMiguAsync();
         await TestAppleSpotifyAsync();
+        await TestSpotifyLocalTokenFallbackAsync();
         TestCanonicalMerge();
     }
 
@@ -248,6 +249,80 @@ internal static class ExternalProviderIntegrationRegression
         {
             foreach ((string key, string? value) in old)
                 Environment.SetEnvironmentVariable(key, value);
+        }
+    }
+
+    private static async Task TestSpotifyLocalTokenFallbackAsync()
+    {
+        // The WinUI Spotify provider should work from ONE authenticated
+        // local go-librespot session. No second manually pasted OAuth token
+        // is necessary for catalog/lyric lookup when the session exposes it.
+        string? oauth = Environment.GetEnvironmentVariable(
+            "MUSICLOOM_SPOTIFY_OAUTH_TOKEN");
+        string? lyrics = Environment.GetEnvironmentVariable(
+            "MUSICLOOM_SPOTIFY_LYRICS_BEARER");
+        string? url = Environment.GetEnvironmentVariable(
+            "MUSICLOOM_GO_LIBRESPOT_URL");
+        try
+        {
+            Environment.SetEnvironmentVariable("MUSICLOOM_SPOTIFY_OAUTH_TOKEN", null);
+            Environment.SetEnvironmentVariable("MUSICLOOM_SPOTIFY_LYRICS_BEARER", null);
+            Environment.SetEnvironmentVariable("MUSICLOOM_GO_LIBRESPOT_URL",
+                "http://127.0.0.1:3678");
+            int tokenRequests = 0;
+            using HttpClient http = new(new FakeHandler(req =>
+            {
+                Uri u = req.RequestUri!;
+                if (u.Host == "127.0.0.1" && u.AbsolutePath == "/token")
+                {
+                    Assert(req.Method == HttpMethod.Post,
+                        "go-librespot session token requires local POST.");
+                    tokenRequests++;
+                    return Json("""{"token":"ephemeral-local-user-token"}""");
+                }
+                if (u.Host == "api.spotify.com")
+                {
+                    Assert(req.Headers.Authorization?.Parameter
+                        == "ephemeral-local-user-token",
+                        "Spotify catalog must use the local authenticated session.");
+                    return Json("""
+                        {"tracks":{"items":[{
+                           "id":"4iV5W9uYEdYUVa79Axb7Rh",
+                           "name":"Track","artists":[{"name":"Artist"}],
+                           "album":{"name":"Album"}}]}}
+                        """);
+                }
+                if (u.Host == "spclient.wg.spotify.com")
+                {
+                    Assert(req.Headers.Authorization?.Parameter
+                        == "ephemeral-local-user-token",
+                        "Spotify lyrics must use its own authorized token.");
+                    return Json("""
+                        {"lyrics":{"syncType":"LINE_SYNCED",
+                          "lines":[{"startTimeMs":"1000",
+                                    "words":"乐队成员：保留原文"}]}}
+                        """);
+                }
+                throw new InvalidOperationException("Unexpected Spotify fallback URL.");
+            }));
+            using CloudLyricsClient client = new(http);
+            CloudLyricsCandidate match = (await client.SearchAsync(
+                CloudLyricsSource.Spotify, "Artist Track")).Single();
+            Assert(match.Id == "4iV5W9uYEdYUVa79Axb7Rh",
+                "Session token fallback could not search Spotify.");
+            LrcDocument? lyric = await client.GetLyricsAsync(match);
+            Assert(lyric?.Lines.Single().Text == "乐队成员：保留原文"
+                && tokenRequests == 2,
+                "Local-session Spotify lyrics lost text or used no session.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                "MUSICLOOM_SPOTIFY_OAUTH_TOKEN", oauth);
+            Environment.SetEnvironmentVariable(
+                "MUSICLOOM_SPOTIFY_LYRICS_BEARER", lyrics);
+            Environment.SetEnvironmentVariable(
+                "MUSICLOOM_GO_LIBRESPOT_URL", url);
         }
     }
 
