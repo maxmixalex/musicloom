@@ -134,7 +134,13 @@ public sealed partial class MainWindow
                     "本地 Spotify 播放服务拒绝了这首歌曲。"));
                 return true;
             }
-            if (_activeCloudLyricsPanel != panel) return true;
+            if (!ReferenceEquals(_activeCloudLyricsPanel, panel))
+            {
+                // The user dismissed the search before the asynchronous
+                // device answered. Don't unexpectedly start a song afterward.
+                await current.PauseAsync();
+                return true;
+            }
 
             CancellationTokenSource transition = BeginPlaybackTransition();
             try

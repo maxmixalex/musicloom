@@ -387,8 +387,8 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
                         CloudLyricsSourceNames.Chinese(candidate.Source));
                     return new CloudCandidateRow(candidate,
                         candidate.Source == CloudLyricsSource.Spotify
-                            ? L("Check provider playback availability",
-                                "检查音源播放权限")
+                            ? L("Play Spotify through the local decoder",
+                                "通过本机 Spotify 解码器播放")
                             : L("Play remote preview", "播放远程试听"),
                         L("Open in ", "在") + name + L("", "中打开"),
                         L("Search in ", "在") + name + L(" search", "中搜索"));

@@ -115,7 +115,8 @@ public sealed partial class MainWindow
     {
         try
         {
-            if (_mediaPlayer.Source is null) return;
+            if (_mediaPlayer.Source is null && !SpotifyLocalHasTrack)
+                return;
             ConnectedAnimationService service =
                 ConnectedAnimationService.GetForCurrentView();
             // DirectConnectedAnimationConfiguration always lasts ~150 ms
