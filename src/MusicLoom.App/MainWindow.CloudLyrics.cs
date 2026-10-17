@@ -254,9 +254,12 @@ public sealed partial class MainWindow
 
             UpdatePlayerVisualState();
             UpdatePlaybackLyrics();
-            originatingPanel.SetPreviewStatus(L(
-                "Playing the provider's remote audio stream.",
-                "正在播放音源提供的远程音频。"));
+            originatingPanel.SetPreviewStatus(
+                preview.IsFullLength
+                    ? L("Playing the full Apple Music HLS stream (experimental).",
+                        "正在尝试播放 Apple Music 完整 HLS 音频（实验性）。")
+                    : L("Playing the provider's remote audio stream.",
+                        "正在播放音源提供的远程音频。"));
         }
         catch (OperationCanceledException) when (
             transition.IsCancellationRequested)
@@ -268,9 +271,12 @@ public sealed partial class MainWindow
             _suppressPlaybackLyricFollow = false;
             AppDiagnostics.LogException(
                 "Remote music provider audio preview failed.", error);
-            string message = L(
-                "Remote preview failed. The stream may be expired or blocked by the provider.",
-                "远程试听失败：音频地址可能已过期，或被音源限制访问。");
+            string message = candidate.Source == CloudLyricsSource.AppleMusic
+                && CloudLyricsClient.PreferFullAppleHls
+                ? L("Apple Music full HLS could not be decoded by the native player. The playlist may require an authorized protected-media session; disable experimental HLS to use the catalog preview.",
+                    "Apple Music 完整 HLS 无法由当前原生播放器解码，可能需要受保护媒体会话。可关闭实验性 HLS 改用目录试听。")
+                : L("Remote preview failed. The stream may be expired or blocked by the provider.",
+                    "远程试听失败：音频地址可能已过期，或被音源限制访问。");
             originatingPanel.SetPreviewStatus(message);
             ShowInfo(InfoBarSeverity.Warning,
                 L("Remote preview failed", "远程试听失败"), message);

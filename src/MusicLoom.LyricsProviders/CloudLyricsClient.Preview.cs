@@ -19,7 +19,8 @@ public enum CloudAudioPreviewStatus
 }
 
 public sealed record CloudAudioPreviewResult(
-    Uri? StreamUrl, CloudAudioPreviewStatus Status)
+    Uri? StreamUrl, CloudAudioPreviewStatus Status,
+    bool IsFullLength = false)
 {
     public bool CanPlay => StreamUrl is not null
         && Status == CloudAudioPreviewStatus.Playable;

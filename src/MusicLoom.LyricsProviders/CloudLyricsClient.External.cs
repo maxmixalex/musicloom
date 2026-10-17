@@ -278,6 +278,16 @@ public sealed partial class CloudLyricsClient
         return result;
     }
 
+    /// <summary>
+    /// SAT-only Apple full-song HLS attempt. The private enhancedHls manifest
+    /// may declare media protection that native WinUI cannot decode. Keep
+    /// ordinary preview behavior unless the user explicitly enables the
+    /// experimental flow in their process environment.
+    /// </summary>
+    public static bool PreferFullAppleHls =>
+        Environment.GetEnvironmentVariable(
+            "MUSICLOOM_APPLE_PREFER_FULL_HLS") == "1";
+
     private async Task<CloudAudioPreviewResult>
         GetExternalAudioPreviewAsync(CloudLyricsCandidate candidate,
             CancellationToken ct)
@@ -285,6 +295,34 @@ public sealed partial class CloudLyricsClient
         IExternalMusicProvider adapter = await CreateExternalProviderAsync(candidate.Source, ct);
         try
         {
+            if (candidate.Source == CloudLyricsSource.AppleMusic
+                && PreferFullAppleHls
+                && adapter is AppleMusicProviderPoc apple)
+            {
+                try
+                {
+                    Uri? manifest = await apple.ResolveEnhancedHlsAsync(
+                        ToExternalTrack(candidate), ct);
+                    Uri? accepted = NormalizeStreamUrl(
+                        manifest?.AbsoluteUri, candidate.Source);
+                    if (accepted is not null)
+                        return new(accepted, CloudAudioPreviewStatus.Playable,
+                            IsFullLength: true);
+                }
+                catch (ProviderAuthorizationException)
+                {
+                    // Private full-song credentials missing; the ordinary
+                    // officially catalogued preview may still be usable.
+                }
+                catch (HttpRequestException)
+                {
+                    // Unavailable full stream does not erase a valid preview.
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // Service shape changed; fall back without faking audio.
+                }
+            }
             ProviderPlayback grant = await adapter.ResolvePlaybackAsync(
                 ToExternalTrack(candidate), ct);
             Uri? uri = grant.Disposition is
