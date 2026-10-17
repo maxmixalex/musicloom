@@ -444,6 +444,28 @@ public sealed partial class MainWindow
                 && !migu.DisplayMetadata.Contains("·", StringComparison.Ordinal)
                 && migu.ExternalLabel == "在咪咕音乐上打开",
                 "Migu: missing duration omits the meaningless dot and dash.");
+            int durationNotifications = 0;
+            migu.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(CloudCandidateRow.DisplayMetadata))
+                    durationNotifications++;
+            };
+            migu.ApplyMetadata(migu.Candidate with
+            {
+                DurationMilliseconds = 193000,
+            });
+            Assert(migu.DisplayMetadata == "#content-123 · 3:13"
+                && migu.Candidate.DurationMilliseconds == 193000
+                && durationNotifications == 1,
+                "Migu: asynchronous provider duration updates rendered "
+                + "candidate metadata and the match candidate itself");
+            migu.ApplyMetadata(migu.Candidate with
+            {
+                Source = CloudLyricsSource.QqMusic,
+                DurationMilliseconds = 999000,
+            });
+            Assert(migu.Candidate.DurationMilliseconds == 193000,
+                "Migu: metadata from a different provider must be ignored");
             recycled.DataContext = migu;
             await Task.Delay(70);
             Assert(providerLink.Visibility == Visibility.Visible

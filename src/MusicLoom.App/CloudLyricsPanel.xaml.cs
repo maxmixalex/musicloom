@@ -115,6 +115,31 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    public void ApplyMetadata(CloudLyricsCandidate enriched)
+    {
+        // Background candidate hydration may complete after a new search.
+        // Never allow metadata for another song or provider to overwrite
+        // an existing row's identity, lyrics selection or match status.
+        if (enriched.Source != Candidate.Source
+            || !string.Equals(enriched.Id, Candidate.Id,
+                StringComparison.Ordinal))
+            return;
+        if (Candidate.DurationMilliseconds <= 0
+            && enriched.DurationMilliseconds > 0)
+        {
+            Candidate = Candidate with
+            {
+                DurationMilliseconds = enriched.DurationMilliseconds,
+            };
+            PropertyChanged?.Invoke(this,
+                new PropertyChangedEventArgs(nameof(Duration)));
+            PropertyChanged?.Invoke(this,
+                new PropertyChangedEventArgs(nameof(DisplayMetadata)));
+        }
+        if (Artwork is null)
+            ApplyArtwork(enriched.CoverUrl);
+    }
+
     public void ApplyArtwork(string? address)
     {
         if (string.IsNullOrWhiteSpace(address)
@@ -187,7 +212,8 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
 
     // Used by the host to keep the shared remote preview and lyric seek
     // locked to the same selected provider candidate.
-    public CloudLyricsCandidate? SelectedCandidate => _previewCandidate;
+    public CloudLyricsCandidate? SelectedCandidate =>
+        (CandidatesList.SelectedItem as CloudCandidateRow)?.Candidate;
     public LrcDocument? SelectedDocument => _previewDocument;
     public ListView PreviewLyricsList => LyricsPreview.LyricsList;
     internal ListView CandidateList => CandidatesList;

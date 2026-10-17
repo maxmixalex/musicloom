@@ -110,6 +110,27 @@ public sealed partial class CloudLyricsClient
         return matches.Select(ToCloudCandidate).ToArray();
     }
 
+    /// <summary>
+    /// Resolve provider-owned metadata on demand without blocking the search.
+    /// Only missing duration/artwork is enriched; no unrelated song or local
+    /// audio duration is used as a substitute.
+    /// </summary>
+    public async Task<CloudLyricsCandidate> EnrichMiguCandidateAsync(
+        CloudLyricsCandidate candidate, CancellationToken ct = default)
+    {
+        RequireMigu(candidate.Source);
+        using MiguProviderClient adapter = new(_http);
+        ProviderTrack details = await adapter.EnrichMetadataAsync(
+            ToMiguTrack(candidate), ct);
+        return candidate with
+        {
+            DurationMilliseconds = details.DurationMilliseconds > 0
+                ? details.DurationMilliseconds : candidate.DurationMilliseconds,
+            CoverUrl = NormalizeExternalArtwork(details.ArtworkUrl,
+                CloudLyricsSource.MiguMusic) ?? candidate.CoverUrl,
+        };
+    }
+
     private async Task<LrcDocument?> GetExternalProviderLyricsAsync(
         CloudLyricsCandidate candidate, CancellationToken ct)
     {

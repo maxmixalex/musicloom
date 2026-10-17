@@ -19,10 +19,10 @@ public sealed partial class CloudLyricsPanel
     private void BeginArtworkLoading(CloudCandidateRow[] rows)
     {
         CancelArtworkLoad();
-        if (rows.All(static row => row.Artwork is not null))
-        {
+        if (rows.All(static row => row.Artwork is not null
+            && (row.Candidate.Source != CloudLyricsSource.MiguMusic
+                || row.Candidate.DurationMilliseconds > 0)))
             return;
-        }
 
         _artworkLoadCancellation = new CancellationTokenSource();
         _ = LoadArtworkAsync(rows, _artworkLoadCancellation.Token);
@@ -31,16 +31,21 @@ public sealed partial class CloudLyricsPanel
     private async Task LoadArtworkAsync(
         CloudCandidateRow[] rows, CancellationToken token)
     {
-        // A search should become interactive as soon as the song list is
-        // available. Enrich only missing covers, at most three concurrent
-        // first-party provider metadata requests, deduplicated by album.
+        // Display search results immediately. Fill missing Migu durations
+        // from provider-owned details/song-info/listen in the background;
+        // QQ/KuGou artwork is still grouped by album to reduce requests.
+        // At most 3 first-party HTTP requests are in flight concurrently.
         using SemaphoreSlim limit = new(3, 3);
         var groups = rows
-            .Where(static row => row.Artwork is null)
+            .Where(static row => row.Artwork is null
+                || (row.Candidate.Source == CloudLyricsSource.MiguMusic
+                    && row.Candidate.DurationMilliseconds <= 0))
             .GroupBy(static row =>
-                CloudLyricsSourceNames.Slug(row.Candidate.Source) + ":"
-                + (row.Candidate.AlbumId ?? row.Candidate.Hash
-                    ?? row.Candidate.Id))
+                row.Candidate.Source == CloudLyricsSource.MiguMusic
+                    ? "migu-track:" + row.Candidate.Id
+                    : CloudLyricsSourceNames.Slug(row.Candidate.Source) + ":"
+                      + (row.Candidate.AlbumId ?? row.Candidate.Hash
+                          ?? row.Candidate.Id))
             .ToArray();
 
         Task[] requests = groups.Select(async group =>
@@ -50,41 +55,48 @@ public sealed partial class CloudLyricsPanel
             {
                 await limit.WaitAsync(token);
                 acquired = true;
-                string? image = await _client.ResolveArtworkAsync(
-                    group.First().Candidate, token);
-                token.ThrowIfCancellationRequested();
+                CloudCandidateRow exemplar = group.First();
 
-                // A previous modal/search may have been closed or replaced.
-                if (_disposed || image is null
-                    || !ReferenceEquals(CandidatesList.ItemsSource, rows))
+                if (exemplar.Candidate.Source == CloudLyricsSource.MiguMusic)
                 {
-                    return;
+                    CloudLyricsCandidate enriched = await _client
+                        .EnrichMiguCandidateAsync(exemplar.Candidate, token);
+                    token.ThrowIfCancellationRequested();
+                    if (_disposed
+                        || !ReferenceEquals(CandidatesList.ItemsSource, rows))
+                        return;
+                    foreach (CloudCandidateRow row in group)
+                        row.ApplyMetadata(enriched);
                 }
-
-                foreach (CloudCandidateRow row in group)
+                else
                 {
-                    row.ApplyArtwork(image);
+                    string? image = await _client.ResolveArtworkAsync(
+                        exemplar.Candidate, token);
+                    token.ThrowIfCancellationRequested();
+                    if (_disposed || image is null
+                        || !ReferenceEquals(CandidatesList.ItemsSource, rows))
+                        return;
+                    foreach (CloudCandidateRow row in group)
+                        row.ApplyArtwork(image);
                 }
             }
             catch (OperationCanceledException)
             {
+                // Closing/replacing the search cancels enrichment.
             }
             catch (Exception error)
             {
-                // Artwork is optional; never hide search results or prevent
-                // lyric preview/adoption when provider image metadata fails.
+                // External metadata is optional and never blocks search,
+                // timed lyric preview or explicit match adoption.
                 AppDiagnostics.LogException(
-                    "Could not retrieve QQ/KuGou album artwork.", error);
+                    "Could not enrich provider match candidate.", error);
             }
             finally
             {
                 if (acquired)
-                {
                     limit.Release();
-                }
             }
         }).ToArray();
-
         await Task.WhenAll(requests);
     }
 }

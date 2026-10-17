@@ -33,6 +33,7 @@ internal static class ExternalProviderIntegrationRegression
         await TestMiguTimeoutFallbackAsync();
         await TestMiguOptionalLyricTimeoutAsync();
         await TestMiguDurationHydrationAsync();
+        await TestMiguClientMetadataBridgeAsync();
         TestMiguDurationFormats();
         TestLyricsIntegrity();
     }
@@ -443,6 +444,36 @@ internal static class ExternalProviderIntegrationRegression
             && lyric.Translation is null && lyric.WordTimed is null
             && requests == 3,
             "Optional subtitle timeouts must not erase original timed lyrics.");
+    }
+
+    private static async Task TestMiguClientMetadataBridgeAsync()
+    {
+        using HttpClient http = new(new GuardHandler(req =>
+        {
+            string path = req.RequestUri!.AbsolutePath;
+            Assert(req.Headers.Authorization is null,
+                "Migu metadata bridge must not acquire account credentials.");
+            if (path.EndsWith("/resourceinfo.do", StringComparison.Ordinal))
+                return Json("""
+                    {"code":"000000","resource":[{"duration":202}]}
+                    """);
+            throw new InvalidOperationException(
+                "Search already has duration after Migu detail response: " + path);
+        }));
+        using CloudLyricsClient client = new(http);
+        CloudLyricsCandidate original = new(CloudLyricsSource.MiguMusic,
+            "source-cid", "Search title", "Singer", "Album", 0,
+            CopyrightId: "600929000001520013",
+            ContentId: "source-cid");
+        CloudLyricsCandidate enriched =
+            await client.EnrichMiguCandidateAsync(original);
+        Assert(enriched.DurationMilliseconds == 202000
+            && original.DurationMilliseconds == 0
+            && enriched.Id == original.Id
+            && enriched.Title == original.Title
+            && enriched.CopyrightId == original.CopyrightId,
+            "In-app C# provider bridge must enrich actual candidate duration, "
+            + "preserving source identity and immutable search result.");
     }
 
     private static void TestMiguDurationFormats()
