@@ -1930,6 +1930,13 @@
                 ToolTipService.ToolTip="Next">
               <FontIcon Glyph="&#xE893;" FontSize="16" />
             </Button>
+            <Button x:Name="ProviderWebShowButton"
+                    Width="36" Height="36" Padding="0"
+                    Visibility="Collapsed" Click="ProviderWebShow_Click"
+                    ToolTipService.ToolTip="Online player">
+              <FontIcon Glyph="&#xE774;" FontFamily="Segoe Fluent Icons"
+                        FontSize="17"/>
+            </Button>
           </StackPanel>
 
           <Grid Grid.Column="2" VerticalAlignment="Center">
@@ -2061,6 +2068,46 @@
       <local:ImmersivePlayer x:Name="ImmersiveView"
                              HorizontalAlignment="Stretch"
                              VerticalAlignment="Stretch" />
+    </Grid>
+
+    <!-- Authenticated Spotify/Apple web player hosted by the application.
+         No separate local service, PS1, external player or manual token. -->
+    <Grid x:Name="ProviderWebOverlay" Grid.Row="1" Canvas.ZIndex="250"
+          Visibility="Collapsed" Background="#B8000000">
+      <Border HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+              MaxWidth="1100" Margin="24" CornerRadius="12"
+              BorderThickness="1"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+              Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <Grid Padding="16,12" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="ProviderWebTitle" FontWeight="SemiBold"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       Text="Online music"/>
+            <Button x:Name="ProviderWebMinimizeButton" Grid.Column="1"
+                    Click="ProviderWebMinimize_Click" Content="Hide"/>
+            <Button x:Name="ProviderWebStopButton" Grid.Column="2"
+                    Click="ProviderWebStop_Click" Content="Stop"/>
+          </Grid>
+          <WebView2 x:Name="ProviderWebView" Grid.Row="1"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"/>
+          <TextBlock x:Name="ProviderWebStatus" Grid.Row="2"
+                     Padding="16,10" TextTrimming="CharacterEllipsis"
+                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                     Text="Sign in and play in this window."/>
+        </Grid>
+      </Border>
     </Grid>
   </Grid>
 </Window>
