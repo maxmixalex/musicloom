@@ -4,6 +4,53 @@ This repository includes **three experimental providers in standalone .NET 10 pr
 
 PoC executables will be uploaded as separate GitHub Actions artifacts named musicloom-provider-poc-win-x64 and musicloom-provider-poc-linux-x64. These standalone apps do not overwrite MusicLoom.exe or change the existing SAT binary.
 
+## Nonofficial full-song streaming research and execution
+
+The new work no longer assumes that Spotify Connect or MusicKit are the only possible listening backends. The already reverse-engineered *complete audio flow* is separate from the publicly documented catalog API, and a stream locator is not the same thing as decoded playback.
+
+### Apple Music enhanced HLS
+
+A community project sends a web-player AMP catalog song request with the query argument extend=extendedAssetUrls, then reads data[0].attributes.extendedAssetUrls.enhancedHls. This is a full-song HLS playlist URI, not the catalog's short preview URL. The separate AppleEnhancedHlsPoc class now makes this private request using the account-owned web Bearer token, validates Apple CDN hostnames, reads a bounded HLS playlist, and reports the master playlist's codec variants. It distinguishes encrypted media playlists from master playlists where protection is not yet known. No segments or keys are fetched and no signed URL query strings are printed.
+
+Run after setting MUSICLOOM_APPLE_WEB_BEARER from the user's own web session:
+
+    dotnet run --project src/MusicLoom.ProviderPoc.Cli -- stream-info apple 123456789
+
+The result may list AAC, ALAC, Atmos or other codec groups. A successful M3U8 request proves there is a complete-song streaming resource, but it does NOT prove WinUI can decode protected streams; the media pipeline and user session remain independent tasks.
+
+Source evidence:
+- https://github.com/zhaarey/apple-music-downloader/blob/main/internal/amp-api/song.go
+- https://github.com/WorldObservationLog/AppleMusicDecrypt/blob/v3/src/hls.py
+
+### Spotify locally decoded audio, without Spotify Web API playback
+
+The actively maintained MIT librespot client resolves Spotify file IDs through private spclient storage-resolve, reads CDN byte ranges, obtains track audio keys and decodes to PCM. The separate go-librespot client provides Windows WASAPI output, plus an HTTP loopback control API. This is actual Spotify audio playing *on the Windows PC*, rather than merely instructing an already running Spotify Desktop application to play.
+
+An independently written SpotifyLocalStreamBridge is now available. It talks only to a locally running go-librespot service (never to a remote host), validates 22-character Spotify track IDs, tests session readiness before attempting playback, and implements play/pause/resume/seek/status. The Spotify client remains separately installed and separately authorized; Musicloom does not copy or redistribute its GPL code.
+
+Prepare a user-owned go-librespot session with the documented device_auth or interactive login flow, and configure the client with:
+
+    server:
+      enabled: true
+      address: localhost
+      port: 3678
+    audio_backend: wasapi
+
+Then use the isolated Musicloom PoC executable:
+
+    dotnet run --project src/MusicLoom.ProviderPoc.Cli -- listen-local spotify 4iV5W9uYEdYUVa79Axb7Rh --execute
+    dotnet run --project src/MusicLoom.ProviderPoc.Cli -- status-local spotify 4iV5W9uYEdYUVa79Axb7Rh
+    dotnet run --project src/MusicLoom.ProviderPoc.Cli -- seek-local spotify 4iV5W9uYEdYUVa79Axb7Rh --position-ms=42000
+
+Only the first command actually starts audio. The daemon must already be running, connected to an entitled user account and bound to the local loopback network interface. No account password, refresh token, decrypted media or raw audio link is written by the Musicloom bridge. Its success means the daemon accepted the command; use the status endpoint and audible playback to verify real audio.
+
+Current boundary: the go-librespot process outputs through its own WASAPI backend. WinUI has not yet taken over its decoded PCM or synchronized its own player transport with this process. Keeping this pathway opt-in and isolated protects existing Musicloom SAT from unintended audio-device switching.
+
+Source evidence:
+- https://github.com/librespot-org/librespot
+- https://github.com/devgianlu/go-librespot/blob/master/API.md
+- https://github.com/devgianlu/go-librespot/blob/master/api-spec.yml
+
 ## Build, tests and offline evidence
 
 Run the independent eight-fixture suite:
