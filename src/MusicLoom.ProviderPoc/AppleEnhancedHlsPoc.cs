@@ -66,7 +66,7 @@ public sealed partial class AppleMusicProviderPoc
         return ParsePlaylist(uri, ProviderProtocol.DecodeText(payload));
     }
 
-    internal static bool IsTrustedAppleMediaUrl(string? value, out Uri? result)
+    public static bool IsTrustedAppleMediaUrl(string? value, out Uri? result)
     {
         result = null;
         if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? uri)
