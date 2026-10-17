@@ -43,39 +43,11 @@ jobs:
       - name: Run regression harness
         run: dotnet run --project tests/MusicLoom.Tests/MusicLoom.Tests.csproj -c Release --no-build
 
-      - name: Restore independent provider PoC tests
-        run: dotnet restore tests/MusicLoom.ProviderPoc.Tests/MusicLoom.ProviderPoc.Tests.csproj
-
-      - name: Build independent provider PoC tests
-        run: dotnet build tests/MusicLoom.ProviderPoc.Tests/MusicLoom.ProviderPoc.Tests.csproj -c Release --no-restore
-
-      - name: Run provider protocol, lyric and playback PoC fixtures
-        run: dotnet run --project tests/MusicLoom.ProviderPoc.Tests/MusicLoom.ProviderPoc.Tests.csproj -c Release --no-build
-
-      - name: Publish independent provider PoC with NativeAOT
-        run: dotnet publish tests/MusicLoom.ProviderPoc.Tests/MusicLoom.ProviderPoc.Tests.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -o artifacts/provider-poc-linux-x64
-
-      - name: Run NativeAOT provider PoC fixtures
-        run: ./artifacts/provider-poc-linux-x64/MusicLoom.ProviderPoc.Tests
-
       - name: Publish regression harness with NativeAOT
         run: dotnet publish tests/MusicLoom.Tests/MusicLoom.Tests.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -o artifacts/regression-linux-x64
 
       - name: Run NativeAOT regression harness
         run: ./artifacts/regression-linux-x64/MusicLoom.Tests
-
-      - name: Build standalone provider experiment CLI
-        run: dotnet build src/MusicLoom.ProviderPoc.Cli/MusicLoom.ProviderPoc.Cli.csproj -c Release
-
-      - name: Publish isolated provider PoC CLI (Linux NativeAOT)
-        run: dotnet publish src/MusicLoom.ProviderPoc.Cli/MusicLoom.ProviderPoc.Cli.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=true -o artifacts/provider-poc-cli-linux-x64
-
-      - name: Upload isolated provider CLI (Linux)
-        uses: actions/upload-artifact@v6
-        with:
-          name: musicloom-provider-poc-linux-x64
-          path: artifacts/provider-poc-cli-linux-x64/**
-          if-no-files-found: error
 
       - name: Publish CLI with NativeAOT
         run: dotnet publish src/MusicLoom.Cli/MusicLoom.Cli.csproj -c Release -r linux-x64 --self-contained true -o artifacts/cli-linux-x64

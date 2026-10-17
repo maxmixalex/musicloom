@@ -35,10 +35,6 @@
     <ProjectReference Include="../MusicLoom.Tagging/MusicLoom.Tagging.csproj" />
     <ProjectReference Include="../MusicLoom.Netease/MusicLoom.Netease.csproj" />
     <ProjectReference Include="../MusicLoom.LyricsProviders/MusicLoom.LyricsProviders.csproj" />
-    <!-- Research-only: login-dependent playback is intentionally not part
-         of the consumer EXE build. -->
-    <Compile Remove="MainWindow.ProviderWebPlayback.cs" />
-    <Compile Remove="MainWindow.SpotifyLocal.cs" />
     <Content Remove="Assets/MusicLoom.ico" />
     <EmbeddedResource Include="Assets/MusicLoom.ico"
                       LogicalName="MusicLoom.AppIcon.ico" />
