@@ -56,7 +56,7 @@ public sealed partial class MainWindow
         [
             LibraryFilterBox, LibraryLyricsFacetBox, LibraryNeteaseFacetBox,
             LibraryQqFacetBox, LibraryKugouFacetBox,
-
+            LibraryMiguFacetBox,
         ];
         var chosen = facets
             .Select(static box => box.SelectedItem as ComboBoxItem)
@@ -112,8 +112,7 @@ public sealed partial class MainWindow
         || FacetValue(LibraryNeteaseFacetBox) != "all"
         || FacetValue(LibraryQqFacetBox) != "all"
         || FacetValue(LibraryKugouFacetBox) != "all"
-        || FacetValue(LibraryMiguFacetBox) != "all"
-
+        || FacetValue(LibraryMiguFacetBox) != "all";
 
     private void EnsureLibraryFacetSnapshot()
     {
