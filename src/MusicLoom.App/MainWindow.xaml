@@ -272,9 +272,9 @@
               <Button x:Name="LibrarySortMenuButton"
                       Padding="12,8" MinWidth="112">
                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                  <FontIcon x:Name="LibrarySortGlyph" Glyph="&#xE8CB;" FontSize="14"/>
+                  <FontIcon x:Name="LibrarySortGlyph" Glyph="&#xE8CB;" FontFamily="Segoe Fluent Icons" FontSize="14"/>
                   <TextBlock x:Name="LibrarySortFieldText" Text="Artist" VerticalAlignment="Center"/>
-                  <FontIcon x:Name="LibrarySortDirectionGlyph" Glyph="&#xEE68;" FontSize="14"/>
+                  <FontIcon x:Name="LibrarySortDirectionGlyph" Glyph="&#xEE68;" FontFamily="Segoe Fluent Icons" FontSize="14"/>
                 </StackPanel>
                 <Button.Flyout>
                   <Flyout Placement="Bottom">
@@ -294,13 +294,13 @@
                                 SelectionChanged="LibrarySortDirectionBox_SelectionChanged">
                         <ComboBoxItem x:Name="LibrarySortAscendingItem" Tag="asc">
                           <StackPanel Orientation="Horizontal" Spacing="8">
-                            <FontIcon Glyph="&#xEE68;" FontSize="14"/>
+                            <FontIcon Glyph="&#xEE68;" FontFamily="Segoe Fluent Icons" FontSize="14"/>
                             <TextBlock x:Name="LibrarySortAscendingLabel" Text="Ascending"/>
                           </StackPanel>
                         </ComboBoxItem>
                         <ComboBoxItem x:Name="LibrarySortDescendingItem" Tag="desc">
                           <StackPanel Orientation="Horizontal" Spacing="8">
-                            <FontIcon Glyph="&#xEE69;" FontSize="14"/>
+                            <FontIcon Glyph="&#xEE69;" FontFamily="Segoe Fluent Icons" FontSize="14"/>
                             <TextBlock x:Name="LibrarySortDescendingLabel" Text="Descending"/>
                           </StackPanel>
                         </ComboBoxItem>

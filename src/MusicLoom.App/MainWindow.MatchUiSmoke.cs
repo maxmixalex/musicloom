@@ -87,12 +87,31 @@ public sealed partial class MainWindow
                 + $" (columns={LibraryToolbarRow.ColumnDefinitions.Count},"
                 + $" children={toolbarChildren.Count}, search={searchRegion},"
                 + $" actions={filterRegion}, counts={countsRegion})");
+            // Flyout elements are NOT loaded until opened: checking
+            // TextBlock.Parent here produced a false negative in CI even
+            // though the ComboBoxItem Content is present in the XAML.
+            bool ascendingMarkup = LibrarySortAscendingItem.Content
+                is StackPanel ascendingStack
+                && ascendingStack.Children.Count == 2
+                && ascendingStack.Children[0] is FontIcon
+                    { Glyph: "\uEE68" }
+                && ReferenceEquals(ascendingStack.Children[1],
+                    LibrarySortAscendingLabel);
+            bool descendingMarkup = LibrarySortDescendingItem.Content
+                is StackPanel descendingStack
+                && descendingStack.Children.Count == 2
+                && descendingStack.Children[0] is FontIcon
+                    { Glyph: "\uEE69" }
+                && ReferenceEquals(descendingStack.Children[1],
+                    LibrarySortDescendingLabel);
             Assert(LibrarySortGlyph.Glyph == "\uE8CB"
                 && LibrarySortDirectionGlyph.Glyph is "\uEE68" or "\uEE69"
                 && LibrarySortMenuButton.Content is StackPanel
-                && LibrarySortAscendingLabel.Parent is StackPanel
-                && LibrarySortDescendingLabel.Parent is StackPanel,
-                "Library: Fluent sort direction icons replace text prefixes and Unicode arrows");
+                && ascendingMarkup && descendingMarkup,
+                "Library: verified Segoe Fluent Sort/SortUp/SortDown glyphs"
+                + $" (glyphs={((int)LibrarySortGlyph.Glyph[0]):X4}/"
+                + $"{((int)LibrarySortDirectionGlyph.Glyph[0]):X4};"
+                + $" asc={ascendingMarkup}; desc={descendingMarkup})");
             Assert(LyricsRomanizationToggle is not null
                 && !new MusicLoom.Core.Configuration.LyricsSettings()
                     .IncludeRomanization,
