@@ -1304,6 +1304,9 @@ public sealed partial class MainWindow : Window
         _playerTargetVolume =
             volume;
 
+        if (SpotifyLocalHasTrack)
+            _ = SyncSpotifyLocalVolumeAsync(volume);
+
         if (_playbackTransitionCancellation
             is null)
         {

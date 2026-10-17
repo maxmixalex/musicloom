@@ -17,6 +17,7 @@ public sealed partial class MainWindow
     private SpotifyLocalPlayerStatus? _spotifyLocalStatus;
     private DateTimeOffset _spotifyLocalLastPoll = DateTimeOffset.MinValue;
     private bool _spotifyLocalPolling;
+    private int _spotifyVolumeRevision;
 
     private bool SpotifyLocalTrackPlaying =>
         _spotifyLocalBackend is not null
@@ -47,6 +48,7 @@ public sealed partial class MainWindow
     {
         SpotifyLocalStreamBridge? current = _spotifyLocalBackend;
         if (current is null) return;
+        ++_spotifyVolumeRevision;
         _spotifyLocalBackend = null;
         _spotifyLocalTrack = null;
         _spotifyLocalStatus = null;
@@ -153,6 +155,7 @@ public sealed partial class MainWindow
                 _playingCloudPreviewCandidate = candidate;
                 _spotifyLocalBackend = current;
                 _spotifyLocalTrack = candidate;
+                _ = SyncSpotifyLocalVolumeAsync(_playerTargetVolume);
                 _spotifyLocalStatus = new SpotifyLocalPlayerStatus(
                     "spotify:track:" + candidate.Id, false, false, true, 0);
                 owned = false;
@@ -279,6 +282,30 @@ public sealed partial class MainWindow
         {
             AppDiagnostics.LogException(
                 "Spotify local play/pause failed.", ex);
+        }
+    }
+
+    private async Task SyncSpotifyLocalVolumeAsync(double fraction)
+    {
+        int revision = ++_spotifyVolumeRevision;
+        // Slider drag events can be very frequent; coalesce requests
+        // instead of sending a new HTTP command on every mouse move.
+        await Task.Delay(90);
+        SpotifyLocalStreamBridge? backend = _spotifyLocalBackend;
+        if (revision != _spotifyVolumeRevision || backend is null)
+            return;
+        try
+        {
+            using CancellationTokenSource timeout =
+                new(TimeSpan.FromSeconds(2));
+            await backend.SetVolumeFractionAsync(fraction, timeout.Token);
+        }
+        catch (Exception ex) when (ex is HttpRequestException
+            or InvalidDataException or OperationCanceledException
+            or ObjectDisposedException)
+        {
+            AppDiagnostics.LogException(
+                "Could not set local Spotify WASAPI volume.", ex);
         }
     }
 

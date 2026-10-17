@@ -76,7 +76,7 @@ internal static class StreamingProtocolRegression
     public static async Task SpotifyLocalAudio()
     {
         const string id = "4iV5W9uYEdYUVa79Axb7Rh";
-        int plays = 0, paused = 0, resumed = 0, seeked = 0;
+        int plays = 0, paused = 0, resumed = 0, seeked = 0, volumeCommands = 0;
         using HttpClient http = new(new Handler(req =>
         {
             Uri url = req.RequestUri!;
@@ -104,6 +104,15 @@ internal static class StreamingProtocolRegression
                     paused++; return Json("{}");
                 case "/player/resume":
                     resumed++; return Json("{}");
+                case "/player/volume":
+                    if (req.Method == HttpMethod.Get)
+                        return Json("""{"value":100,"max":200}""");
+                    volumeCommands++;
+                    Must(req.Method == HttpMethod.Post
+                        && req.Content!.ReadAsStringAsync().GetAwaiter().GetResult()
+                            == """{"volume":74}""",
+                        "Local WASAPI volume must respect the daemon's reported max.");
+                    return Json("{}");
                 case "/player/seek":
                     seeked++;
                     Must(req.Content!.ReadAsStringAsync().GetAwaiter().GetResult()
@@ -126,7 +135,9 @@ internal static class StreamingProtocolRegression
         await local.PauseAsync();
         await local.ResumeAsync();
         await local.SeekAsync(42000);
-        Must(plays == 1 && paused == 1 && resumed == 1 && seeked == 1,
+        await local.SetVolumeFractionAsync(0.37);
+        Must(plays == 1 && paused == 1 && resumed == 1 && seeked == 1
+            && volumeCommands == 1,
             "Local audio player is controllable without using the Spotify official Web API.");
 
         foreach (string target in new[]

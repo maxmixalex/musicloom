@@ -110,6 +110,30 @@ public sealed class SpotifyLocalStreamBridge : IDisposable
             "{\"position\":" + absoluteMilliseconds + "}", ct);
     }
 
+    /// <summary>
+    /// Match MusicLoom's volume slider to the user's local Spotify audio
+    /// output. Query the daemon's reported max rather than assuming a fixed
+    /// scale; the REST API controls the actual WASAPI decoder, not MediaPlayer.
+    /// </summary>
+    public async Task SetVolumeFractionAsync(double fraction,
+        CancellationToken ct = default)
+    {
+        if (!double.IsFinite(fraction) || fraction is < 0 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(fraction));
+
+        using HttpRequestMessage request = new(HttpMethod.Get,
+            Route("/player/volume"));
+        using JsonDocument response =
+            await ProviderProtocol.JsonAsync(_http, request, ct);
+        int maximum = ProviderProtocol.Number(response.RootElement, "max");
+        if (maximum <= 0) throw new InvalidDataException(
+            "Local Spotify player returned an invalid volume range.");
+        int value = (int)Math.Round(fraction * maximum,
+            MidpointRounding.AwayFromZero);
+        await SendCommandAsync("/player/volume",
+            "{\"volume\":" + value + "}", ct);
+    }
+
     private async Task SendCommandAsync(
         string route, string? json, CancellationToken ct)
     {
