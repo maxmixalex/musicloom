@@ -58,6 +58,30 @@ public sealed partial class ImmersivePlayer : UserControl
     internal UIElement InformationTransitionTarget => ImmersiveMetadataHeader;
     internal ImageSource? CurrentArtwork => AlbumCover.Source;
     internal ScrollViewer? LyricsScrollViewer => _lyricScrollViewer;
+    internal IReadOnlyList<UIElement> SurroundingFadeTargets =>
+        [ImmersiveBackdrop, RightPanel, ImmersiveProgressPanel,
+            ImmersiveFooter];
+    internal Grid LyricsViewport => ImmersiveLyricsViewport;
+
+    internal void SetSurroundingOpacity(double opacity)
+    {
+        foreach (UIElement target in SurroundingFadeTargets)
+            target.Opacity = opacity;
+    }
+
+    // The existing lyric items fade out behind an always-transparent panel;
+    // swap data only after the new canonical lyric query resolves.
+    internal void BeginLyricsTransition() =>
+        ImmersiveLyricsViewport.Opacity = 0;
+
+    internal void SetTrackHeader(string title, string artist,
+        string album, ImageSource? cover)
+    {
+        TrackHeading.Text = title;
+        ArtistHeading.Text = artist;
+        AlbumHeading.Text = album;
+        SetCover(cover);
+    }
 
     public ImmersivePlayer()
     {
@@ -139,10 +163,7 @@ public sealed partial class ImmersivePlayer : UserControl
         ImageSource? cover,
         IEnumerable<LyricDisplayLine> lines)
     {
-        TrackHeading.Text = title;
-        ArtistHeading.Text = artist;
-        AlbumHeading.Text = album;
-        SetCover(cover);
+        SetTrackHeader(title, artist, album, cover);
         SetLyrics(lines);
     }
 
@@ -163,6 +184,7 @@ public sealed partial class ImmersivePlayer : UserControl
         LyricsTopFade.Visibility = Visibility.Collapsed;
         LyricsBottomFade.Visibility = Visibility.Collapsed;
         ImmersiveLyricsList.ItemsSource = display;
+        ImmersiveLyricsViewport.Opacity = 1;
         LyricModeButton.Visibility = display.Any(
             static line => !string.IsNullOrWhiteSpace(line.Translation))
             ? Visibility.Visible : Visibility.Collapsed;

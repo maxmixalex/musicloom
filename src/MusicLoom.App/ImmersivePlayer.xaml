@@ -6,16 +6,23 @@
     IsTabStop="True"
     KeyDown="ImmersivePlayer_KeyDown">
   <!-- Immersive overlays the app client area, NOT the system monitor. -->
-  <Grid x:Name="ImmersiveLayoutRoot" Padding="34,12,34,20"
+  <Grid x:Name="ImmersiveLayoutRoot"
         MinHeight="0" SizeChanged="ImmersiveLayoutRoot_SizeChanged">
-    <Grid.Background>
-      <LinearGradientBrush x:Name="ArtworkGradient"
-                           StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#386C8A" Offset="0" />
-        <GradientStop Color="#2B5575" Offset="0.5" />
-        <GradientStop Color="#183A55" Offset="1" />
-      </LinearGradientBrush>
-    </Grid.Background>
+    <!-- Independent background fades, without touching the connected cover. -->
+    <Border x:Name="ImmersiveBackdrop" IsHitTestVisible="False">
+      <Border.OpacityTransition>
+        <ScalarTransition Duration="0:0:0.56"/>
+      </Border.OpacityTransition>
+      <Border.Background>
+        <LinearGradientBrush x:Name="ArtworkGradient"
+                             StartPoint="0,0" EndPoint="0,1">
+          <GradientStop Color="#386C8A" Offset="0" />
+          <GradientStop Color="#2B5575" Offset="0.5" />
+          <GradientStop Color="#183A55" Offset="1" />
+        </LinearGradientBrush>
+      </Border.Background>
+    </Border>
+    <Grid x:Name="ImmersiveContentRoot" Padding="34,12,34,20">
     <Grid.RowDefinitions>
       <RowDefinition Height="*" />
       <RowDefinition Height="Auto" />
@@ -57,7 +64,11 @@
           </Border>
         </Border>
 
-        <Grid Grid.Row="1" RowSpacing="2" Margin="0,0,0,1">
+        <Grid x:Name="ImmersiveProgressPanel"
+              Grid.Row="1" RowSpacing="2" Margin="0,0,0,1">
+          <Grid.OpacityTransition>
+            <ScalarTransition Duration="0:0:0.56"/>
+          </Grid.OpacityTransition>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -93,6 +104,9 @@
       <Grid x:Name="RightPanel" Grid.Column="1"
             VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
             RowSpacing="16">
+        <Grid.OpacityTransition>
+          <ScalarTransition Duration="0:0:0.56"/>
+        </Grid.OpacityTransition>
         <Grid.RowDefinitions>
           <RowDefinition Height="128" />
           <RowDefinition Height="*" />
@@ -127,7 +141,13 @@
                       FontSize="18" Foreground="White"/>
           </Button>
         </Grid>
-        <Grid Grid.Row="1" MinHeight="0">
+        <!-- The lyric viewport, including template recycling, is always
+             transparent; its items crossfade only after fresh lyrics load. -->
+        <Grid x:Name="ImmersiveLyricsViewport" Grid.Row="1"
+              MinHeight="0" Background="Transparent">
+          <Grid.OpacityTransition>
+            <ScalarTransition Duration="0:0:0.18"/>
+          </Grid.OpacityTransition>
           <ListView x:Name="ImmersiveLyricsList"
                     SelectionMode="None" Background="Transparent"
                     Padding="0"
@@ -139,6 +159,7 @@
               <Style TargetType="ListViewItem">
                 <Setter Property="Padding" Value="0"/>
                 <Setter Property="Margin" Value="0"/>
+                <Setter Property="Background" Value="Transparent"/>
                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
               </Style>
             </ListView.ItemContainerStyle>
@@ -203,7 +224,11 @@
 
     <!-- Transport controls belong to the shared footer, not the left
          column. Exit remains on the same vertical center line at right. -->
-    <Grid Grid.Row="1" HorizontalAlignment="Stretch" MinHeight="52">
+    <Grid x:Name="ImmersiveFooter" Grid.Row="1"
+          HorizontalAlignment="Stretch" MinHeight="52">
+      <Grid.OpacityTransition>
+        <ScalarTransition Duration="0:0:0.56"/>
+      </Grid.OpacityTransition>
       <StackPanel x:Name="TransportControls" Orientation="Horizontal"
                   VerticalAlignment="Center" HorizontalAlignment="Center"
                   Spacing="18">
@@ -231,6 +256,7 @@
             Click="ExitButton_Click" ToolTipService.ToolTip="Exit immersive view">
       <FontIcon Glyph="&#xE8A7;" FontSize="18" Foreground="White" />
     </Button>
+    </Grid>
     </Grid>
   </Grid>
 </UserControl>
