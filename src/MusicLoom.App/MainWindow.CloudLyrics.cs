@@ -36,8 +36,10 @@ public sealed partial class MainWindow
     {
         _activeCloudLyricsPanel?.UpdatePreviewPlaying(
             _playingCloudPreviewCandidate,
-            _mediaPlayer.PlaybackSession.PlaybackState
-                == MediaPlaybackState.Playing);
+            SpotifyLocalHasTrack
+                ? SpotifyLocalTrackPlaying
+                : _mediaPlayer.PlaybackSession.PlaybackState
+                    == MediaPlaybackState.Playing);
     }
 
     private async Task ShowCloudMatchDialogAsync(
@@ -110,7 +112,14 @@ public sealed partial class MainWindow
         CloudLyricsPanel originatingPanel,
         TimeSpan? startPosition = null)
     {
-        // All remote providers share this one MediaPlayer, never a second queue.
+        if (candidate.Source == CloudLyricsSource.Spotify)
+        {
+            await PlaySpotifyLocalAsync(candidate, originatingPanel,
+                startPosition);
+            return;
+        }
+        await StopSpotifyLocalPlaybackAsync();
+        // Local audio and provider-granted media URLs share this MediaPlayer.
         // Pause/resume and lyric seeking must not trigger a second network
         // request for the same already-authorized stream.
         if (SameCloudCandidate(_playingCloudPreviewCandidate, candidate)
@@ -227,27 +236,7 @@ public sealed partial class MainWindow
             _mediaPlayer.Volume = 0;
             _mediaPlayer.Source = MediaSource.CreateFromUri(
                 preview.StreamUrl!);
-            PlayerTitleText.Text = string.IsNullOrWhiteSpace(candidate.Artist)
-                ? candidate.Title
-                : candidate.Artist + " - " + candidate.Title;
-            PlayerMetadataText.Text = candidate.Album;
-            if (candidate.CoverUrl is string artwork
-                && Uri.TryCreate(artwork, UriKind.Absolute, out Uri? artUri)
-                && artUri.Scheme == Uri.UriSchemeHttps)
-            {
-                PlayerArtworkImage.Source = new BitmapImage
-                {
-                    DecodePixelWidth = 144,
-                    UriSource = artUri,
-                };
-                PlayerArtworkPlaceholder.Visibility = Visibility.Collapsed;
-            }
-            else
-            {
-                PlayerArtworkImage.Source = null;
-                PlayerArtworkPlaceholder.Visibility = Visibility.Visible;
-            }
-            ConfigureAuxiliaryLongText();
+            SetCloudTrackAppearance(candidate);
             if (_immersiveActive)
                 UpdateImmersiveRemoteTrack();
             if (_remotePlaybackLyrics is null)

@@ -47,22 +47,23 @@ public sealed partial class MainWindow
             PlayerPlayPauseButton_Click(ImmersiveView, new RoutedEventArgs());
         ImmersiveView.SeekRequested += seconds =>
         {
-            if (_mediaPlayer.Source is null
-                || !double.IsFinite(seconds) || seconds < 0)
-            {
-                return;
-            }
+            if (!double.IsFinite(seconds) || seconds < 0) return;
+            if (SeekSpotifyLocal(TimeSpan.FromSeconds(seconds))) return;
+            if (_mediaPlayer.Source is null) return;
             _mediaPlayer.PlaybackSession.Position =
                 TimeSpan.FromSeconds(seconds);
             UpdatePlaybackLyrics();
         };
         ImmersiveView.LyricSeekRequested += seconds =>
         {
-            if (_mediaPlayer.Source is null
-                || !double.IsFinite(seconds) || seconds < 0)
+            if (!double.IsFinite(seconds) || seconds < 0) return;
+            if (SeekSpotifyLocal(TimeSpan.FromSeconds(seconds)))
             {
+                if (!SpotifyLocalTrackPlaying)
+                    _ = ToggleSpotifyLocalAsync();
                 return;
             }
+            if (_mediaPlayer.Source is null) return;
             _mediaPlayer.PlaybackSession.Position =
                 TimeSpan.FromSeconds(seconds);
             _mediaPlayer.Play();

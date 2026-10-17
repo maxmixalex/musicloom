@@ -370,7 +370,8 @@ public sealed partial class MainWindow : Window
         _waveformCancellation?.Cancel();
         _waveformCancellation?.Dispose();
         CloseMatchOverlay();
-         StopKaraokeFrameRendering();
+        _ = StopSpotifyLocalPlaybackAsync();
+        StopKaraokeFrameRendering();
         _mediaPlayer.Dispose();
     }
 
@@ -379,6 +380,7 @@ public sealed partial class MainWindow : Window
         bool rebuildQueue = true,
         TimeSpan? startPosition = null)
     {
+        await StopSpotifyLocalPlaybackAsync();
         CancellationTokenSource transition =
             BeginPlaybackTransition();
 
@@ -635,6 +637,7 @@ public sealed partial class MainWindow : Window
         NeteaseMatchCandidate candidate,
         TimeSpan? startPosition = null)
     {
+        await StopSpotifyLocalPlaybackAsync();
         CancellationTokenSource transition =
             BeginPlaybackTransition();
 
@@ -946,6 +949,7 @@ public sealed partial class MainWindow : Window
         if (_splitDragging)
             return;
 
+        ScheduleSpotifyLocalStatusPoll();
         UpdatePlayerProgress();
         UpdateReactiveWaveform();
         UpdatePlaybackLyrics();
@@ -953,14 +957,8 @@ public sealed partial class MainWindow : Window
 
     private void UpdatePlayerProgress()
     {
-        MediaPlaybackSession session =
-            _mediaPlayer
-                .PlaybackSession;
-
-        TimeSpan duration =
-            session.NaturalDuration;
-        TimeSpan position =
-            session.Position;
+        TimeSpan duration = CurrentPlayerDuration;
+        TimeSpan position = CurrentPlayerPosition;
 
         double durationSeconds =
             Math.Max(
@@ -1007,10 +1005,10 @@ public sealed partial class MainWindow : Window
 
     private void UpdatePlayerVisualState()
     {
-        bool playing =
-            _mediaPlayer.PlaybackSession
-                .PlaybackState
-            == MediaPlaybackState.Playing;
+        bool playing = SpotifyLocalHasTrack
+            ? SpotifyLocalTrackPlaying
+            : _mediaPlayer.PlaybackSession.PlaybackState
+                == MediaPlaybackState.Playing;
 
         PlayerPlayPauseIcon.Symbol =
             playing
@@ -1022,7 +1020,8 @@ public sealed partial class MainWindow : Window
             ImmersiveView.SetNavigationAvailable(
                 _playingLibraryItem is not null
                 && _playbackQueue.Length > 1,
-                remoteSource: _mediaPlayer.Source is not null
+                remoteSource: (_mediaPlayer.Source is not null
+                    || SpotifyLocalHasTrack)
                     && _playingLibraryItem is null);
         }
         RefreshKaraokeFrameRendering();
@@ -1041,7 +1040,8 @@ public sealed partial class MainWindow : Window
             && _playbackQueue.Length > 1;
         // A remote source has no local navigation queue: hide these two
         // transport controls altogether rather than showing disabled icons.
-        bool remoteTransport = _mediaPlayer.Source is not null
+        bool remoteTransport = (_mediaPlayer.Source is not null
+            || SpotifyLocalHasTrack)
             && _playingLibraryItem is null;
         PlayerPreviousButton.Visibility = remoteTransport
             ? Visibility.Collapsed : Visibility.Visible;
@@ -1158,10 +1158,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        TimeSpan position =
-            _mediaPlayer
-                .PlaybackSession
-                .Position;
+        TimeSpan position = CurrentPlayerPosition;
 
         LyricDisplayLine? active =
             source
@@ -1219,6 +1216,11 @@ public sealed partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (SpotifyLocalHasTrack)
+        {
+            _ = ToggleSpotifyLocalAsync();
+            return;
+        }
         if (_mediaPlayer.Source is null)
         {
             if (_selectedLibraryItem
@@ -1257,8 +1259,10 @@ public sealed partial class MainWindow : Window
         object sender,
         RangeBaseValueChangedEventArgs e)
     {
-        if (_updatingPlayerProgress
-            || _mediaPlayer.Source is null)
+        if (_updatingPlayerProgress) return;
+        if (SeekSpotifyLocal(TimeSpan.FromSeconds(
+                Math.Max(0, e.NewValue)))) return;
+        if (_mediaPlayer.Source is null)
         {
             return;
         }
