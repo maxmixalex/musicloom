@@ -143,7 +143,40 @@ public sealed partial class MainWindow
             // inside the *visible* window before capturing it. Earlier
             // 686px hosts silently clipped the entire lyrics preview rail.
             AppWindow.Resize(new Windows.Graphics.SizeInt32(1360, 900));
+            NavigateTo("library");
             await Task.Delay(400);
+            LibraryToolbarRow.UpdateLayout();
+            double searchX = LibrarySearchRegion
+                .TransformToVisual(LibraryToolbarRow)
+                .TransformPoint(new Windows.Foundation.Point(0, 0)).X;
+            double filterX = LibraryFacetsButton
+                .TransformToVisual(LibraryToolbarRow)
+                .TransformPoint(new Windows.Foundation.Point(0, 0)).X;
+            double sortX = LibrarySortMenuButton
+                .TransformToVisual(LibraryToolbarRow)
+                .TransformPoint(new Windows.Foundation.Point(0, 0)).X;
+            double countsX = LibraryVisibleCountText
+                .TransformToVisual(LibraryToolbarRow)
+                .TransformPoint(new Windows.Foundation.Point(0, 0)).X;
+            Assert(LibraryToolbarRow.ActualWidth > 700
+                && searchX >= -1 && searchX < 2
+                && filterX >= searchX + LibrarySearchRegion.ActualWidth
+                && sortX >= filterX + LibraryFacetsButton.ActualWidth
+                && countsX > sortX + LibrarySortMenuButton.ActualWidth,
+                "Library: measured visual positions keep search at left, "
+                + "filter/sort adjacent and statistics at right");
+            int filterPixels = await CountRenderedIconPixelsAsync(LibraryFilterIcon);
+            int sortPixels = await CountRenderedIconPixelsAsync(LibrarySortIcon);
+            int directionPixels = await CountRenderedIconPixelsAsync(
+                LibrarySortAscendingIcon);
+            Assert(filterPixels > 12 && sortPixels > 12 && directionPixels > 12,
+                "Library: real WinUI renderer paints filter/sort/direction "
+                + $"SVG path geometry ({filterPixels}/{sortPixels}/{directionPixels} pixels)");
+            string toolbarPng = marker + ".LibraryToolbar.png";
+            await SavePanelScreenshotAsync(
+                LibraryToolbarRow, toolbarPng, minHeight: 24);
+            Assert(new FileInfo(toolbarPng).Length > 1300,
+                "Library: actual aligned toolbar and vector icons exported as PNG");
             host = new StackPanel
             {
                 Padding = new Thickness(18),
@@ -923,6 +956,21 @@ public sealed partial class MainWindow
         return image;
     }
 
+    private static async Task<int> CountRenderedIconPixelsAsync(
+        FrameworkElement view)
+    {
+        RenderTargetBitmap bitmap = new();
+        await bitmap.RenderAsync(view);
+        var pixels = await bitmap.GetPixelsAsync();
+        byte[] bgra = new byte[checked((int)pixels.Length)];
+        using (DataReader reader = DataReader.FromBuffer(pixels))
+            reader.ReadBytes(bgra);
+        int painted = 0;
+        for (int i = 3; i < bgra.Length; i += 4)
+            if (bgra[i] > 64) painted++;
+        return painted;
+    }
+
     private static async Task<int> CountRenderedTextPixelsAsync(
         FrameworkElement view, int minX = 0, int minY = 0)
     {
@@ -950,11 +998,11 @@ public sealed partial class MainWindow
     }
 
     private static async Task SavePanelScreenshotAsync(
-        FrameworkElement view, string path)
+        FrameworkElement view, string path, int minHeight = 50)
     {
         RenderTargetBitmap rendered = new();
         await rendered.RenderAsync(view);
-        if (rendered.PixelWidth < 300 || rendered.PixelHeight < 50)
+        if (rendered.PixelWidth < 300 || rendered.PixelHeight < minHeight)
             throw new InvalidOperationException(
                 "Matching panel failed to acquire real layout dimensions.");
 
