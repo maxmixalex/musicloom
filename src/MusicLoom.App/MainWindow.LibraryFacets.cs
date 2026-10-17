@@ -87,9 +87,9 @@ public sealed partial class MainWindow
         // Real Segoe Fluent Icons, never Unicode arrow characters or a
         // redundant textual "Sort:" label.
         LibrarySortFieldText.Text = field;
-        LibrarySortAscendingIcon.Visibility = descending
+        LibrarySortAscendingHost.Visibility = descending
             ? Visibility.Collapsed : Visibility.Visible;
-        LibrarySortDescendingIcon.Visibility = descending
+        LibrarySortDescendingHost.Visibility = descending
             ? Visibility.Visible : Visibility.Collapsed;
         ToolTipService.SetToolTip(LibrarySortMenuButton,
             L("Sort songs by ", "歌曲排序：") + field

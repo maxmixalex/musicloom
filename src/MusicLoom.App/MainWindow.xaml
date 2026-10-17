@@ -144,7 +144,7 @@
               <ColumnDefinition Width="*"/>
               <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <Grid x:Name="LibrarySearchRegion" Grid.Column="0" Width="248"
+            <Grid x:Name="LibrarySearchRegion" Grid.Column="0" Width="340"
                   HorizontalAlignment="Left" ColumnSpacing="6"
                   VerticalAlignment="Center">
               <Grid.ColumnDefinitions>
@@ -166,7 +166,7 @@
                         VerticalAlignment="Center" HorizontalAlignment="Left">
               <Button x:Name="LibraryFacetsButton" Padding="12,8" MinWidth="94">
                   <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                    <SymbolIcon x:Name="LibraryFilterIcon" Symbol="Filter"/>
+                    <Viewbox Width="14" Height="14"><SymbolIcon x:Name="LibraryFilterIcon" Symbol="Filter"/></Viewbox>
                     <TextBlock x:Name="LibraryFacetsLabel" Text="Filters" VerticalAlignment="Center"/>
                   </StackPanel>
                 <Button.Flyout>
@@ -256,13 +256,14 @@
               <Button x:Name="LibrarySortMenuButton"
                       Padding="12,8" MinWidth="112">
                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                  <SymbolIcon x:Name="LibrarySortIcon" Symbol="Sort"/>
+                  <Viewbox Width="14" Height="14"><SymbolIcon x:Name="LibrarySortIcon" Symbol="Sort"/></Viewbox>
                    <TextBlock x:Name="LibrarySortFieldText" Text="Artist" VerticalAlignment="Center"/>
-                   <SymbolIcon x:Name="LibrarySortAscendingIcon" Symbol="Up"/>
-                   <SymbolIcon x:Name="LibrarySortDescendingIcon" Symbol="Up"
-                             Visibility="Collapsed" RenderTransformOrigin="0.5,0.5">
-                     <SymbolIcon.RenderTransform><RotateTransform Angle="180"/></SymbolIcon.RenderTransform>
-                   </SymbolIcon>
+                   <Viewbox x:Name="LibrarySortAscendingHost" Width="14" Height="14"><SymbolIcon x:Name="LibrarySortAscendingIcon" Symbol="Up"/></Viewbox>
+                   <Viewbox x:Name="LibrarySortDescendingHost" Width="14" Height="14" Visibility="Collapsed">
+                     <SymbolIcon x:Name="LibrarySortDescendingIcon" Symbol="Up" RenderTransformOrigin="0.5,0.5">
+                       <SymbolIcon.RenderTransform><RotateTransform Angle="180"/></SymbolIcon.RenderTransform>
+                     </SymbolIcon>
+                   </Viewbox>
                 </StackPanel>
                 <Button.Flyout>
                   <Flyout Placement="Bottom">
@@ -282,15 +283,17 @@
                                 SelectionChanged="LibrarySortDirectionBox_SelectionChanged">
                         <ComboBoxItem x:Name="LibrarySortAscendingItem" Tag="asc">
                           <StackPanel Orientation="Horizontal" Spacing="8">
-                            <SymbolIcon Symbol="Up"/>
+                            <Viewbox Width="14" Height="14"><SymbolIcon Symbol="Up"/></Viewbox>
                             <TextBlock x:Name="LibrarySortAscendingLabel" Text="Ascending"/>
                           </StackPanel>
                         </ComboBoxItem>
                         <ComboBoxItem x:Name="LibrarySortDescendingItem" Tag="desc">
                           <StackPanel Orientation="Horizontal" Spacing="8">
-                            <SymbolIcon Symbol="Up" RenderTransformOrigin="0.5,0.5">
-                               <SymbolIcon.RenderTransform><RotateTransform Angle="180"/></SymbolIcon.RenderTransform>
-                             </SymbolIcon>
+                            <Viewbox Width="14" Height="14">
+                               <SymbolIcon Symbol="Up" RenderTransformOrigin="0.5,0.5">
+                                 <SymbolIcon.RenderTransform><RotateTransform Angle="180"/></SymbolIcon.RenderTransform>
+                               </SymbolIcon>
+                             </Viewbox>
                             <TextBlock x:Name="LibrarySortDescendingLabel" Text="Descending"/>
                           </StackPanel>
                         </ComboBoxItem>

@@ -66,7 +66,7 @@ public sealed partial class MainWindow
                 && toolbarChildren[2] is StackPanel;
             bool searchRegion = directStructure
                 && ReferenceEquals(toolbarChildren[0], LibrarySearchRegion)
-                && LibrarySearchRegion.Width == 248
+                && LibrarySearchRegion.Width == 340
                 && LibrarySearchRegion.HorizontalAlignment
                     == HorizontalAlignment.Left
                 && LibrarySearchRegion.Children.Contains(LibrarySearchBox)
@@ -93,22 +93,26 @@ public sealed partial class MainWindow
             bool ascendingMarkup = LibrarySortAscendingItem.Content
                 is StackPanel ascendingStack
                 && ascendingStack.Children.Count == 2
-                && ascendingStack.Children[0] is SymbolIcon
-                    { Symbol: Symbol.Up }
+                && ascendingStack.Children[0] is Viewbox
+                    { Width: 14, Height: 14,
+                      Child: SymbolIcon { Symbol: Symbol.Up } }
                 && ReferenceEquals(ascendingStack.Children[1],
                     LibrarySortAscendingLabel);
             bool descendingMarkup = LibrarySortDescendingItem.Content
                 is StackPanel descendingStack
                 && descendingStack.Children.Count == 2
-                && descendingStack.Children[0] is SymbolIcon
-                    { Symbol: Symbol.Up,
-                      RenderTransform: RotateTransform { Angle: 180 } }
+                && descendingStack.Children[0] is Viewbox
+                    { Width: 14, Height: 14,
+                      Child: SymbolIcon { Symbol: Symbol.Up,
+                        RenderTransform: RotateTransform { Angle: 180 } } }
                 && ReferenceEquals(descendingStack.Children[1],
                     LibrarySortDescendingLabel);
             bool filterMarkup = LibraryFacetsButton.Content
                 is StackPanel filterStack
                 && filterStack.Children.Count == 2
-                && ReferenceEquals(filterStack.Children[0], LibraryFilterIcon)
+                && filterStack.Children[0] is Viewbox
+                    { Width: 14, Height: 14,
+                      Child: SymbolIcon { Symbol: Symbol.Filter } }
                 && ReferenceEquals(filterStack.Children[1], LibraryFacetsLabel)
                 && LibraryFilterIcon.Symbol == Symbol.Filter;
             Assert(filterMarkup && ascendingMarkup && descendingMarkup
@@ -117,13 +121,13 @@ public sealed partial class MainWindow
                 && LibrarySortDescendingIcon.Symbol == Symbol.Up
                 && LibrarySortDescendingIcon.RenderTransform
                     is RotateTransform { Angle: 180 }
-                && LibrarySortAscendingIcon.Visibility == Visibility.Visible
-                && LibrarySortDescendingIcon.Visibility == Visibility.Collapsed,
+                && LibrarySortAscendingHost.Visibility == Visibility.Visible
+                && LibrarySortDescendingHost.Visibility == Visibility.Collapsed,
                 "Library: native WinUI Symbol.Filter/Sort/Up (rotated down), "
                 + "no custom SVG paths or glyph literals");
             LibrarySortDirectionBox.SelectedIndex = 1;
-            Assert(LibrarySortAscendingIcon.Visibility == Visibility.Collapsed
-                && LibrarySortDescendingIcon.Visibility == Visibility.Visible,
+            Assert(LibrarySortAscendingHost.Visibility == Visibility.Collapsed
+                && LibrarySortDescendingHost.Visibility == Visibility.Visible,
                 "Library: sort direction updates actual vector icons");
             LibrarySortDirectionBox.SelectedIndex = 0;
             Assert(LyricsRomanizationToggle is not null
