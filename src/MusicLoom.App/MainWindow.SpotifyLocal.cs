@@ -33,6 +33,7 @@ public sealed partial class MainWindow
         _spotifyLocalBackend is not null && _spotifyLocalTrack is not null;
 
     private TimeSpan CurrentPlayerPosition =>
+        ProviderWebHasTrack ? ProviderWebPosition :
         SpotifyLocalHasTrack
             ? TimeSpan.FromMilliseconds(
                 _spotifyLocalStatus?.InterpolatedPositionMilliseconds(
@@ -40,6 +41,7 @@ public sealed partial class MainWindow
             : _mediaPlayer.PlaybackSession.Position;
 
     private TimeSpan CurrentPlayerDuration =>
+        ProviderWebHasTrack ? ProviderWebDuration :
         SpotifyLocalHasTrack
             ? TimeSpan.FromMilliseconds(Math.Max(0,
                 _spotifyLocalStatus?.DurationMilliseconds is > 0

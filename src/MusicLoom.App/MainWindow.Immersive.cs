@@ -48,6 +48,7 @@ public sealed partial class MainWindow
         ImmersiveView.SeekRequested += seconds =>
         {
             if (!double.IsFinite(seconds) || seconds < 0) return;
+            if (SeekProviderWeb(TimeSpan.FromSeconds(seconds))) return;
             if (SeekSpotifyLocal(TimeSpan.FromSeconds(seconds))) return;
             if (_mediaPlayer.Source is null) return;
             _mediaPlayer.PlaybackSession.Position =
@@ -57,6 +58,11 @@ public sealed partial class MainWindow
         ImmersiveView.LyricSeekRequested += seconds =>
         {
             if (!double.IsFinite(seconds) || seconds < 0) return;
+            if (SeekProviderWeb(TimeSpan.FromSeconds(seconds)))
+            {
+                if (!ProviderWebIsPlaying) _ = ToggleProviderWebAsync();
+                return;
+            }
             if (SeekSpotifyLocal(TimeSpan.FromSeconds(seconds)))
             {
                 if (!SpotifyLocalTrackPlaying)
@@ -115,7 +121,8 @@ public sealed partial class MainWindow
     {
         try
         {
-            if (_mediaPlayer.Source is null && !SpotifyLocalHasTrack)
+            if (_mediaPlayer.Source is null && !SpotifyLocalHasTrack
+                && !ProviderWebHasTrack)
                 return;
             ConnectedAnimationService service =
                 ConnectedAnimationService.GetForCurrentView();

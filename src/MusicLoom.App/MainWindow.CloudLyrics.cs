@@ -36,10 +36,12 @@ public sealed partial class MainWindow
     {
         _activeCloudLyricsPanel?.UpdatePreviewPlaying(
             _playingCloudPreviewCandidate,
-            SpotifyLocalHasTrack
-                ? SpotifyLocalTrackPlaying
-                : _mediaPlayer.PlaybackSession.PlaybackState
-                    == MediaPlaybackState.Playing);
+            ProviderWebHasTrack
+                ? ProviderWebIsPlaying
+                : SpotifyLocalHasTrack
+                    ? SpotifyLocalTrackPlaying
+                    : _mediaPlayer.PlaybackSession.PlaybackState
+                        == MediaPlaybackState.Playing);
     }
 
     private async Task ShowCloudMatchDialogAsync(
@@ -112,12 +114,14 @@ public sealed partial class MainWindow
         CloudLyricsPanel originatingPanel,
         TimeSpan? startPosition = null)
     {
-        if (candidate.Source == CloudLyricsSource.Spotify)
+        if (candidate.Source is CloudLyricsSource.Spotify
+            or CloudLyricsSource.AppleMusic)
         {
-            await PlaySpotifyLocalAsync(candidate, originatingPanel,
+            await PlayProviderWebAsync(candidate, originatingPanel,
                 startPosition);
             return;
         }
+        StopProviderWebPlayback();
         await StopSpotifyLocalPlaybackAsync();
         // Local audio and provider-granted media URLs share this MediaPlayer.
         // Pause/resume and lyric seeking must not trigger a second network
