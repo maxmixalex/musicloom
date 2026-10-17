@@ -128,6 +128,8 @@ internal static class StreamingProtocolRegression
         Must(await local.IsReadyAsync(), "Spotify local decoded player can report readiness.");
         Must(await local.PlayTrackAsync(id), "Spotify local playback command must be dispatched.");
         SpotifyLocalPlayerStatus? status = await local.GetStatusAsync();
+        if (status is null)
+            throw new InvalidOperationException("Expected an active Spotify decoder status.");
         Must(status is { IsPlaying: true, PositionMilliseconds: 12345,
                           DurationMilliseconds: 185000 }
             && status.TrackUri == "spotify:track:" + id,
