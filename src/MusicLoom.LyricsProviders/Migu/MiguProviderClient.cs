@@ -145,6 +145,7 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         {
             Title = FirstNonempty(ProviderProtocol.Text(item, "name", "title"), track.Title),
             Album = FirstNonempty(ProviderProtocol.Text(item, "album", "albumName"), track.Album),
+            SongId = FirstNonempty(ProviderProtocol.Text(item, "songId", "id"), track.SongId),
             DurationMilliseconds = FirstPositive(
                 ReadDurationMilliseconds(item), track.DurationMilliseconds),
             ContentId = FirstNonempty(ProviderProtocol.Text(item, "contentId", "resourceId"), track.ContentId),
@@ -171,7 +172,8 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
     {
         ProviderProtocol.RequireSameProvider(track, Provider);
         if (track.DurationMilliseconds > 0
-            && !string.IsNullOrWhiteSpace(track.ArtworkUrl))
+            && !string.IsNullOrWhiteSpace(track.ArtworkUrl)
+            && !string.IsNullOrWhiteSpace(track.CopyrightId))
             return track;
 
         try { track = await GetDetailsAsync(track, ct) ?? track; }

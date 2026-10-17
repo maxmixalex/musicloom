@@ -244,6 +244,11 @@ public sealed partial class ProviderMatchTabView : UserControl
                 && record.Confirmed == false,
             CanUpdateLyrics: record?.IsMatched == true,
             Busy: busy));
+        if (candidate?.Source == CloudLyricsSource.MiguMusic)
+            CurrentMatchOpenLinkText.Text =
+                CloudLyricsSourceNames.SongPage(candidate) is null
+                    ? _translate("Search on Migu Music", "在咪咕音乐上搜索")
+                    : _translate("Open on Migu Music", "在咪咕音乐上打开");
     }
 
     private static Uri? SongPage(CloudLyricsCandidate candidate)
@@ -252,7 +257,7 @@ public sealed partial class ProviderMatchTabView : UserControl
         // compact page slug is NOT derivable from its file hash: do not
         // fabricate a broken direct song link.
         if (CloudLyricsSourceNames.IsExternal(candidate.Source))
-            return CloudLyricsSourceNames.SongPage(candidate);
+            return CloudLyricsSourceNames.BrowsePage(candidate);
         if (candidate.Source != CloudLyricsSource.QqMusic)
             return null;
         string? mid = candidate.SongMid;

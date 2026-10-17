@@ -57,12 +57,35 @@ public static class CloudLyricsSourceNames
         // URL. This is the site's *actual* song-detail route, not an audio
         // CDN or a guessed songId/contentId mapping.
         string? copyrightId = candidate.CopyrightId;
-        if (copyrightId is { Length: >= 6 and <= 32 }
-            && copyrightId.All(char.IsAsciiDigit))
+        // Migu also issues alphanumeric copyright IDs. A contentId is not
+        // interchangeable with a copyrightId, so never synthesize one.
+        if (copyrightId is { Length: >= 6 and <= 64 }
+            && copyrightId.All(static c => char.IsAsciiLetterOrDigit(c)
+                || c is '-' or '_')
+            && copyrightId.Any(static c => c is >= '1' and <= '9'
+                || c is >= 'A' and <= 'Z' or >= 'a' and <= 'z'))
             return new Uri("https://music.migu.cn/v3/music/song/"
-                + copyrightId);
+                + Uri.EscapeDataString(copyrightId));
         return null;
     }
+
+    // Some anonymous search records have no copyrightId. Show a real
+    // first-party search action rather than inventing a broken detail URL.
+    public static Uri? SearchPage(CloudLyricsCandidate candidate)
+    {
+        if (candidate.Source != CloudLyricsSource.MiguMusic
+            || string.IsNullOrWhiteSpace(candidate.Title))
+            return null;
+        string query = string.Join(" ", new[]
+        {
+            candidate.Artist?.Trim(), candidate.Title.Trim(),
+        }.Where(static part => !string.IsNullOrWhiteSpace(part)));
+        return new Uri("https://m.music.migu.cn/v3/search?keyword="
+            + Uri.EscapeDataString(query));
+    }
+
+    public static Uri? BrowsePage(CloudLyricsCandidate candidate) =>
+        SongPage(candidate) ?? SearchPage(candidate);
 }
 
 /// <summary>
@@ -128,6 +151,11 @@ public sealed partial class CloudLyricsClient
                 ? details.DurationMilliseconds : candidate.DurationMilliseconds,
             CoverUrl = NormalizeExternalArtwork(details.ArtworkUrl,
                 CloudLyricsSource.MiguMusic) ?? candidate.CoverUrl,
+            CopyrightId = !string.IsNullOrWhiteSpace(details.CopyrightId)
+                ? details.CopyrightId : candidate.CopyrightId,
+            ProviderSongId = !string.IsNullOrWhiteSpace(details.SongId)
+                ? details.SongId : candidate.ProviderSongId,
+            ExternalUrl = details.ExternalUrl ?? candidate.ExternalUrl,
         };
     }
 

@@ -56,6 +56,8 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
     public string Title => Candidate.Title;
     public string Artist => Candidate.Artist;
     public string Album => Candidate.Album;
+    public string DisplayId => string.IsNullOrWhiteSpace(Candidate.Id)
+        ? string.Empty : "#" + Candidate.Id;
     public string Duration
     {
         get
@@ -93,7 +95,7 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
             "https://www.kugou.com/yy/html/search.html#searchType=song&searchKey="
                 + Uri.EscapeDataString(Candidate.Artist + " " + Candidate.Title),
         CloudLyricsSource.MiguMusic =>
-            CloudLyricsSourceNames.SongPage(Candidate)?.AbsoluteUri,
+            CloudLyricsSourceNames.BrowsePage(Candidate)?.AbsoluteUri,
         _ => null,
     };
     public string ExternalLabel => Candidate.Source switch
@@ -135,6 +137,25 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
                 new PropertyChangedEventArgs(nameof(Duration)));
             PropertyChanged?.Invoke(this,
                 new PropertyChangedEventArgs(nameof(DisplayMetadata)));
+        }
+        if (Candidate.Source == CloudLyricsSource.MiguMusic
+            && ((!string.IsNullOrWhiteSpace(enriched.CopyrightId)
+                && !string.Equals(Candidate.CopyrightId,
+                    enriched.CopyrightId, StringComparison.Ordinal))
+                || (!string.IsNullOrWhiteSpace(enriched.ExternalUrl)
+                && !string.Equals(Candidate.ExternalUrl,
+                    enriched.ExternalUrl, StringComparison.Ordinal))))
+        {
+            Candidate = Candidate with
+            {
+                CopyrightId = enriched.CopyrightId ?? Candidate.CopyrightId,
+                ExternalUrl = enriched.ExternalUrl ?? Candidate.ExternalUrl,
+                ProviderSongId = enriched.ProviderSongId ?? Candidate.ProviderSongId,
+            };
+            PropertyChanged?.Invoke(this,
+                new PropertyChangedEventArgs(nameof(ExternalUrl)));
+            PropertyChanged?.Invoke(this,
+                new PropertyChangedEventArgs(nameof(ExternalLabel)));
         }
         if (Artwork is null)
             ApplyArtwork(enriched.CoverUrl);

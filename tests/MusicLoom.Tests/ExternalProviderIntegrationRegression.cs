@@ -25,6 +25,7 @@ internal static class ExternalProviderIntegrationRegression
         // graph and the anonymous-only dispatch assertions below.
         TestAuthenticatedProvidersNotExposed();
         TestMiguSongPageLinks();
+        TestMiguSearchFallback();
         await TestLegacyDbAndMiguAsync();
         await TestAnonymousMiguFlowAsync();
         await TestMiguFallbackAsync();
@@ -103,6 +104,32 @@ internal static class ExternalProviderIntegrationRegression
         Assert(CloudLyricsSourceNames.SongPage(song with
             { Source = CloudLyricsSource.QqMusic }) is null,
             "Migu song links must never be used for another provider.");
+    }
+
+    private static void TestMiguSearchFallback()
+    {
+        CloudLyricsCandidate incomplete = new(CloudLyricsSource.MiguMusic,
+            "content-ABC", "song title", "artist name", "", 0);
+        Assert(CloudLyricsSourceNames.SongPage(incomplete) is null,
+            "Missing copyrightId must not be treated as a direct song page.");
+        Uri? search = CloudLyricsSourceNames.BrowsePage(incomplete);
+        Assert(search?.Host == "m.music.migu.cn"
+            && search.AbsolutePath == "/v3/search"
+            && search.Query.Contains("song%20title",
+                StringComparison.OrdinalIgnoreCase),
+            "Migu results without a copyrightId need a provider search link.");
+        Assert(CloudLyricsSourceNames.SearchPage(incomplete with
+            { Source = CloudLyricsSource.QqMusic }) is null
+            && CloudLyricsSourceNames.BrowsePage(incomplete with
+            { Title = " " }) is null,
+            "Do not generate search links for other sources or missing titles.");
+        Assert(CloudLyricsSourceNames.SongPage(incomplete with
+            { CopyrightId = "AB12CD3456" })?.AbsolutePath
+                == "/v3/music/song/AB12CD3456",
+            "Alphanumeric Migu copyright IDs must remain linkable.");
+        Assert(CloudLyricsSourceNames.SongPage(incomplete with
+            { CopyrightId = "000000000000" }) is null,
+            "Placeholder copyright IDs must not become broken song links.");
     }
 
     private static async Task TestLegacyDbAndMiguAsync()
