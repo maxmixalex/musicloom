@@ -103,7 +103,9 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
         // the old link before applying the new provider and candidate URL.
         if (!Uri.TryCreate(ExternalUrl, UriKind.Absolute, out Uri? uri)
             || uri.Scheme != Uri.UriSchemeHttps
-            || uri.Host is not ("y.qq.com" or "www.kugou.com"))
+            || !uri.IsDefaultPort || uri.UserInfo.Length > 0
+            || uri.HostNameType != UriHostNameType.Dns
+            || !IsTrustedProviderLinkHost(uri.IdnHost))
         {
             ExternalLinkButton.NavigateUri = null;
             ExternalLinkButton.Content = null;
@@ -114,6 +116,12 @@ public sealed partial class LyricsSearchCandidateCard : UserControl
         }
         SetExternalLink(uri, ExternalLabel ?? "");
     }
+
+    private static bool IsTrustedProviderLinkHost(string host) =>
+        host.Equals("y.qq.com", StringComparison.OrdinalIgnoreCase)
+        || host.Equals("www.kugou.com", StringComparison.OrdinalIgnoreCase)
+        || host.Equals("migu.cn", StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith(".migu.cn", StringComparison.OrdinalIgnoreCase);
 
     public bool IsPreviewPlaying
     {
