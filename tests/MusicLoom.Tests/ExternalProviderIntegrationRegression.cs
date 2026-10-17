@@ -29,6 +29,7 @@ internal static class ExternalProviderIntegrationRegression
         await TestMiguFallbackAsync();
         await TestMiguDirectGrantAsync();
         await TestSearchResultAudioGrantAsync();
+        await TestMiguTimeoutFallbackAsync();
         TestLyricsIntegrity();
     }
 
@@ -345,6 +346,46 @@ internal static class ExternalProviderIntegrationRegression
         Assert(rejected is not null
             && rejected.StreamUrl is null && rejected.PreviewUrl is null,
             "Search parser must not preserve untrusted audio URLs in match records.");
+    }
+
+    private static async Task TestMiguTimeoutFallbackAsync()
+    {
+        int modern = 0, legacy = 0;
+        using HttpClient http = new(new GuardHandler(req =>
+        {
+            Assert(req.Headers.Authorization is null
+                && req.RequestUri?.Scheme == Uri.UriSchemeHttps,
+                "Timeout retry must remain anonymous and use HTTPS.");
+            if (req.RequestUri!.AbsolutePath.Contains("/MIGUM3.0/",
+                    StringComparison.Ordinal))
+            {
+                modern++;
+                throw new TaskCanceledException("Simulated HTTP timeout");
+            }
+            legacy++;
+            return Json("""
+                {"code":"000000","songResultData":{"result":[{
+                  "name":"Fallback","contentId":"id","copyrightId":"copy"
+                }]}}
+                """);
+        }));
+        using CloudLyricsClient client = new(http);
+        IReadOnlyList<CloudLyricsCandidate> rows =
+            await client.SearchAsync(CloudLyricsSource.MiguMusic, "Fallback");
+        Assert(rows.Count == 1 && modern == 1 && legacy == 1,
+            "An internal HTTP timeout should retry the legacy anonymous endpoint.");
+
+        using CancellationTokenSource canceled = new();
+        canceled.Cancel();
+        bool didCancel = false;
+        try
+        {
+            _ = await client.SearchAsync(
+                CloudLyricsSource.MiguMusic, "Canceled", canceled.Token);
+        }
+        catch (OperationCanceledException) { didCancel = true; }
+        Assert(didCancel && modern == 1 && legacy == 1,
+            "Caller cancellation must not cause another provider request.");
     }
 
     private static void TestLyricsIntegrity()

@@ -38,8 +38,7 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
                 "https://pd.musicapp.migu.cn/MIGUM3.0/v1.0/content/search_all.do",
                 parameters, ct);
         }
-        catch (Exception ex) when (ex is HttpRequestException
-            or InvalidDataException or JsonException)
+        catch (Exception ex) when (TransientProviderFailure(ex, ct))
         {
             return await SearchAtAsync(
                 "https://pd.musicapp.migu.cn/MIGUM2.0/v1.0/content/search_all.do",
@@ -109,8 +108,7 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
                 "https://app.c.nf.migu.cn/MIGUM2.0/v1.0/content/resourceinfo.do",
                 parameters, track, ct);
         }
-        catch (Exception ex) when (ex is HttpRequestException
-            or InvalidDataException or JsonException)
+        catch (Exception ex) when (TransientProviderFailure(ex, ct))
         {
             return await DetailsAtAsync(
                 "https://app.u.nf.migu.cn/MIGUM2.0/v1.0/content/resourceinfo.do",
@@ -239,8 +237,7 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
                 "Provider response supplied a song URL; live availability is unverified.", direct);
 
         try { track = await GetDetailsAsync(track, ct) ?? track; }
-        catch (Exception ex) when (ex is HttpRequestException
-            or InvalidDataException or JsonException)
+        catch (Exception ex) when (TransientProviderFailure(ex, ct))
         {
             // Continue with provider-issued identifiers; never guess audio.
         }
@@ -289,8 +286,7 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
                 ProviderProtocol.Text(data, "trcUrl"),
                 ProviderProtocol.Text(data, "mrcUrl", "mrcurl"));
         }
-        catch (Exception ex) when (ex is HttpRequestException
-            or InvalidDataException or JsonException)
+        catch (Exception ex) when (TransientProviderFailure(ex, ct))
         {
             // A denied guest request is not permission to synthesize audio.
             return null;
@@ -363,6 +359,12 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
             _http, request, maxBytes, ct);
         return ProviderProtocol.DecodeText(bytes);
     }
+
+    private static bool TransientProviderFailure(
+        Exception error, CancellationToken operationToken) =>
+        error is HttpRequestException or InvalidDataException or JsonException
+        || (error is OperationCanceledException
+            && !operationToken.IsCancellationRequested);
 
     private static HttpRequestMessage Request(string url)
     {
