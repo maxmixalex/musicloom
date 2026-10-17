@@ -53,7 +53,7 @@ public sealed partial class ImmersivePlayer : UserControl
     public event Action<string>? ModeChanged;
 
     internal ListView LyricsList => ImmersiveLyricsList;
-    internal UIElement CoverTransitionTarget => AlbumCover;
+    internal UIElement CoverTransitionTarget => AlbumCoverSurface;
     internal UIElement TitleTransitionTarget => TrackHeading;
     internal UIElement InformationTransitionTarget => ImmersiveMetadataHeader;
     internal ImageSource? CurrentArtwork => AlbumCover.Source;
@@ -466,7 +466,7 @@ public sealed partial class ImmersivePlayer : UserControl
         if (Math.Abs(AlbumCoverSurface.Height - height) > 0.5)
             AlbumCoverSurface.Height = height;
         AlbumCoverSurface.CornerRadius =
-            new CornerRadius(Math.Min(16 * _immersiveScale,
+            new CornerRadius(Math.Min(10 * _immersiveScale,
                 Math.Min(width, height) * 0.1));
     }
 

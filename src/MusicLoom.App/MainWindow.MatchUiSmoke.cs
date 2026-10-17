@@ -618,6 +618,15 @@ public sealed partial class MainWindow
             await Task.Delay(170);
             Border coverSurface = immersive.FindName("AlbumCoverSurface") as Border
                 ?? throw new InvalidOperationException("Cover surface not found");
+            Assert(ReferenceEquals(immersive.CoverTransitionTarget, coverSurface)
+                && PlayerArtworkSurface.CornerRadius.TopLeft > 0
+                && PlayerArtworkSurface.Child is Grid
+                && coverSurface.Child is Image
+                && coverSurface.Shadow is null
+                && coverSurface.Translation.Z == 0
+                && ImmersiveCoverTransitionDuration.TotalMilliseconds == 560,
+                "Immersive: round cover surfaces, not bare Image or detached "
+                + "rectangular ThemeShadow, participate in the transition");
             Assert(coverSurface.Width > coverSurface.Height
                 && coverSurface.CornerRadius.TopLeft > 0,
                 "Immersive: rectangular cover has correctly bounded rounded/shadowed surface");

@@ -102,7 +102,7 @@ public sealed partial class MainWindow
 
     private const string ConnectedCoverKey = "MusicLoom.Immersive.Cover";
     private static readonly TimeSpan ImmersiveCoverTransitionDuration =
-        TimeSpan.FromMilliseconds(460);
+        TimeSpan.FromMilliseconds(560);
 
     private void PrepareImmersiveConnectedAnimation(bool exiting)
     {
@@ -111,19 +111,22 @@ public sealed partial class MainWindow
             if (_mediaPlayer.Source is null) return;
             ConnectedAnimationService service =
                 ConnectedAnimationService.GetForCurrentView();
-            // DirectConnectedAnimationConfiguration always lasts ~150 ms
-            // and ignores DefaultDuration. Basic honours the requested
-            // duration in BOTH directions; only artwork participates.
+            // Microsoft's recommended Gravity transition eases forward;
+            // Basic respects the duration on return (Direct would snap
+            // back in ~150 ms). Only the two rounded artwork surfaces
+            // participate, not any titles, controls or shadow layers.
             service.DefaultDuration = ImmersiveCoverTransitionDuration;
             UIElement cover = exiting
-                ? ImmersiveView.CoverTransitionTarget : PlayerArtworkImage;
+                ? ImmersiveView.CoverTransitionTarget : PlayerArtworkSurface;
             if ((exiting ? ImmersiveView.CurrentArtwork
                 : PlayerArtworkImage.Source) is null)
                 return;
 
             ConnectedAnimation animation = service.PrepareToAnimate(
                 ConnectedCoverKey, cover);
-            animation.Configuration = new BasicConnectedAnimationConfiguration();
+            animation.Configuration = exiting
+                ? new BasicConnectedAnimationConfiguration()
+                : new GravityConnectedAnimationConfiguration();
         }
         catch (Exception ex) when (ex is InvalidOperationException
             or System.Runtime.InteropServices.COMException)
@@ -142,7 +145,7 @@ public sealed partial class MainWindow
             ConnectedAnimationService service =
                 ConnectedAnimationService.GetForCurrentView();
             UIElement cover = exiting
-                ? PlayerArtworkImage : ImmersiveView.CoverTransitionTarget;
+                ? PlayerArtworkSurface : ImmersiveView.CoverTransitionTarget;
             service.GetAnimation(ConnectedCoverKey)?.TryStart(cover);
         }
         catch (Exception ex) when (ex is InvalidOperationException

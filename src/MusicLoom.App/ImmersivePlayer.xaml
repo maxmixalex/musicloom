@@ -41,17 +41,18 @@
           <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- The square is a layout slot only. The inner surface carries
-             the actual non-square cover's rounded clip and shadow. -->
+        <!-- The outer square is just a layout slot. The inner rounded
+             cover surface is connected, including its clip, not its Image. -->
         <Border Grid.Row="0" x:Name="ImmersiveArtworkFrame"
                 Width="0" Height="0"
                 HorizontalAlignment="Center" VerticalAlignment="Top"
                 Background="Transparent" BorderThickness="0">
           <Border x:Name="AlbumCoverSurface"
                   HorizontalAlignment="Center" VerticalAlignment="Top"
-                  Width="0" Height="0" CornerRadius="16"
-                  BorderThickness="0" Translation="0,0,14">
-            <Border.Shadow><ThemeShadow /></Border.Shadow>
+                  Width="0" Height="0" CornerRadius="10"
+                  BorderThickness="0">
+            <!-- ThemeShadow casts a rectangular shadow, visibly detached
+                 from the clipped cover while connected images move. -->
             <Image x:Name="AlbumCover" Stretch="UniformToFill"/>
           </Border>
         </Border>

@@ -1855,9 +1855,10 @@
               DoubleTapped="PlayerArtworkButton_DoubleTapped"
               ToolTipService.ToolTip="Locate playing track">
             <Border
+                x:Name="PlayerArtworkSurface"
                 Width="72"
                 Height="72"
-                CornerRadius="7"
+                CornerRadius="8"
                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
               <Grid>
                 <Image
