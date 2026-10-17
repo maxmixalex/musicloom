@@ -96,9 +96,9 @@ internal static class StreamingProtocolRegression
                     return Json("""{"ok":true}""");
                 case "/status":
                     return Json("""
-                        {"track":{"uri":"spotify:track:4iV5W9uYEdYUVa79Axb7Rh"},
-                         "stopped":false,"paused":false,"buffering":false,
-                         "position":12345}
+                        {"track":{"uri":"spotify:track:4iV5W9uYEdYUVa79Axb7Rh",
+                          "position":12345,"duration":185000},
+                         "stopped":false,"paused":false,"buffering":false}
                         """);
                 case "/player/pause":
                     paused++; return Json("{}");
@@ -119,7 +119,8 @@ internal static class StreamingProtocolRegression
         Must(await local.IsReadyAsync(), "Spotify local decoded player can report readiness.");
         Must(await local.PlayTrackAsync(id), "Spotify local playback command must be dispatched.");
         SpotifyLocalPlayerStatus? status = await local.GetStatusAsync();
-        Must(status is { IsPlaying: true, PositionMilliseconds: 12345 }
+        Must(status is { IsPlaying: true, PositionMilliseconds: 12345,
+                          DurationMilliseconds: 185000 }
             && status.TrackUri == "spotify:track:" + id,
             "Spotify sidecar should report actual streaming track identity/position.");
         await local.PauseAsync();

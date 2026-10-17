@@ -37,8 +37,10 @@ public sealed partial class MainWindow
 
     private TimeSpan CurrentPlayerDuration =>
         SpotifyLocalHasTrack
-            ? TimeSpan.FromMilliseconds(
-                Math.Max(0, _spotifyLocalTrack!.DurationMilliseconds))
+            ? TimeSpan.FromMilliseconds(Math.Max(0,
+                _spotifyLocalStatus?.DurationMilliseconds is > 0
+                    ? _spotifyLocalStatus.DurationMilliseconds
+                    : _spotifyLocalTrack!.DurationMilliseconds))
             : _mediaPlayer.PlaybackSession.NaturalDuration;
 
     private async Task StopSpotifyLocalPlaybackAsync()

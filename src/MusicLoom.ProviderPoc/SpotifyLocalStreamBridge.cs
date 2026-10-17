@@ -91,7 +91,8 @@ public sealed class SpotifyLocalStreamBridge : IDisposable
             ProviderProtocol.Get(root, "stopped").ValueKind == JsonValueKind.True,
             ProviderProtocol.Get(root, "paused").ValueKind == JsonValueKind.True,
             ProviderProtocol.Get(root, "buffering").ValueKind == JsonValueKind.True,
-            ProviderProtocol.Number(root, "position"));
+            ProviderProtocol.Number(track, "position"),
+            ProviderProtocol.Number(track, "duration"));
     }
 
     public async Task PauseAsync(CancellationToken ct = default) =>
@@ -136,7 +137,7 @@ public sealed class SpotifyLocalStreamBridge : IDisposable
 
 public sealed record SpotifyLocalPlayerStatus(
     string TrackUri, bool Stopped, bool Paused, bool Buffering,
-    int PositionMilliseconds)
+    int PositionMilliseconds, int DurationMilliseconds = 0)
 {
     public bool IsPlaying => !Stopped && !Paused && !Buffering;
 }
