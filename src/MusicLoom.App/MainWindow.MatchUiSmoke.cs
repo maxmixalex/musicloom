@@ -93,15 +93,16 @@ public sealed partial class MainWindow
             bool ascendingMarkup = LibrarySortAscendingItem.Content
                 is StackPanel ascendingStack
                 && ascendingStack.Children.Count == 2
-                && ascendingStack.Children[0] is Viewbox
-                    { Child: PathIcon { Data: not null } }
+                && ascendingStack.Children[0] is SymbolIcon
+                    { Symbol: Symbol.Up }
                 && ReferenceEquals(ascendingStack.Children[1],
                     LibrarySortAscendingLabel);
             bool descendingMarkup = LibrarySortDescendingItem.Content
                 is StackPanel descendingStack
                 && descendingStack.Children.Count == 2
-                && descendingStack.Children[0] is Viewbox
-                    { Child: PathIcon { Data: not null } }
+                && descendingStack.Children[0] is SymbolIcon
+                    { Symbol: Symbol.Up,
+                      RenderTransform: RotateTransform { Angle: 180 } }
                 && ReferenceEquals(descendingStack.Children[1],
                     LibrarySortDescendingLabel);
             bool filterMarkup = LibraryFacetsButton.Content
@@ -109,15 +110,17 @@ public sealed partial class MainWindow
                 && filterStack.Children.Count == 2
                 && ReferenceEquals(filterStack.Children[0], LibraryFilterIcon)
                 && ReferenceEquals(filterStack.Children[1], LibraryFacetsLabel)
-                && LibraryFilterIcon.Child is PathIcon { Data: not null };
+                && LibraryFilterIcon.Symbol == Symbol.Filter;
             Assert(filterMarkup && ascendingMarkup && descendingMarkup
-                && LibrarySortIcon.Child is PathIcon { Data: not null }
-                && LibrarySortAscendingIcon.Child is PathIcon { Data: not null }
-                && LibrarySortDescendingIcon.Child is PathIcon { Data: not null }
+                && LibrarySortIcon.Symbol == Symbol.Sort
+                && LibrarySortAscendingIcon.Symbol == Symbol.Up
+                && LibrarySortDescendingIcon.Symbol == Symbol.Up
+                && LibrarySortDescendingIcon.RenderTransform
+                    is RotateTransform { Angle: 180 }
                 && LibrarySortAscendingIcon.Visibility == Visibility.Visible
                 && LibrarySortDescendingIcon.Visibility == Visibility.Collapsed,
-                "Library: actual Fluent SVG paths for filter, sort, ascending "
-                + "and descending (no font-dependent private Unicode codes)");
+                "Library: native WinUI Symbol.Filter/Sort/Up (rotated down), "
+                + "no custom SVG paths or glyph literals");
             LibrarySortDirectionBox.SelectedIndex = 1;
             Assert(LibrarySortAscendingIcon.Visibility == Visibility.Collapsed
                 && LibrarySortDescendingIcon.Visibility == Visibility.Visible,
@@ -176,7 +179,7 @@ public sealed partial class MainWindow
             await SavePanelScreenshotAsync(
                 LibraryToolbarRow, toolbarPng, minHeight: 24);
             Assert(new FileInfo(toolbarPng).Length > 1300,
-                "Library: actual aligned toolbar and vector icons exported as PNG");
+                "Library: actual aligned toolbar and native WinUI icons exported as PNG");
             host = new StackPanel
             {
                 Padding = new Thickness(18),
