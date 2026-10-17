@@ -64,8 +64,8 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
         {
             TimeSpan time = TimeSpan.FromMilliseconds(
                 Math.Max(0, Candidate.DurationMilliseconds));
-            return time.TotalMinutes < 1 && Candidate.DurationMilliseconds == 0
-                ? "—"
+            return Candidate.DurationMilliseconds <= 0
+                ? string.Empty
                 : $"{(int)time.TotalMinutes}:{time.Seconds:00}";
         }
     }

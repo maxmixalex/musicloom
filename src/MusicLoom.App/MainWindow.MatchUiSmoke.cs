@@ -462,7 +462,7 @@ public sealed partial class MainWindow
             Assert(renderedId.Text == "#content-123"
                 && renderedDuration.Text == "",
                 "Migu: unknown duration initially has no meaningless dot/dash "
-                + "in the actual shared WinUI card");
+                + $"in the actual shared WinUI card (id='{renderedId.Text}', duration='{renderedDuration.Text}')");
             Assert(providerLink.Visibility == Visibility.Visible
                 && providerLink.NavigateUri?.AbsoluteUri ==
                     "https://music.migu.cn/v3/music/song/600929000001520013"
