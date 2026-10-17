@@ -17,6 +17,8 @@ public sealed partial class MainWindow
     private SpotifyLocalPlayerStatus? _spotifyLocalStatus;
     private DateTimeOffset _spotifyLocalLastPoll = DateTimeOffset.MinValue;
     private bool _spotifyLocalPolling;
+    private DateTimeOffset _spotifyLocalStatusObservedAt =
+        DateTimeOffset.MinValue;
     private int _spotifyVolumeRevision;
 
     private bool SpotifyLocalTrackPlaying =>
@@ -32,8 +34,9 @@ public sealed partial class MainWindow
 
     private TimeSpan CurrentPlayerPosition =>
         SpotifyLocalHasTrack
-            ? TimeSpan.FromMilliseconds(Math.Max(0,
-                _spotifyLocalStatus?.PositionMilliseconds ?? 0))
+            ? TimeSpan.FromMilliseconds(
+                _spotifyLocalStatus?.InterpolatedPositionMilliseconds(
+                    DateTimeOffset.UtcNow - _spotifyLocalStatusObservedAt) ?? 0)
             : _mediaPlayer.PlaybackSession.Position;
 
     private TimeSpan CurrentPlayerDuration =>
@@ -223,6 +226,7 @@ public sealed partial class MainWindow
             if (!ReferenceEquals(backend, _spotifyLocalBackend))
                 return;
             _spotifyLocalStatus = state;
+            _spotifyLocalStatusObservedAt = DateTimeOffset.UtcNow;
             if (_spotifyLocalTrack is CloudLyricsCandidate selected
                 && state is not null)
             {
@@ -245,7 +249,10 @@ public sealed partial class MainWindow
             or InvalidDataException or OperationCanceledException)
         {
             if (ReferenceEquals(backend, _spotifyLocalBackend))
+            {
                 _spotifyLocalStatus = null;
+                _spotifyLocalStatusObservedAt = DateTimeOffset.MinValue;
+            }
             AppDiagnostics.LogException(
                 "Could not read local Spotify playback status.", ex);
         }

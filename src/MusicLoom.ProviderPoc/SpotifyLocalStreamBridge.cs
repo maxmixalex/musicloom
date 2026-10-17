@@ -164,4 +164,19 @@ public sealed record SpotifyLocalPlayerStatus(
     int PositionMilliseconds, int DurationMilliseconds = 0)
 {
     public bool IsPlaying => !Stopped && !Paused && !Buffering;
+
+    /// <summary>
+    /// Interpolate positions between remote status polls for smooth WinUI
+    /// karaoke/slider updates. No drift while paused, stopped or buffering,
+    /// and no unbounded extrapolation if the local service disappears.
+    /// </summary>
+    public int InterpolatedPositionMilliseconds(TimeSpan age)
+    {
+        double elapsed = IsPlaying
+            ? Math.Clamp(age.TotalMilliseconds, 0, 900) : 0;
+        int limit = DurationMilliseconds > 0
+            ? DurationMilliseconds : int.MaxValue;
+        return (int)Math.Clamp(
+            PositionMilliseconds + elapsed, 0, limit);
+    }
 }

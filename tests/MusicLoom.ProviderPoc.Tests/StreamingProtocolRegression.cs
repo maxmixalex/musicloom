@@ -132,6 +132,20 @@ internal static class StreamingProtocolRegression
                           DurationMilliseconds: 185000 }
             && status.TrackUri == "spotify:track:" + id,
             "Spotify sidecar should report actual streaming track identity/position.");
+        Must(status.InterpolatedPositionMilliseconds(
+                TimeSpan.FromMilliseconds(350)) == 12695
+            && status.InterpolatedPositionMilliseconds(
+                TimeSpan.FromMilliseconds(2000)) == 13245
+            && (status with { Paused = true })
+                .InterpolatedPositionMilliseconds(
+                    TimeSpan.FromMilliseconds(350)) == 12345
+            && (status with { Buffering = true })
+                .InterpolatedPositionMilliseconds(
+                    TimeSpan.FromMilliseconds(350)) == 12345
+            && (status with { PositionMilliseconds = 184950 })
+                .InterpolatedPositionMilliseconds(
+                    TimeSpan.FromMilliseconds(350)) == 185000,
+            "Remote Spotify slider and karaoke positions interpolate smoothly without drift or overshoot.");
         await local.PauseAsync();
         await local.ResumeAsync();
         await local.SeekAsync(42000);
