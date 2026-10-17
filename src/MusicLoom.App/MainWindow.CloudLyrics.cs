@@ -600,4 +600,27 @@ public sealed partial class MainWindow
                 $"{updated} matches ({recognized} by audio); {ambiguous} ambiguous results skipped; {failures} errors.",
                 $"匹配成功 {updated} 首（音频识曲 {recognized} 首），跳过歧义结果 {ambiguous} 个，错误 {failures} 个。"));
     }
+    private void SetCloudTrackAppearance(CloudLyricsCandidate candidate)
+    {
+        PlayerTitleText.Text = string.IsNullOrWhiteSpace(candidate.Artist)
+            ? candidate.Title : candidate.Artist + " - " + candidate.Title;
+        PlayerMetadataText.Text = candidate.Album;
+        if (candidate.CoverUrl is string artwork
+            && Uri.TryCreate(artwork, UriKind.Absolute, out Uri? artUri)
+            && artUri.Scheme == Uri.UriSchemeHttps)
+        {
+            PlayerArtworkImage.Source = new BitmapImage
+            {
+                DecodePixelWidth = 144,
+                UriSource = artUri,
+            };
+            PlayerArtworkPlaceholder.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            PlayerArtworkImage.Source = null;
+            PlayerArtworkPlaceholder.Visibility = Visibility.Visible;
+        }
+        ConfigureAuxiliaryLongText();
+    }
 }
