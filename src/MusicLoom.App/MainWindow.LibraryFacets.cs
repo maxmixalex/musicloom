@@ -65,7 +65,7 @@ public sealed partial class MainWindow
             .Select(static item => item!.Content?.ToString() ?? "")
             .Where(static label => label.Length > 0)
             .ToArray();
-        LibraryFacetsButton.Content = chosen.Length == 0
+        LibraryFacetsLabel.Text = chosen.Length == 0
             ? L("Filters", "筛选")
             : L($"Filters ({chosen.Length})", $"筛选（{chosen.Length}）");
         LibraryActiveFilterSummary.Visibility = chosen.Length == 0
@@ -87,7 +87,10 @@ public sealed partial class MainWindow
         // Real Segoe Fluent Icons, never Unicode arrow characters or a
         // redundant textual "Sort:" label.
         LibrarySortFieldText.Text = field;
-        LibrarySortDirectionGlyph.Glyph = descending ? "\uEE69" : "\uEE68";
+        LibrarySortAscendingIcon.Visibility = descending
+            ? Visibility.Collapsed : Visibility.Visible;
+        LibrarySortDescendingIcon.Visibility = descending
+            ? Visibility.Visible : Visibility.Collapsed;
         ToolTipService.SetToolTip(LibrarySortMenuButton,
             L("Sort songs by ", "歌曲排序：") + field
             + (descending ? L(" descending", "，倒序")

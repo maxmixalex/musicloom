@@ -57,18 +57,21 @@ public sealed partial class MainWindow
                 && LibraryMiguFacetBox is not null
                 && LibraryFilterSyncingItem.Tag?.ToString() == "syncing",
                 "Library: all statuses and four anonymous-capable provider facets live under the same filter flyout");
-            // Verify the actual THREE direct content regions of the
-            // named toolbar Grid, not framework Parent/visual relationships
-            // (which are not stable for unloaded WinUI navigation content).
+            // Actual Auto/Auto/*/Auto columns keep search against the left
+            // edge and move surplus width between actions and counters.
             var toolbarChildren = LibraryToolbarRow.Children;
             bool directStructure = toolbarChildren.Count == 3
                 && toolbarChildren[0] is Grid
                 && toolbarChildren[1] is StackPanel
                 && toolbarChildren[2] is StackPanel;
             bool searchRegion = directStructure
-                && toolbarChildren[0] is Grid searchGrid
-                && searchGrid.Children.Contains(LibrarySearchBox)
-                && Grid.GetColumn(LibrarySearchBox) == 1;
+                && ReferenceEquals(toolbarChildren[0], LibrarySearchRegion)
+                && LibrarySearchRegion.Width == 248
+                && LibrarySearchRegion.HorizontalAlignment
+                    == HorizontalAlignment.Left
+                && LibrarySearchRegion.Children.Contains(LibrarySearchBox)
+                && Grid.GetColumn(LibrarySearchBox) == 1
+                && Grid.GetColumn(LibrarySearchRegion) == 0;
             bool filterRegion = directStructure
                 && toolbarChildren[1] is StackPanel toolbarActions
                 && toolbarActions.Children.Contains(LibraryFacetsButton)
@@ -77,39 +80,49 @@ public sealed partial class MainWindow
             bool countsRegion = directStructure
                 && toolbarChildren[2] is StackPanel toolbarCounts
                 && toolbarCounts.Children.Contains(LibraryVisibleCountText)
-                && Grid.GetColumn(toolbarCounts) == 2;
-            Assert(LibraryToolbarRow.ColumnDefinitions.Count == 3
+                && Grid.GetColumn(toolbarCounts) == 3;
+            Assert(LibraryToolbarRow.ColumnDefinitions.Count == 4
+                && LibraryToolbarRow.ColumnDefinitions[0].Width.IsAuto
+                && LibraryToolbarRow.ColumnDefinitions[1].Width.IsAuto
+                && LibraryToolbarRow.ColumnDefinitions[2].Width.IsStar
+                && LibraryToolbarRow.ColumnDefinitions[3].Width.IsAuto
                 && directStructure && searchRegion && filterRegion
                 && countsRegion,
-                "Library: one toolbar row with search, filter, sort and counters"
-                + $" (columns={LibraryToolbarRow.ColumnDefinitions.Count},"
-                + $" children={toolbarChildren.Count}, search={searchRegion},"
-                + $" actions={filterRegion}, counts={countsRegion})");
-            // Flyout elements are NOT loaded until opened: checking
-            // TextBlock.Parent here produced a false negative in CI even
-            // though the ComboBoxItem Content is present in the XAML.
+                "Library: left-anchored search, adjacent filter/sort and "
+                + "right-aligned counters in one toolbar row");
             bool ascendingMarkup = LibrarySortAscendingItem.Content
                 is StackPanel ascendingStack
                 && ascendingStack.Children.Count == 2
-                && ascendingStack.Children[0] is FontIcon
-                    { Glyph: "\uEE68" }
+                && ascendingStack.Children[0] is Viewbox
+                    { Child: PathIcon { Data: not null } }
                 && ReferenceEquals(ascendingStack.Children[1],
                     LibrarySortAscendingLabel);
             bool descendingMarkup = LibrarySortDescendingItem.Content
                 is StackPanel descendingStack
                 && descendingStack.Children.Count == 2
-                && descendingStack.Children[0] is FontIcon
-                    { Glyph: "\uEE69" }
+                && descendingStack.Children[0] is Viewbox
+                    { Child: PathIcon { Data: not null } }
                 && ReferenceEquals(descendingStack.Children[1],
                     LibrarySortDescendingLabel);
-            Assert(LibrarySortGlyph.Glyph == "\uE8CB"
-                && LibrarySortDirectionGlyph.Glyph is "\uEE68" or "\uEE69"
-                && LibrarySortMenuButton.Content is StackPanel
-                && ascendingMarkup && descendingMarkup,
-                "Library: verified Segoe Fluent Sort/SortUp/SortDown glyphs"
-                + $" (glyphs={((int)LibrarySortGlyph.Glyph[0]):X4}/"
-                + $"{((int)LibrarySortDirectionGlyph.Glyph[0]):X4};"
-                + $" asc={ascendingMarkup}; desc={descendingMarkup})");
+            bool filterMarkup = LibraryFacetsButton.Content
+                is StackPanel filterStack
+                && filterStack.Children.Count == 2
+                && ReferenceEquals(filterStack.Children[0], LibraryFilterIcon)
+                && ReferenceEquals(filterStack.Children[1], LibraryFacetsLabel)
+                && LibraryFilterIcon.Child is PathIcon { Data: not null };
+            Assert(filterMarkup && ascendingMarkup && descendingMarkup
+                && LibrarySortIcon.Child is PathIcon { Data: not null }
+                && LibrarySortAscendingIcon.Child is PathIcon { Data: not null }
+                && LibrarySortDescendingIcon.Child is PathIcon { Data: not null }
+                && LibrarySortAscendingIcon.Visibility == Visibility.Visible
+                && LibrarySortDescendingIcon.Visibility == Visibility.Collapsed,
+                "Library: actual Fluent SVG paths for filter, sort, ascending "
+                + "and descending (no font-dependent private Unicode codes)");
+            LibrarySortDirectionBox.SelectedIndex = 1;
+            Assert(LibrarySortAscendingIcon.Visibility == Visibility.Collapsed
+                && LibrarySortDescendingIcon.Visibility == Visibility.Visible,
+                "Library: sort direction updates actual vector icons");
+            LibrarySortDirectionBox.SelectedIndex = 0;
             Assert(LyricsRomanizationToggle is not null
                 && !new MusicLoom.Core.Configuration.LyricsSettings()
                     .IncludeRomanization,
