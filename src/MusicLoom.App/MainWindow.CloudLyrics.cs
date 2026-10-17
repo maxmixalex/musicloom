@@ -38,10 +38,8 @@ public sealed partial class MainWindow
             _playingCloudPreviewCandidate,
             ProviderWebHasTrack
                 ? ProviderWebIsPlaying
-                : SpotifyLocalHasTrack
-                    ? SpotifyLocalTrackPlaying
-                    : _mediaPlayer.PlaybackSession.PlaybackState
-                        == MediaPlaybackState.Playing);
+                : _mediaPlayer.PlaybackSession.PlaybackState
+                    == MediaPlaybackState.Playing);
     }
 
     private async Task ShowCloudMatchDialogAsync(
@@ -122,7 +120,6 @@ public sealed partial class MainWindow
             return;
         }
         StopProviderWebPlayback();
-        await StopSpotifyLocalPlaybackAsync();
         // Local audio and provider-granted media URLs share this MediaPlayer.
         // Pause/resume and lyric seeking must not trigger a second network
         // request for the same already-authorized stream.

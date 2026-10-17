@@ -34,6 +34,8 @@
     <ProjectReference Include="../MusicLoom.Metadata/MusicLoom.Metadata.csproj" />
     <ProjectReference Include="../MusicLoom.Tagging/MusicLoom.Tagging.csproj" />
     <ProjectReference Include="../MusicLoom.Netease/MusicLoom.Netease.csproj" />
+    <!-- Obsolete user-managed Go streaming daemon is not compiled into the app. -->
+    <Compile Remove="MainWindow.SpotifyLocal.cs" />
     <ProjectReference Include="../MusicLoom.LyricsProviders/MusicLoom.LyricsProviders.csproj" />
     <Content Remove="Assets/MusicLoom.ico" />
     <EmbeddedResource Include="Assets/MusicLoom.ico"

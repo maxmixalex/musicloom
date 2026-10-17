@@ -372,7 +372,7 @@ public sealed partial class MainWindow : Window
         _waveformCancellation?.Dispose();
         CloseMatchOverlay();
         StopProviderWebPlayback();
-        _ = StopSpotifyLocalPlaybackAsync();
+
         StopKaraokeFrameRendering();
         _mediaPlayer.Dispose();
     }
@@ -383,7 +383,7 @@ public sealed partial class MainWindow : Window
         TimeSpan? startPosition = null)
     {
         StopProviderWebPlayback();
-        await StopSpotifyLocalPlaybackAsync();
+
         CancellationTokenSource transition =
             BeginPlaybackTransition();
 
@@ -641,7 +641,7 @@ public sealed partial class MainWindow : Window
         TimeSpan? startPosition = null)
     {
         StopProviderWebPlayback();
-        await StopSpotifyLocalPlaybackAsync();
+
         CancellationTokenSource transition =
             BeginPlaybackTransition();
 
@@ -953,7 +953,6 @@ public sealed partial class MainWindow : Window
         if (_splitDragging)
             return;
 
-        ScheduleSpotifyLocalStatusPoll();
         ScheduleProviderWebPoll();
         UpdatePlayerProgress();
         UpdateReactiveWaveform();
@@ -1012,10 +1011,8 @@ public sealed partial class MainWindow : Window
     {
         bool playing = ProviderWebHasTrack
             ? ProviderWebIsPlaying
-            : SpotifyLocalHasTrack
-                ? SpotifyLocalTrackPlaying
-                : _mediaPlayer.PlaybackSession.PlaybackState
-                    == MediaPlaybackState.Playing;
+            : _mediaPlayer.PlaybackSession.PlaybackState
+                == MediaPlaybackState.Playing;
 
         PlayerPlayPauseIcon.Symbol =
             playing
@@ -1028,7 +1025,7 @@ public sealed partial class MainWindow : Window
                 _playingLibraryItem is not null
                 && _playbackQueue.Length > 1,
                 remoteSource: (_mediaPlayer.Source is not null
-                    || SpotifyLocalHasTrack || ProviderWebHasTrack)
+                    || ProviderWebHasTrack)
                     && _playingLibraryItem is null);
         }
         RefreshKaraokeFrameRendering();
@@ -1048,7 +1045,7 @@ public sealed partial class MainWindow : Window
         // A remote source has no local navigation queue: hide these two
         // transport controls altogether rather than showing disabled icons.
         bool remoteTransport = (_mediaPlayer.Source is not null
-            || SpotifyLocalHasTrack || ProviderWebHasTrack)
+            || ProviderWebHasTrack)
             && _playingLibraryItem is null;
         PlayerPreviousButton.Visibility = remoteTransport
             ? Visibility.Collapsed : Visibility.Visible;
@@ -1228,11 +1225,6 @@ public sealed partial class MainWindow : Window
             _ = ToggleProviderWebAsync();
             return;
         }
-        if (SpotifyLocalHasTrack)
-        {
-            _ = ToggleSpotifyLocalAsync();
-            return;
-        }
         if (_mediaPlayer.Source is null)
         {
             if (_selectedLibraryItem
@@ -1273,8 +1265,6 @@ public sealed partial class MainWindow : Window
     {
         if (_updatingPlayerProgress) return;
         if (SeekProviderWeb(TimeSpan.FromSeconds(
-                Math.Max(0, e.NewValue)))) return;
-        if (SeekSpotifyLocal(TimeSpan.FromSeconds(
                 Math.Max(0, e.NewValue)))) return;
         if (_mediaPlayer.Source is null)
         {
@@ -1320,8 +1310,6 @@ public sealed partial class MainWindow : Window
 
         if (ProviderWebHasTrack)
             _ = SetProviderWebVolumeAsync(volume);
-        if (SpotifyLocalHasTrack)
-            _ = SyncSpotifyLocalVolumeAsync(volume);
 
         if (_playbackTransitionCancellation
             is null)

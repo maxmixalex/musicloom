@@ -49,7 +49,6 @@ public sealed partial class MainWindow
         {
             if (!double.IsFinite(seconds) || seconds < 0) return;
             if (SeekProviderWeb(TimeSpan.FromSeconds(seconds))) return;
-            if (SeekSpotifyLocal(TimeSpan.FromSeconds(seconds))) return;
             if (_mediaPlayer.Source is null) return;
             _mediaPlayer.PlaybackSession.Position =
                 TimeSpan.FromSeconds(seconds);
@@ -61,12 +60,6 @@ public sealed partial class MainWindow
             if (SeekProviderWeb(TimeSpan.FromSeconds(seconds)))
             {
                 if (!ProviderWebIsPlaying) _ = ToggleProviderWebAsync();
-                return;
-            }
-            if (SeekSpotifyLocal(TimeSpan.FromSeconds(seconds)))
-            {
-                if (!SpotifyLocalTrackPlaying)
-                    _ = ToggleSpotifyLocalAsync();
                 return;
             }
             if (_mediaPlayer.Source is null) return;
@@ -121,8 +114,7 @@ public sealed partial class MainWindow
     {
         try
         {
-            if (_mediaPlayer.Source is null && !SpotifyLocalHasTrack
-                && !ProviderWebHasTrack)
+            if (_mediaPlayer.Source is null && !ProviderWebHasTrack)
                 return;
             ConnectedAnimationService service =
                 ConnectedAnimationService.GetForCurrentView();

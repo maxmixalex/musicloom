@@ -24,6 +24,12 @@ public sealed partial class MainWindow
     private bool _providerWebPolling;
     private int _providerWebVersion;
 
+    private TimeSpan CurrentPlayerPosition =>
+        ProviderWebHasTrack ? ProviderWebPosition : _mediaPlayer.PlaybackSession.Position;
+
+    private TimeSpan CurrentPlayerDuration =>
+        ProviderWebHasTrack ? ProviderWebDuration : _mediaPlayer.PlaybackSession.NaturalDuration;
+
     private bool ProviderWebHasTrack => _providerWebTrack is not null;
     private bool ProviderWebIsPlaying => ProviderWebHasTrack && _providerWebPlaying;
     private TimeSpan ProviderWebPosition => _providerWebPosition;
@@ -317,5 +323,29 @@ public sealed partial class MainWindow
             """ + value + "; return true; })()";
         try { await ProviderWebView.CoreWebView2.ExecuteScriptAsync(script); }
         catch (InvalidOperationException) { }
+    }
+
+    private void SetCloudTrackAppearance(CloudLyricsCandidate candidate)
+    {
+        PlayerTitleText.Text = string.IsNullOrWhiteSpace(candidate.Artist)
+            ? candidate.Title : candidate.Artist + " - " + candidate.Title;
+        PlayerMetadataText.Text = candidate.Album;
+        if (candidate.CoverUrl is string artwork
+            && Uri.TryCreate(artwork, UriKind.Absolute, out Uri? artUri)
+            && artUri.Scheme == Uri.UriSchemeHttps)
+        {
+            PlayerArtworkImage.Source = new BitmapImage
+            {
+                DecodePixelWidth = 144,
+                UriSource = artUri,
+            };
+            PlayerArtworkPlaceholder.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            PlayerArtworkImage.Source = null;
+            PlayerArtworkPlaceholder.Visibility = Visibility.Visible;
+        }
+        ConfigureAuxiliaryLongText();
     }
 }
