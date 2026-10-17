@@ -16,6 +16,8 @@ public enum CloudLyricsSource
     QqMusic = 0,
     KugouMusic = 1,
     MiguMusic = 2,
+    // Reserved IDs for short-lived experimental builds. Keep these values
+    // for existing SQLite rows; these are NOT available product providers.
     AppleMusic = 3,
     Spotify = 4,
 }
@@ -66,8 +68,7 @@ public sealed partial class CloudLyricsClient : IDisposable
                 SearchQqAsync(keywords, cancellationToken),
             CloudLyricsSource.KugouMusic =>
                 SearchKugouAsync(keywords, cancellationToken),
-            CloudLyricsSource.MiguMusic or CloudLyricsSource.AppleMusic
-                or CloudLyricsSource.Spotify =>
+            CloudLyricsSource.MiguMusic =>
                 SearchExternalProviderAsync(source, keywords, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(source)),
         };
@@ -81,8 +82,7 @@ public sealed partial class CloudLyricsClient : IDisposable
                 GetQqLyricsAsync(selected, cancellationToken),
             CloudLyricsSource.KugouMusic =>
                 GetKugouLyricsAsync(selected, cancellationToken),
-            CloudLyricsSource.MiguMusic or CloudLyricsSource.AppleMusic
-                or CloudLyricsSource.Spotify =>
+            CloudLyricsSource.MiguMusic =>
                 GetExternalProviderLyricsAsync(selected, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(selected)),
         };

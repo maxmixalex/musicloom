@@ -40,8 +40,7 @@ public sealed partial class CloudLyricsClient
                 GetQqAudioPreviewAsync(candidate, cancellationToken),
             CloudLyricsSource.KugouMusic =>
                 GetKugouAudioPreviewAsync(candidate, cancellationToken),
-            CloudLyricsSource.MiguMusic or CloudLyricsSource.AppleMusic
-                or CloudLyricsSource.Spotify =>
+            CloudLyricsSource.MiguMusic =>
                 GetExternalAudioPreviewAsync(candidate, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(candidate)),
         };
