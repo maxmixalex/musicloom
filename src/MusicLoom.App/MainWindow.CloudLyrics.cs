@@ -247,12 +247,9 @@ public sealed partial class MainWindow
 
             UpdatePlayerVisualState();
             UpdatePlaybackLyrics();
-            originatingPanel.SetPreviewStatus(
-                preview.IsFullLength
-                    ? L("Playing the full Apple Music HLS stream (experimental).",
-                        "正在尝试播放 Apple Music 完整 HLS 音频（实验性）。")
-                    : L("Playing the provider's remote audio stream.",
-                        "正在播放音源提供的远程音频。"));
+            originatingPanel.SetPreviewStatus(L(
+                "Playing the provider's remotely granted audio stream.",
+                "正在播放音源实际授予的远程音频。"));
         }
         catch (OperationCanceledException) when (
             transition.IsCancellationRequested)

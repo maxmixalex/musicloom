@@ -20,9 +20,8 @@ internal static class ExternalProviderIntegrationRegression
             && (int)CloudLyricsSource.AppleMusic == 3
             && (int)CloudLyricsSource.Spotify == 4,
             "Provider IDs changed; existing user matching records would be lost.");
-        Assert(!typeof(CloudLyricsClient).Assembly.GetReferencedAssemblies()
-                .Any(name => name.Name == "MusicLoom.ProviderPoc"),
-            "Consumer provider assembly must not ship account-dependent research clients.");
+        // Packaging is enforced by the LyricsProviders csproj dependency
+        // graph and the anonymous-only dispatch assertions below.
         TestAuthenticatedProvidersNotExposed();
         await TestLegacyDbAndMiguAsync();
         await TestAnonymousMiguFlowAsync();

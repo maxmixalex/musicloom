@@ -19,8 +19,7 @@ public enum CloudAudioPreviewStatus
 }
 
 public sealed record CloudAudioPreviewResult(
-    Uri? StreamUrl, CloudAudioPreviewStatus Status,
-    bool IsFullLength = false)
+    Uri? StreamUrl, CloudAudioPreviewStatus Status)
 {
     public bool CanPlay => StreamUrl is not null
         && Status == CloudAudioPreviewStatus.Playable;
@@ -329,10 +328,7 @@ public sealed partial class CloudLyricsClient
                 || Domain(host, "kgimg.com"),
             CloudLyricsSource.MiguMusic => uri.Scheme == Uri.UriSchemeHttps
                 && Domain(host, "migu.cn"),
-            CloudLyricsSource.AppleMusic => uri.Scheme == Uri.UriSchemeHttps
-                && (Domain(host, "itunes.apple.com")
-                    || Domain(host, "mzstatic.com")),
-            _ => false, // Spotify Connect grants no direct audio stream.
+            _ => false, // Account-dependent experimental providers are disabled.
         };
     }
 }
