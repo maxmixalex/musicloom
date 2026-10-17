@@ -173,6 +173,7 @@ internal static class ExternalProviderIntegrationRegression
             "MUSICLOOM_APPLE_DEVELOPER_TOKEN",
             "MUSICLOOM_APPLE_WEB_BEARER",
             "MUSICLOOM_APPLE_MEDIA_USER_TOKEN",
+            "MUSICLOOM_APPLE_PREFER_FULL_HLS",
             "MUSICLOOM_SPOTIFY_OAUTH_TOKEN",
             "MUSICLOOM_SPOTIFY_LYRICS_BEARER",
         }) old[key] = Environment.GetEnvironmentVariable(key);
@@ -181,6 +182,7 @@ internal static class ExternalProviderIntegrationRegression
             Environment.SetEnvironmentVariable("MUSICLOOM_APPLE_DEVELOPER_TOKEN", "dev");
             Environment.SetEnvironmentVariable("MUSICLOOM_APPLE_WEB_BEARER", "web");
             Environment.SetEnvironmentVariable("MUSICLOOM_APPLE_MEDIA_USER_TOKEN", "user");
+            Environment.SetEnvironmentVariable("MUSICLOOM_APPLE_PREFER_FULL_HLS", null);
             Environment.SetEnvironmentVariable("MUSICLOOM_SPOTIFY_OAUTH_TOKEN", "oauth");
             Environment.SetEnvironmentVariable("MUSICLOOM_SPOTIFY_LYRICS_BEARER", "lyrics");
             using HttpClient http = new(new FakeHandler(req =>
@@ -195,6 +197,18 @@ internal static class ExternalProviderIntegrationRegression
                           "previews":[{"url":"https://audio-ssl.itunes.apple.com/preview.m4a"}]}}
                         ]}}}
                         """);
+                if (req.RequestUri.Host == "amp-api.music.apple.com"
+                    && req.RequestUri.Query.Contains(
+                        "extend=extendedAssetUrls", StringComparison.Ordinal))
+                {
+                    Assert(req.Headers.Authorization?.Parameter == "web",
+                        "Experimental full Apple HLS requires account Bearer.");
+                    return Json("""
+                        {"data":[{"attributes":{"extendedAssetUrls":{
+                          "enhancedHls":"https://aod.itunes.apple.com/itunes-assets/HLS/song.m3u8?grant=temporary"
+                        }}}]}
+                        """);
+                }
                 if (req.RequestUri.Host == "amp-api.music.apple.com")
                     return Json("""
                         {"data":[{"attributes":{"ttml":
@@ -227,9 +241,27 @@ internal static class ExternalProviderIntegrationRegression
                 "Apple TTML header-like lyric was deleted or corrupted.");
             CloudAudioPreviewResult applePreview =
                 await client.GetAudioPreviewAsync(apple);
-            Assert(applePreview.CanPlay
+            Assert(applePreview.CanPlay && !applePreview.IsFullLength
                 && applePreview.StreamUrl!.Host == "audio-ssl.itunes.apple.com",
-                "Apple full DRM playback must not be substituted for a preview.");
+                "Without explicit HLS opt-in, Apple must keep the original preview.");
+            Environment.SetEnvironmentVariable("MUSICLOOM_APPLE_PREFER_FULL_HLS", "1");
+            CloudAudioPreviewResult fullHls =
+                await client.GetAudioPreviewAsync(apple);
+            Assert(fullHls.CanPlay && fullHls.IsFullLength
+                && fullHls.StreamUrl?.Host == "aod.itunes.apple.com"
+                && fullHls.StreamUrl.AbsolutePath.EndsWith(".m3u8"),
+                "Explicit Apple full-song option must select its provider HLS URI.");
+            // A private account may have no usable HLS token. Confirm the
+            // exact same button degrades to the ordinary preview without
+            // pretending that encrypted segments have been decoded.
+            Environment.SetEnvironmentVariable("MUSICLOOM_APPLE_WEB_BEARER", null);
+            CloudAudioPreviewResult fallback =
+                await client.GetAudioPreviewAsync(apple);
+            Assert(fallback.CanPlay && !fallback.IsFullLength
+                && fallback.StreamUrl?.Host == "audio-ssl.itunes.apple.com",
+                "Missing Apple session must fall back to regular catalog preview.");
+            Environment.SetEnvironmentVariable("MUSICLOOM_APPLE_WEB_BEARER", "web");
+            Environment.SetEnvironmentVariable("MUSICLOOM_APPLE_PREFER_FULL_HLS", null);
             CloudLyricsCandidate spotify = (await client.SearchAsync(
                 CloudLyricsSource.Spotify, "Spotify track")).Single();
             Assert(spotify.Id == "4iV5W9uYEdYUVa79Axb7Rh"
