@@ -11,8 +11,6 @@ internal enum MatchProviderKind
     QqMusic,
     KugouMusic,
     MiguMusic,
-    AppleMusic,
-    Spotify,
 }
 
 
@@ -99,8 +97,6 @@ public sealed partial class ProviderMatchTabView : UserControl
             MatchProviderKind.QqMusic => ("QQ Music", "QQ音乐"),
             MatchProviderKind.KugouMusic => ("KuGou Music", "酷狗音乐"),
             MatchProviderKind.MiguMusic => ("Migu Music", "咪咕音乐"),
-            MatchProviderKind.AppleMusic => ("Apple Music", "Apple Music"),
-            MatchProviderKind.Spotify => ("Spotify", "Spotify"),
             _ => ("NetEase", "网易云"),
         };
         _providerName = translate(en, zh);

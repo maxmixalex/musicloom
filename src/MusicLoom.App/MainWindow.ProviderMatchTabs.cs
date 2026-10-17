@@ -65,8 +65,6 @@ public sealed partial class MainWindow
             await RefreshCloudMatchLyricsAsync(CloudLyricsSource.KugouMusic);
 
         WireExternalMatchTab(MiguMatchPanel, CloudLyricsSource.MiguMusic);
-        WireExternalMatchTab(AppleMatchPanel, CloudLyricsSource.AppleMusic);
-        WireExternalMatchTab(SpotifyMatchPanel, CloudLyricsSource.Spotify);
     }
 
     private void WireExternalMatchTab(
