@@ -225,7 +225,7 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         }
     }
 
-
+    public async Task<ProviderLyricBundle?> GetLyricsAsync(
         ProviderTrack track, CancellationToken ct = default)
     {
         ProviderProtocol.RequireSameProvider(track, Provider);
