@@ -10,6 +10,12 @@ static void Help()
           lyrics   migu|apple|spotify <id> [--copyright-id=<id>]
           playback migu|apple|spotify <id> [--copyright-id=<id>]
           play     spotify <track-id> --execute --device-id=<user-owned-device>
+          stream-info apple <song-id>       Inspect full-song enhancedHls
+          listen-local spotify <track-id> --execute (local go-librespot audio)
+          status-local spotify <track-id>  Inspect actual decoded stream
+          pause-local spotify <track-id>
+          resume-local spotify <track-id>
+          seek-local spotify <track-id> --position-ms=<milliseconds>
 
         Credentials (environment only, never saved):
           MUSICLOOM_APPLE_DEVELOPER_TOKEN
@@ -17,10 +23,13 @@ static void Help()
           MUSICLOOM_APPLE_MEDIA_USER_TOKEN
           MUSICLOOM_SPOTIFY_OAUTH_TOKEN
           MUSICLOOM_SPOTIFY_LYRICS_BEARER
+          MUSICLOOM_GO_LIBRESPOT_URL (loopback HTTP only; default localhost:3678)
 
         No anonymous or borrowed session is substituted for missing tokens.
-        Spotify full playback uses Premium Spotify Connect, not MediaPlayer.
-        Apple full subscriber playback needs MusicKit, not a raw media URL.
+        Spotify can stream decoded audio locally through an independent
+        go-librespot service and Windows WASAPI.
+        Apple enhancedAssetUrls.enhancedHls provides full-song HLS manifests.
+        The HLS probe reads media formats, not protected audio keys.
         Missing Migu stream URLs are reported unavailable, not guessed.
         Provider lyric rows including titles/performers/credits stay unchanged.
         """);
@@ -62,7 +71,9 @@ try
         foreach (ProviderTrack track in results) Print(track);
         Console.WriteLine(results.Count + " song(s) returned by provider.");
     }
-    else if (command is "detail" or "lyrics" or "playback" or "play")
+    else if (command is "detail" or "lyrics" or "playback" or "play"
+        or "stream-info" or "listen-local" or "status-local"
+        or "pause-local" or "resume-local" or "seek-local")
     {
         ExternalProvider kind = client.Provider;
         string? copyright = Option("copyright-id");
@@ -103,6 +114,66 @@ try
             if (status.AuthorizedUri is Uri granted)
                 Console.WriteLine("Provider-granted URI host/path: "
                     + granted.Host + granted.AbsolutePath);
+        }
+        else if (command == "stream-info"
+            && client is AppleMusicProviderPoc apple)
+        {
+            AppleHlsManifest? manifest = await apple.InspectEnhancedHlsAsync(lookup);
+            if (manifest is null)
+                Console.WriteLine("No provider-issued full-song enhancedHls manifest.");
+            else
+            {
+                Console.WriteLine("FULL-SONG HLS PLAYLIST FOUND (not a preview)");
+                Console.WriteLine("Host/path: "
+                    + manifest.PlaylistUrl.Host + manifest.PlaylistUrl.AbsolutePath);
+                Console.WriteLine("Variants: " + manifest.VariantCount);
+                Console.WriteLine("Codecs: " + string.Join(", ", manifest.Codecs));
+                Console.WriteLine("Protected: "
+                    + (manifest.MediaPlaylistEncrypted is null
+                        ? "Unknown on master playlist"
+                        : manifest.MediaPlaylistEncrypted.Value ? "Declared" : "No HLS key declared"));
+                Console.WriteLine("Stream identification does not prove audible playback.");
+            }
+        }
+        else if (providerName == "spotify"
+            && command is "listen-local" or "status-local"
+                or "pause-local" or "resume-local" or "seek-local")
+        {
+            string endpoint = Environment.GetEnvironmentVariable(
+                "MUSICLOOM_GO_LIBRESPOT_URL")
+                ?? "http://127.0.0.1:3678";
+            using SpotifyLocalStreamBridge local = new(endpoint);
+            if (command == "listen-local")
+            {
+                if (!args.Contains("--execute", StringComparer.Ordinal))
+                {
+                    Console.Error.WriteLine(
+                        "Explicit --execute is required to start real local audio.");
+                    return 2;
+                }
+                bool accepted = await local.PlayTrackAsync(value);
+                Console.WriteLine(accepted
+                    ? "Local go-librespot accepted play; use status-local to inspect its stream."
+                    : "Local go-librespot has no ready authorized session.");
+            }
+            else if (command == "status-local")
+            {
+                SpotifyLocalPlayerStatus? status = await local.GetStatusAsync();
+                Console.WriteLine(status is null ? "No active session."
+                    : $"Track: {status.TrackUri}; position={status.PositionMilliseconds}ms;"
+                    + $" stopped={status.Stopped}, paused={status.Paused}, buffering={status.Buffering}");
+            }
+            else if (command == "pause-local")
+                await local.PauseAsync();
+            else if (command == "resume-local")
+                await local.ResumeAsync();
+            else if (command == "seek-local")
+            {
+                if (!int.TryParse(Option("position-ms"), out int position)
+                    || position < 0)
+                    throw new ArgumentException("Provide --position-ms=<non-negative int>.");
+                await local.SeekAsync(position);
+            }
         }
         else if (command == "play"
             && client is SpotifyProviderPoc spotify
