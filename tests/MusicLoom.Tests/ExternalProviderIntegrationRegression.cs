@@ -30,6 +30,7 @@ internal static class ExternalProviderIntegrationRegression
         await TestMiguDirectGrantAsync();
         await TestSearchResultAudioGrantAsync();
         await TestMiguTimeoutFallbackAsync();
+        await TestMiguOptionalLyricTimeoutAsync();
         TestLyricsIntegrity();
     }
 
@@ -386,6 +387,34 @@ internal static class ExternalProviderIntegrationRegression
         catch (OperationCanceledException) { didCancel = true; }
         Assert(didCancel && modern == 1 && legacy == 1,
             "Caller cancellation must not cause another provider request.");
+    }
+
+    private static async Task TestMiguOptionalLyricTimeoutAsync()
+    {
+        int requests = 0;
+        using HttpClient http = new(new GuardHandler(request =>
+        {
+            requests++;
+            string? path = request.RequestUri?.AbsolutePath;
+            if (path == "/lyrics.lrc")
+                return Json("[00:00.000]重要原文\n[00:01.000]乐队成员");
+            if (path is "/lyrics.trc" or "/lyrics.mrc")
+                throw new TaskCanceledException("Simulated optional lyric timeout");
+            throw new InvalidOperationException("Unexpected lyric URL: " + path);
+        }));
+        using MiguProviderClient provider = new(http);
+        ProviderTrack song = new(ExternalProvider.Migu, "id",
+            "Song", "Artist", "Album",
+            LrcUrl: "https://d.musicapp.migu.cn/lyrics.lrc",
+            TrcUrl: "https://d.musicapp.migu.cn/lyrics.trc",
+            MrcUrl: "https://d.musicapp.migu.cn/lyrics.mrc");
+        ProviderLyricBundle? lyric = await provider.GetLyricsAsync(song);
+        Assert(lyric is not null
+            && lyric.Original.Lines.Any(x => x.Text == "重要原文")
+            && lyric.Original.Lines.Any(x => x.Text == "乐队成员")
+            && lyric.Translation is null && lyric.WordTimed is null
+            && requests == 3,
+            "Optional subtitle timeouts must not erase original timed lyrics.");
     }
 
     private static void TestLyricsIntegrity()

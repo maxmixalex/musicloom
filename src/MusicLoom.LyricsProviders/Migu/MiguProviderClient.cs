@@ -163,8 +163,7 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         if (string.IsNullOrWhiteSpace(track.LrcUrl))
         {
             try { track = await GetDetailsAsync(track, ct) ?? track; }
-            catch (Exception ex) when (ex is HttpRequestException
-                or InvalidDataException or JsonException)
+            catch (Exception ex) when (TransientProviderFailure(ex, ct))
             {
                 // Metadata is optional; a separate listen response may still
                 // supply a genuine anonymous lyric URL.
@@ -197,8 +196,7 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
                     512 * 1024, ct);
                 translated = LrcDocument.Parse(rawTranslation);
             }
-            catch (Exception ex) when (ex is HttpRequestException
-                or InvalidDataException)
+            catch (Exception ex) when (TransientProviderFailure(ex, ct))
             {
                 // Optional translation failure cannot erase good source lyrics.
             }
@@ -214,9 +212,8 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
                     1024 * 1024, ct);
                 wordTimed = MiguMrcCodec.Parse(MiguMrcCodec.Decrypt(rawMrc));
             }
-            catch (Exception ex) when (ex is HttpRequestException
-                or InvalidDataException or FormatException
-                or DecoderFallbackException)
+            catch (Exception ex) when (TransientProviderFailure(ex, ct)
+                || ex is FormatException or DecoderFallbackException)
             {
                 // Keep the original/translation and report no word-timing.
                 rawMrc = null;
