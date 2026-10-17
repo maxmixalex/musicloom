@@ -71,6 +71,11 @@ public sealed partial class MainWindow : Window
     private readonly MediaPlayer
         _mediaPlayer = new();
 
+    private TimeSpan CurrentPlayerPosition =>
+        _mediaPlayer.PlaybackSession.Position;
+    private TimeSpan CurrentPlayerDuration =>
+        _mediaPlayer.PlaybackSession.NaturalDuration;
+
     private MusicLoomSettings? _settings;
     private StateDocument? _state;
     private StateStore? _stateStore;
@@ -164,7 +169,6 @@ public sealed partial class MainWindow : Window
         AppRoot.ActualThemeChanged += (_, _) =>
             RefreshLibraryStatusColors();
         InitializePlayer();
-        InitializeProviderWebPlayback();
         InitializeProviderMatchTabs();
         InstallLyricScrollSuppression(LyricsList);
         InstallLyricScrollSuppression(ImmersiveView.LyricsList);
@@ -178,8 +182,6 @@ public sealed partial class MainWindow : Window
         LibraryQqFacetBox.SelectedIndex = 0;
         LibraryKugouFacetBox.SelectedIndex = 0;
         LibraryMiguFacetBox.SelectedIndex = 0;
-        LibraryAppleFacetBox.SelectedIndex = 0;
-        LibrarySpotifyFacetBox.SelectedIndex = 0;
         LibrarySortBox.SelectedIndex = 2;
         LibrarySortDirectionBox.SelectedIndex = 0;
         PlaylistSortBox.SelectedIndex = 2;
@@ -371,7 +373,6 @@ public sealed partial class MainWindow : Window
         _waveformCancellation?.Cancel();
         _waveformCancellation?.Dispose();
         CloseMatchOverlay();
-        StopProviderWebPlayback();
 
         StopKaraokeFrameRendering();
         _mediaPlayer.Dispose();
@@ -382,7 +383,6 @@ public sealed partial class MainWindow : Window
         bool rebuildQueue = true,
         TimeSpan? startPosition = null)
     {
-        StopProviderWebPlayback();
 
         CancellationTokenSource transition =
             BeginPlaybackTransition();
@@ -640,7 +640,6 @@ public sealed partial class MainWindow : Window
         NeteaseMatchCandidate candidate,
         TimeSpan? startPosition = null)
     {
-        StopProviderWebPlayback();
 
         CancellationTokenSource transition =
             BeginPlaybackTransition();
@@ -953,7 +952,6 @@ public sealed partial class MainWindow : Window
         if (_splitDragging)
             return;
 
-        ScheduleProviderWebPoll();
         UpdatePlayerProgress();
         UpdateReactiveWaveform();
         UpdatePlaybackLyrics();
@@ -1009,10 +1007,8 @@ public sealed partial class MainWindow : Window
 
     private void UpdatePlayerVisualState()
     {
-        bool playing = ProviderWebHasTrack
-            ? ProviderWebIsPlaying
-            : _mediaPlayer.PlaybackSession.PlaybackState
-                == MediaPlaybackState.Playing;
+        bool playing = _mediaPlayer.PlaybackSession.PlaybackState
+            == MediaPlaybackState.Playing;
 
         PlayerPlayPauseIcon.Symbol =
             playing
@@ -1024,8 +1020,7 @@ public sealed partial class MainWindow : Window
             ImmersiveView.SetNavigationAvailable(
                 _playingLibraryItem is not null
                 && _playbackQueue.Length > 1,
-                remoteSource: (_mediaPlayer.Source is not null
-                    || ProviderWebHasTrack)
+                remoteSource: _mediaPlayer.Source is not null
                     && _playingLibraryItem is null);
         }
         RefreshKaraokeFrameRendering();
@@ -1044,8 +1039,7 @@ public sealed partial class MainWindow : Window
             && _playbackQueue.Length > 1;
         // A remote source has no local navigation queue: hide these two
         // transport controls altogether rather than showing disabled icons.
-        bool remoteTransport = (_mediaPlayer.Source is not null
-            || ProviderWebHasTrack)
+        bool remoteTransport = _mediaPlayer.Source is not null
             && _playingLibraryItem is null;
         PlayerPreviousButton.Visibility = remoteTransport
             ? Visibility.Collapsed : Visibility.Visible;
@@ -1220,11 +1214,6 @@ public sealed partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        if (ProviderWebHasTrack)
-        {
-            _ = ToggleProviderWebAsync();
-            return;
-        }
         if (_mediaPlayer.Source is null)
         {
             if (_selectedLibraryItem
@@ -1264,8 +1253,6 @@ public sealed partial class MainWindow : Window
         RangeBaseValueChangedEventArgs e)
     {
         if (_updatingPlayerProgress) return;
-        if (SeekProviderWeb(TimeSpan.FromSeconds(
-                Math.Max(0, e.NewValue)))) return;
         if (_mediaPlayer.Source is null)
         {
             return;
@@ -1308,8 +1295,6 @@ public sealed partial class MainWindow : Window
         _playerTargetVolume =
             volume;
 
-        if (ProviderWebHasTrack)
-            _ = SetProviderWebVolumeAsync(volume);
 
         if (_playbackTransitionCancellation
             is null)
@@ -1351,8 +1336,6 @@ public sealed partial class MainWindow : Window
         LibraryQqFacetBox.SelectedIndex = 0;
         LibraryKugouFacetBox.SelectedIndex = 0;
         LibraryMiguFacetBox.SelectedIndex = 0;
-        LibraryAppleFacetBox.SelectedIndex = 0;
-        LibrarySpotifyFacetBox.SelectedIndex = 0;
         ApplyLibraryFilter();
 
         NavigateTo("library");
@@ -4047,8 +4030,7 @@ public sealed partial class MainWindow : Window
             || LibraryQqFacetBox is null
             || LibraryKugouFacetBox is null
             || LibraryMiguFacetBox is null
-            || LibraryAppleFacetBox is null
-            || LibrarySpotifyFacetBox is null)
+)
         {
             return;
         }
@@ -8558,8 +8540,6 @@ public sealed partial class MainWindow : Window
         LibraryQqFacetBox.SelectedIndex = 0;
         LibraryKugouFacetBox.SelectedIndex = 0;
         LibraryMiguFacetBox.SelectedIndex = 0;
-        LibraryAppleFacetBox.SelectedIndex = 0;
-        LibrarySpotifyFacetBox.SelectedIndex = 0;
         ApplyLibraryFilter();
 
         NavigateTo("library");
@@ -10023,14 +10003,10 @@ public sealed partial class MainWindow : Window
         QqMatchTab.Header = L("QQ Music match", "QQ音乐匹配");
         KugouMatchTab.Header = L("KuGou Music match", "酷狗音乐匹配");
         MiguMatchTab.Header = L("Migu Music match", "咪咕音乐匹配");
-        AppleMatchTab.Header = L("Apple Music match", "Apple Music 匹配");
-        SpotifyMatchTab.Header = L("Spotify match", "Spotify 匹配");
         NeteaseMatchPanel.Localize(L, MatchProviderKind.Netease);
         QqMatchPanel.Localize(L, MatchProviderKind.QqMusic);
         KugouMatchPanel.Localize(L, MatchProviderKind.KugouMusic);
         MiguMatchPanel.Localize(L, MatchProviderKind.MiguMusic);
-        AppleMatchPanel.Localize(L, MatchProviderKind.AppleMusic);
-        SpotifyMatchPanel.Localize(L, MatchProviderKind.Spotify);
         MatchDialogTitleText.Text =
             L(
                 "Find NetEase match",
@@ -10477,8 +10453,6 @@ public sealed partial class MainWindow : Window
             LibraryQqFacetBox,
             LibraryKugouFacetBox,
             LibraryMiguFacetBox,
-            LibraryAppleFacetBox,
-            LibrarySpotifyFacetBox,
             LibrarySortBox,
             LibrarySortDirectionBox,
             LyricsModeBox,

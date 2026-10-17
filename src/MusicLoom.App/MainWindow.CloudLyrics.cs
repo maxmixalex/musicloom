@@ -36,10 +36,8 @@ public sealed partial class MainWindow
     {
         _activeCloudLyricsPanel?.UpdatePreviewPlaying(
             _playingCloudPreviewCandidate,
-            ProviderWebHasTrack
-                ? ProviderWebIsPlaying
-                : _mediaPlayer.PlaybackSession.PlaybackState
-                    == MediaPlaybackState.Playing);
+            _mediaPlayer.PlaybackSession.PlaybackState
+                == MediaPlaybackState.Playing);
     }
 
     private async Task ShowCloudMatchDialogAsync(
@@ -115,11 +113,11 @@ public sealed partial class MainWindow
         if (candidate.Source is CloudLyricsSource.Spotify
             or CloudLyricsSource.AppleMusic)
         {
-            await PlayProviderWebAsync(candidate, originatingPanel,
-                startPosition);
+            originatingPanel.SetPreviewStatus(L(
+                "This account-dependent provider is not supported: only anonymous sources are accepted.",
+                "当前音源依赖账户，Musicloom 仅接受完全匿名的 Provider。"));
             return;
         }
-        StopProviderWebPlayback();
         // Local audio and provider-granted media URLs share this MediaPlayer.
         // Pause/resume and lyric seeking must not trigger a second network
         // request for the same already-authorized stream.
@@ -177,12 +175,6 @@ public sealed partial class MainWindow
             {
                 string why = candidate.Source switch
                 {
-                    CloudLyricsSource.Spotify => L(
-                        "Spotify has no direct full-song stream. Use an authorized Premium Spotify Connect device or the Web Playback SDK.",
-                        "Spotify 不提供完整音频直链；请使用经授权的 Premium Spotify Connect 设备或 Web Playback SDK。"),
-                    CloudLyricsSource.AppleMusic => L(
-                        "Apple Music needs MusicKit authorization for full songs; no catalog preview is available for this result.",
-                        "Apple Music 完整曲目需要 MusicKit 授权；当前结果没有可用的目录试听片段。"),
                     CloudLyricsSource.MiguMusic => L(
                         "Migu did not grant an HTTPS audio stream for this track. Subscription, copyright or location restrictions may apply.",
                         "咪咕未向当前歌曲授予 HTTPS 音频地址，可能受到会员、版权或地区限制。"),
@@ -272,12 +264,9 @@ public sealed partial class MainWindow
             _suppressPlaybackLyricFollow = false;
             AppDiagnostics.LogException(
                 "Remote music provider audio preview failed.", error);
-            string message = candidate.Source == CloudLyricsSource.AppleMusic
-                && CloudLyricsClient.PreferFullAppleHls
-                ? L("Apple Music full HLS could not be decoded by the native player. The playlist may require an authorized protected-media session; disable experimental HLS to use the catalog preview.",
-                    "Apple Music 完整 HLS 无法由当前原生播放器解码，可能需要受保护媒体会话。可关闭实验性 HLS 改用目录试听。")
-                : L("Remote preview failed. The stream may be expired or blocked by the provider.",
-                    "远程试听失败：音频地址可能已过期，或被音源限制访问。");
+            string message = L(
+                "Remote preview failed. The stream may be expired or blocked by the provider.",
+                "远程试听失败：音频地址可能已过期，或被音源限制访问。");
             originatingPanel.SetPreviewStatus(message);
             ShowInfo(InfoBarSeverity.Warning,
                 L("Remote preview failed", "远程试听失败"), message);

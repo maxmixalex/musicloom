@@ -48,7 +48,6 @@ public sealed partial class MainWindow
         ImmersiveView.SeekRequested += seconds =>
         {
             if (!double.IsFinite(seconds) || seconds < 0) return;
-            if (SeekProviderWeb(TimeSpan.FromSeconds(seconds))) return;
             if (_mediaPlayer.Source is null) return;
             _mediaPlayer.PlaybackSession.Position =
                 TimeSpan.FromSeconds(seconds);
@@ -57,11 +56,6 @@ public sealed partial class MainWindow
         ImmersiveView.LyricSeekRequested += seconds =>
         {
             if (!double.IsFinite(seconds) || seconds < 0) return;
-            if (SeekProviderWeb(TimeSpan.FromSeconds(seconds)))
-            {
-                if (!ProviderWebIsPlaying) _ = ToggleProviderWebAsync();
-                return;
-            }
             if (_mediaPlayer.Source is null) return;
             _mediaPlayer.PlaybackSession.Position =
                 TimeSpan.FromSeconds(seconds);
@@ -114,8 +108,7 @@ public sealed partial class MainWindow
     {
         try
         {
-            if (_mediaPlayer.Source is null && !ProviderWebHasTrack)
-                return;
+            if (_mediaPlayer.Source is null) return;
             ConnectedAnimationService service =
                 ConnectedAnimationService.GetForCurrentView();
             // DirectConnectedAnimationConfiguration always lasts ~150 ms
@@ -289,8 +282,6 @@ public sealed partial class MainWindow
                 CloudLyricsSource.QqMusic => L("QQ Music", "QQ音乐"),
                 CloudLyricsSource.KugouMusic => L("KuGou Music", "酷狗音乐"),
                 CloudLyricsSource.MiguMusic => L("Migu Music", "咪咕音乐"),
-                CloudLyricsSource.AppleMusic => "Apple Music",
-                CloudLyricsSource.Spotify => "Spotify",
                 _ => "",
             };
         if (PlayerSourceText.Text != next)

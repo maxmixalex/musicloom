@@ -55,10 +55,8 @@ public sealed partial class MainWindow
                 && LibraryQqFacetBox is not null
                 && LibraryKugouFacetBox is not null
                 && LibraryMiguFacetBox is not null
-                && LibraryAppleFacetBox is not null
-                && LibrarySpotifyFacetBox is not null
                 && LibraryFilterSyncingItem.Tag?.ToString() == "syncing",
-                "Library: all statuses and six independent provider facets live under the same filter flyout");
+                "Library: all statuses and four anonymous-capable provider facets live under the same filter flyout");
             // Verify the actual THREE direct content regions of the
             // named toolbar Grid, not framework Parent/visual relationships
             // (which are not stable for unloaded WinUI navigation content).
@@ -116,59 +114,14 @@ public sealed partial class MainWindow
                 && !new MusicLoom.Core.Configuration.LyricsSettings()
                     .IncludeRomanization,
                 "Settings: sync romanization is explicitly opt-in and defaults off");
-            // Browser-hosted web media is owned by MusicLoom.exe:
-            // no local Go daemon, manual PS1 or external Spotify Desktop
-            // process. UI playback state must not require MediaPlayer.Source.
-            Assert(ProviderWebView is not null
-                && ProviderWebOverlay.Visibility == Visibility.Collapsed
-                && ProviderWebShowButton.Visibility == Visibility.Collapsed,
-                "Player: the first-party in-app provider host starts hidden");
-            var spotify = new CloudLyricsCandidate(
-                CloudLyricsSource.Spotify,
-                "4iV5W9uYEdYUVa79Axb7Rh",
-                "SAT remote song", "Artist", "Album", 200000);
-            Assert(ProviderWebSongUrl(spotify)?.Host == "open.spotify.com"
-                && ProviderWebSongUrl(spotify)!.AbsolutePath
-                    == "/track/4iV5W9uYEdYUVa79Axb7Rh",
-                "Player: Spotify candidate resolves to its own trusted in-app track page");
-            Assert(ProviderWebSongUrl(spotify with
-                { ExternalUrl = "https://open.spotify.com.attacker.invalid/track/123" })
-                ?.Host == "open.spotify.com",
-                "Player: a hostile Spotify URL is never accepted as a media page");
-            var apple = new CloudLyricsCandidate(
-                CloudLyricsSource.AppleMusic, "12345",
-                "Apple track", "Artist", "Album", 200000,
-                ExternalUrl: "https://music.apple.com/us/song/12345");
-            Assert(ProviderWebSongUrl(apple)?.Host == "music.apple.com",
-                "Player: Apple music uses a service-owned playback page");
-            CloudLyricsCandidate? previousCloud = _playingCloudPreviewCandidate;
-            try
-            {
-                _providerWebTrack = spotify;
-                _providerWebPlaying = true;
-                _providerWebPosition = TimeSpan.FromSeconds(42);
-                _providerWebDuration = TimeSpan.FromSeconds(200);
-                _playingCloudPreviewCandidate = spotify;
-                UpdatePlayerProgress();
-                UpdatePlayerVisualState();
-                Assert(PlayerSourceText.Text == "Spotify"
-                    && PlayerPlayPauseIcon.Symbol == Symbol.Pause
-                    && PlayerPreviousButton.Visibility == Visibility.Collapsed
-                    && PlayerNextButton.Visibility == Visibility.Collapsed
-                    && Math.Abs(PlayerProgressSlider.Value - 42) < 1.1
-                    && Math.Abs(PlayerProgressSlider.Maximum - 200) < 1,
-                    "Player: first-party WebView playback state drives Spotify label, timeline and native transport without external daemon");
-            }
-            finally
-            {
-                _providerWebTrack = null;
-                _providerWebPlaying = false;
-                _providerWebPosition = TimeSpan.Zero;
-                _providerWebDuration = TimeSpan.Zero;
-                _playingCloudPreviewCandidate = previousCloud;
-                UpdatePlayerProgress();
-                UpdatePlayerVisualState();
-            }
+            // Account-dependent providers cannot enter the consumer UI.
+            // This is a structural assertion, not a simulated Spotify
+            // playback success claim.
+            Assert(DetailTabs.TabItems.OfType<TabViewItem>()
+                .All(static item => item.Header?.ToString() is not
+                    ("Spotify match" or "Apple Music match"
+                     or "Spotify 匹配" or "Apple Music 匹配")),
+                "Anonymous-only release excludes Spotify and Apple login-dependent tabs");
 
             string? directory = Path.GetDirectoryName(marker);
             if (!string.IsNullOrWhiteSpace(directory))
@@ -206,12 +159,6 @@ public sealed partial class MainWindow
                 (MatchProviderKind.MiguMusic, "600929000001520013",
                     new Uri("https://d.musicapp.migu.cn/cover.jpg"),
                     Color.FromArgb(255, 84, 161, 189)),
-                (MatchProviderKind.AppleMusic, "123456",
-                    new Uri("https://is1-ssl.mzstatic.com/cover.jpg"),
-                    Color.FromArgb(255, 178, 111, 120)),
-                (MatchProviderKind.Spotify, "4iV5W9uYEdYUVa79Axb7Rh",
-                    new Uri("https://i.scdn.co/image/cover"),
-                    Color.FromArgb(255, 92, 170, 102)),
             ];
 
             foreach (var fixture in fixtures)
