@@ -116,25 +116,39 @@ public sealed partial class MainWindow
                 && !new MusicLoom.Core.Configuration.LyricsSettings()
                     .IncludeRomanization,
                 "Settings: sync romanization is explicitly opt-in and defaults off");
-            // Real go-librespot audio is decoded out of process. The WinUI
-            // MediaPlayer has no Source, but transport, timeline, source
-            // label and hidden previous/next must still reflect playback.
-            MusicLoom.ProviderPoc.SpotifyLocalStreamBridge fakeSpotify = new();
+            // Browser-hosted web media is owned by MusicLoom.exe:
+            // no local Go daemon, manual PS1 or external Spotify Desktop
+            // process. UI playback state must not require MediaPlayer.Source.
+            Assert(ProviderWebView is not null
+                && ProviderWebOverlay.Visibility == Visibility.Collapsed
+                && ProviderWebShowButton.Visibility == Visibility.Collapsed,
+                "Player: the first-party in-app provider host starts hidden");
+            var spotify = new CloudLyricsCandidate(
+                CloudLyricsSource.Spotify,
+                "4iV5W9uYEdYUVa79Axb7Rh",
+                "SAT remote song", "Artist", "Album", 200000);
+            Assert(ProviderWebSongUrl(spotify)?.Host == "open.spotify.com"
+                && ProviderWebSongUrl(spotify)!.AbsolutePath
+                    == "/track/4iV5W9uYEdYUVa79Axb7Rh",
+                "Player: Spotify candidate resolves to its own trusted in-app track page");
+            Assert(ProviderWebSongUrl(spotify with
+                { ExternalUrl = "https://open.spotify.com.attacker.invalid/track/123" })
+                ?.Host == "open.spotify.com",
+                "Player: a hostile Spotify URL is never accepted as a media page");
+            var apple = new CloudLyricsCandidate(
+                CloudLyricsSource.AppleMusic, "12345",
+                "Apple track", "Artist", "Album", 200000,
+                ExternalUrl: "https://music.apple.com/us/song/12345");
+            Assert(ProviderWebSongUrl(apple)?.Host == "music.apple.com",
+                "Player: Apple music uses a service-owned playback page");
             CloudLyricsCandidate? previousCloud = _playingCloudPreviewCandidate;
             try
             {
-                _spotifyLocalPolling = true; // prevent background HTTP
-                _spotifyLocalBackend = fakeSpotify;
-                _spotifyLocalTrack = new CloudLyricsCandidate(
-                    CloudLyricsSource.Spotify,
-                    "4iV5W9uYEdYUVa79Axb7Rh",
-                    "SAT remote song", "Artist", "Album", 200000);
-                _playingCloudPreviewCandidate = _spotifyLocalTrack;
-                _spotifyLocalStatus =
-                    new MusicLoom.ProviderPoc.SpotifyLocalPlayerStatus(
-                        "spotify:track:4iV5W9uYEdYUVa79Axb7Rh",
-                        false, false, false, 42000, 200000);
-                _spotifyLocalStatusObservedAt = DateTimeOffset.UtcNow;
+                _providerWebTrack = spotify;
+                _providerWebPlaying = true;
+                _providerWebPosition = TimeSpan.FromSeconds(42);
+                _providerWebDuration = TimeSpan.FromSeconds(200);
+                _playingCloudPreviewCandidate = spotify;
                 UpdatePlayerProgress();
                 UpdatePlayerVisualState();
                 Assert(PlayerSourceText.Text == "Spotify"
@@ -143,20 +157,18 @@ public sealed partial class MainWindow
                     && PlayerNextButton.Visibility == Visibility.Collapsed
                     && Math.Abs(PlayerProgressSlider.Value - 42) < 1.1
                     && Math.Abs(PlayerProgressSlider.Maximum - 200) < 1,
-                    "Player: Spotify locally decoded full song drives source label, progress, pause icon and hides remote navigation without MediaPlayer.Source");
+                    "Player: first-party WebView playback state drives Spotify label, timeline and native transport without external daemon");
             }
             finally
             {
-                _spotifyLocalBackend = null;
-                _spotifyLocalTrack = null;
-                _spotifyLocalStatus = null;
-                _spotifyLocalPolling = false;
+                _providerWebTrack = null;
+                _providerWebPlaying = false;
+                _providerWebPosition = TimeSpan.Zero;
+                _providerWebDuration = TimeSpan.Zero;
                 _playingCloudPreviewCandidate = previousCloud;
-                fakeSpotify.Dispose();
                 UpdatePlayerProgress();
                 UpdatePlayerVisualState();
             }
-
 
             string? directory = Path.GetDirectoryName(marker);
             if (!string.IsNullOrWhiteSpace(directory))
