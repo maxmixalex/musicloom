@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using MusicLoom.Core.Lyrics;
@@ -144,6 +145,8 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         {
             Title = FirstNonempty(ProviderProtocol.Text(item, "name", "title"), track.Title),
             Album = FirstNonempty(ProviderProtocol.Text(item, "album", "albumName"), track.Album),
+            DurationMilliseconds = FirstPositive(
+                ReadDurationMilliseconds(item), track.DurationMilliseconds),
             ContentId = FirstNonempty(ProviderProtocol.Text(item, "contentId", "resourceId"), track.ContentId),
             CopyrightId = FirstNonempty(ProviderProtocol.Text(item, "copyrightId"), track.CopyrightId),
             LrcUrl = FirstNonempty(ProviderProtocol.Text(item, "lrcUrl", "lyricUrl"), track.LrcUrl),
@@ -156,7 +159,73 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         };
     }
 
-    public async Task<ProviderLyricBundle?> GetLyricsAsync(
+    /// <summary>
+    /// Background-only candidate hydration. Migu search often omits duration:
+    /// query independently supported anonymous metadata endpoints, then the
+    /// listen grant's data.song.duration as a last resort. Never guess the
+    /// duration based on the local MusicBee song or a different provider.
+    /// This method does NOT play the track or alter canonical SQLite lyrics.
+    /// </summary>
+    public async Task<ProviderTrack> EnrichMetadataAsync(
+        ProviderTrack track, CancellationToken ct = default)
+    {
+        ProviderProtocol.RequireSameProvider(track, Provider);
+        if (track.DurationMilliseconds > 0
+            && !string.IsNullOrWhiteSpace(track.ArtworkUrl))
+            return track;
+
+        try { track = await GetDetailsAsync(track, ct) ?? track; }
+        catch (Exception ex) when (TransientProviderFailure(ex, ct))
+        {
+            // The two optional details hosts can be unavailable to guests.
+        }
+
+        if (track.DurationMilliseconds <= 0)
+        {
+            int duration = await TryGetSongInfoDurationAsync(track, ct);
+            if (duration > 0)
+                track = track with { DurationMilliseconds = duration };
+        }
+
+        if (track.DurationMilliseconds <= 0)
+        {
+            MiguListenGrant? listen = await TryGetListenGrantAsync(track, ct);
+            if (listen is { DurationMilliseconds: > 0 })
+                track = track with
+                {
+                    DurationMilliseconds = listen.DurationMilliseconds,
+                };
+        }
+        return track;
+    }
+
+    private async Task<int> TryGetSongInfoDurationAsync(
+        ProviderTrack track, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(track.ContentId)
+            || string.IsNullOrWhiteSpace(track.CopyrightId))
+            return 0;
+
+        string url = "https://pd.musicapp.migu.cn/MIGUM3.0/v1.0/content/song_info.do"
+            + "?copyrightId=" + Uri.EscapeDataString(track.CopyrightId)
+            + "&contentId=" + Uri.EscapeDataString(track.ContentId);
+        using HttpRequestMessage request = Request(url);
+        try
+        {
+            using JsonDocument json = await ProviderProtocol.JsonAsync(
+                _http, request, ct);
+            string code = ProviderProtocol.Text(json.RootElement, "code");
+            if (code.Length > 0 && code is not ("000000" or "0"))
+                return 0;
+            return ReadDurationMilliseconds(json.RootElement);
+        }
+        catch (Exception ex) when (TransientProviderFailure(ex, ct))
+        {
+            return 0;
+        }
+    }
+
+
         ProviderTrack track, CancellationToken ct = default)
     {
         ProviderProtocol.RequireSameProvider(track, Provider);
@@ -254,7 +323,8 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
     }
 
     private sealed record MiguListenGrant(
-        Uri? Stream, string? LrcUrl, string? TrcUrl, string? MrcUrl);
+        Uri? Stream, string? LrcUrl, string? TrcUrl, string? MrcUrl,
+        int DurationMilliseconds);
 
     private async Task<MiguListenGrant?> TryGetListenGrantAsync(
         ProviderTrack track, CancellationToken ct)
@@ -281,7 +351,8 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
             return new MiguListenGrant(playable,
                 ProviderProtocol.Text(data, "lrcUrl", "lyricUrl"),
                 ProviderProtocol.Text(data, "trcUrl"),
-                ProviderProtocol.Text(data, "mrcUrl", "mrcurl"));
+                ProviderProtocol.Text(data, "mrcUrl", "mrcurl"),
+                ReadDurationMilliseconds(data));
         }
         catch (Exception ex) when (TransientProviderFailure(ex, ct))
         {
@@ -323,11 +394,11 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
             art = url;
             if (ProviderProtocol.Text(image, "imgSizeType") == "03") break;
         }
-        int seconds = ProviderProtocol.Number(item, "duration");
+        int duration = ReadDurationMilliseconds(item);
         return new ProviderTrack(ExternalProvider.Migu, id,
             ProviderProtocol.Text(item, "name", "songName", "title"),
             artist, album,
-            seconds is > 0 and < 86400 ? seconds * 1000 : 0,
+            duration,
             art, null,
             contentId.Length == 0 ? null : contentId,
             copyrightId.Length == 0 ? null : copyrightId,
@@ -341,6 +412,87 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
             StreamUrl: TrustedGuestUrl(
                 ProviderProtocol.Text(item, "listenUrl", "playUrl")));
     }
+
+    private static int FirstPositive(int preferred, int fallback) =>
+        preferred > 0 ? preferred : Math.Max(0, fallback);
+
+    /// <summary>
+    /// Migu's anonymous search/metadata/listen APIs use several structures:
+    /// numeric seconds, explicit millisecond keys, and timecode strings.
+    /// Parse the real provider fields rather than displaying unknown forever.
+    /// </summary>
+    public static int ReadDurationMilliseconds(JsonElement root) =>
+        ReadDurationMilliseconds(root, depth: 0);
+
+    private static int ReadDurationMilliseconds(JsonElement item, int depth)
+    {
+        if (depth > 3 || item.ValueKind != JsonValueKind.Object)
+            return 0;
+        foreach (string name in new[]
+        {
+            "durationMs", "durationMillis", "durationMilliseconds",
+            "timeMs", "lengthMs",
+        })
+        {
+            if (TryNumber(ProviderProtocol.Text(item, name),
+                    out double milliseconds)
+                && milliseconds >= 100 && milliseconds <= 86_400_000)
+                return (int)Math.Round(milliseconds);
+        }
+
+        foreach (string name in new[]
+        {
+            "duration", "songDuration", "playDuration", "interval",
+            "songLength", "timeLength",
+        })
+        {
+            string value = ProviderProtocol.Text(item, name);
+            if (value.Length == 0) continue;
+            if (value.Contains(':'))
+            {
+                string[] parts = value.Split(':');
+                if (parts.Length is not (2 or 3)
+                    || parts.Any(static part => !int.TryParse(part,
+                        NumberStyles.None, CultureInfo.InvariantCulture, out _)))
+                    continue;
+                int[] numbers = parts.Select(static part =>
+                    int.Parse(part, CultureInfo.InvariantCulture)).ToArray();
+                int hours = parts.Length == 3 ? numbers[0] : 0;
+                int minutes = parts.Length == 3 ? numbers[1] : numbers[0];
+                int seconds = numbers[^1];
+                if (hours >= 24 || minutes >= 60 || seconds >= 60)
+                    continue;
+                long ms = ((long)hours * 3600 + minutes * 60 + seconds) * 1000;
+                if (ms > 0) return (int)ms;
+                continue;
+            }
+
+            if (!TryNumber(value, out double numerical)
+                || numerical <= 0 || numerical > 86_400_000)
+                continue;
+            // Legacy response fields are in seconds; numeric values of
+            // 10000+ are almost always milliseconds (e.g. 218000).
+            double msValue = numerical >= 10_000
+                ? numerical : numerical * 1000;
+            if (msValue >= 100 && msValue <= 86_400_000)
+                return (int)Math.Round(msValue);
+        }
+
+        foreach (string child in new[] { "song", "data", "songData", "resource" })
+        {
+            JsonElement nested = ProviderProtocol.Get(item, child);
+            if (nested.ValueKind == JsonValueKind.Array)
+                nested = ProviderProtocol.First(nested);
+            int nestedDuration = ReadDurationMilliseconds(nested, depth + 1);
+            if (nestedDuration > 0)
+                return nestedDuration;
+        }
+        return 0;
+    }
+
+    private static bool TryNumber(string value, out double number) =>
+        double.TryParse(value, NumberStyles.Float,
+            CultureInfo.InvariantCulture, out number) && double.IsFinite(number);
 
     private static string? TrustedGuestUrl(string? url) =>
         ProviderProtocol.ProviderHttpsUrl(url, "migu.cn", out Uri? safe)

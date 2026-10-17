@@ -32,6 +32,8 @@ internal static class ExternalProviderIntegrationRegression
         await TestSearchResultAudioGrantAsync();
         await TestMiguTimeoutFallbackAsync();
         await TestMiguOptionalLyricTimeoutAsync();
+        await TestMiguDurationHydrationAsync();
+        TestMiguDurationFormats();
         TestLyricsIntegrity();
     }
 
@@ -441,6 +443,99 @@ internal static class ExternalProviderIntegrationRegression
             && lyric.Translation is null && lyric.WordTimed is null
             && requests == 3,
             "Optional subtitle timeouts must not erase original timed lyrics.");
+    }
+
+    private static void TestMiguDurationFormats()
+    {
+        (string Payload, int Milliseconds)[] examples =
+        [
+            ("""{"contentId":"one","duration":245}""", 245000),
+            ("""{"contentId":"two","duration":"03:37"}""", 217000),
+            ("""{"contentId":"three","durationMs":184250}""", 184250),
+            ("""{"contentId":"four","duration":199000}""", 199000),
+            ("""{"contentId":"five","song":{"duration":"192.5"}}""", 192500),
+            ("""{"contentId":"six","song":{"duration":0}}""", 0),
+        ];
+        foreach ((string payload, int milliseconds) in examples)
+        {
+            using JsonDocument json = JsonDocument.Parse(payload);
+            ProviderTrack track = MiguProviderClient.ParseSong(json.RootElement)
+                ?? throw new InvalidOperationException("Migu search parser lost a valid song.");
+            Assert(track.DurationMilliseconds == milliseconds,
+                $"Unexpected Migu duration for {track.Id}: {track.DurationMilliseconds}");
+        }
+    }
+
+    private static async Task TestMiguDurationHydrationAsync()
+    {
+        int details = 0, info = 0, listen = 0;
+        using HttpClient http = new(new GuardHandler(req =>
+        {
+            Assert(req.RequestUri?.Scheme == Uri.UriSchemeHttps
+                && req.Headers.Authorization is null,
+                "Migu duration lookup must stay HTTPS and anonymous.");
+            string path = req.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/resourceinfo.do", StringComparison.Ordinal))
+            {
+                details++;
+                return Json("""
+                    {"code":"000000","resource":[{
+                      "contentId":"content-id","copyrightId":"600929000001520013",
+                      "title":"Real track", "duration":0
+                    }]}
+                    """);
+            }
+            if (path.EndsWith("/song_info.do", StringComparison.Ordinal))
+            {
+                info++;
+                Assert(req.RequestUri.Query.Contains("contentId=content-id",
+                    StringComparison.Ordinal) && req.RequestUri.Query.Contains(
+                        "copyrightId=600929000001520013", StringComparison.Ordinal),
+                    "Migu duration must query the original provider track identifiers.");
+                return Json("""
+                    {"code":"000000","data":{"song":{"duration":231}}}
+                    """);
+            }
+            if (path.EndsWith("/listen/v1.0", StringComparison.Ordinal))
+            {
+                listen++;
+                return Json("""
+                    {"code":"000000","data":{"song":{"duration":193}}}
+                    """);
+            }
+            throw new InvalidOperationException("Unexpected duration endpoint: " + path);
+        }));
+        using MiguProviderClient provider = new(http);
+        ProviderTrack unknown = new(ExternalProvider.Migu, "content-id",
+            "Real track", "Singer", "Album",
+            ContentId: "content-id", CopyrightId: "600929000001520013");
+        ProviderTrack enriched = await provider.EnrichMetadataAsync(unknown);
+        Assert(enriched.DurationMilliseconds == 231000
+            && enriched.Id == unknown.Id
+            && enriched.ContentId == unknown.ContentId
+            && enriched.CopyrightId == unknown.CopyrightId
+            && details == 1 && info == 1 && listen == 0,
+            "Migu song_info metadata must fill absent search duration without playback request.");
+
+        using HttpClient fallbackHttp = new(new GuardHandler(req =>
+        {
+            string path = req.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/resourceinfo.do", StringComparison.Ordinal)
+                || path.EndsWith("/song_info.do", StringComparison.Ordinal))
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+            if (path.EndsWith("/listen/v1.0", StringComparison.Ordinal))
+            {
+                listen++;
+                return Json("""
+                    {"code":"000000","data":{"song":{"duration":"03:13"}}}
+                    """);
+            }
+            throw new InvalidOperationException("Unexpected fallback endpoint: " + path);
+        }));
+        using MiguProviderClient fallback = new(fallbackHttp);
+        ProviderTrack second = await fallback.EnrichMetadataAsync(unknown);
+        Assert(second.DurationMilliseconds == 193000 && listen == 1,
+            "Migu anonymous listen song duration must survive metadata failures.");
     }
 
     private static void TestLyricsIntegrity()
