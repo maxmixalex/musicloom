@@ -600,6 +600,34 @@ public sealed partial class MainWindow
                 ?? throw new InvalidOperationException("Top fade not found");
             Border noBottomFade = immersive.FindName("LyricsBottomFade") as Border
                 ?? throw new InvalidOperationException("Bottom fade not found");
+            Border backdrop = immersive.FindName("ImmersiveBackdrop")
+                as Border ?? throw new InvalidOperationException(
+                    "Independent immersive backdrop is missing");
+            Grid lyricsViewport = immersive.FindName("ImmersiveLyricsViewport")
+                as Grid ?? throw new InvalidOperationException(
+                    "Transparent lyric viewport is missing");
+            Assert(immersive.SurroundingFadeTargets.Count == 4
+                && immersive.SurroundingFadeTargets.Contains(backdrop)
+                && !immersive.SurroundingFadeTargets.Contains(
+                    immersive.CoverTransitionTarget)
+                && backdrop.OpacityTransition?.Duration.TotalMilliseconds == 560
+                && Navigation.OpacityTransition?.Duration.TotalMilliseconds == 560
+                && lyricsViewport.OpacityTransition?.Duration.TotalMilliseconds == 180
+                && lyricsViewport.Background is SolidColorBrush { Color.A: 0 }
+                && immersive.LyricsList.Background is SolidColorBrush { Color.A: 0 },
+                "Immersive: backdrop, text and controls fade independently of "
+                + "the connected cover; lyrics viewport has no opaque background");
+            immersive.BeginLyricsTransition();
+            immersive.SetTrackHeader("Next song", "Next artist", "Album", null);
+            Assert(lyricsViewport.Opacity == 0
+                && immersive.LyricsList.Items.Count == 1,
+                "Immersive: old lyric data is retained while transparent "
+                + "viewport fades out; header change cannot flash an empty panel");
+            immersive.SetLyrics([
+                new LyricDisplayLine("Next song lyric", null, "preferOriginal")]);
+            Assert(lyricsViewport.Opacity == 1
+                && immersive.LyricsList.Items.Count == 1,
+                "Immersive: new canonical lyric data fades back after replacement");
             Assert(noTopFade.Visibility == Visibility.Collapsed
                 && noBottomFade.Visibility == Visibility.Collapsed,
                 "Immersive: no edge veils when one lyric fits without scrolling");
