@@ -22,6 +22,8 @@ foreach ((string name, Func<Task> check) in new (string, Func<Task>)[]
     ("Apple search/detail/private TTML and preview require scoped authorization", AppleFullFlow),
     ("Spotify catalog, color-lyrics and explicit Premium device command", SpotifyFullFlow),
     ("Spotify authorization and lack of direct full-audio URL are explicit", SpotifySecurity),
+    ("Apple private enhancedHls full-song manifests and codec variants", StreamingProtocolRegression.AppleEnhancedHls),
+    ("Spotify local go-librespot decoded full-song player and controls", StreamingProtocolRegression.SpotifyLocalAudio),
 })
 {
     try
@@ -35,8 +37,8 @@ foreach ((string name, Func<Task> check) in new (string, Func<Task>)[]
         Console.Error.WriteLine("FAIL " + name + " -- " + error);
     }
 }
-Console.WriteLine($"{passed}/10 PoC checks passed");
-return passed == 10 ? 0 : 1;
+Console.WriteLine($"{passed}/12 PoC checks passed");
+return passed == 12 ? 0 : 1;
 
 static void Check(bool value, string why)
 {
