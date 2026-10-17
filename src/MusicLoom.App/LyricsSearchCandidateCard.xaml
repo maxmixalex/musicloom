@@ -45,11 +45,26 @@
         <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
       <StackPanel Spacing="2" VerticalAlignment="Center"
-                  HorizontalAlignment="Right">
-        <TextBlock x:Name="CandidateDurationText" Text="{x:Bind DurationText, Mode=OneWay}"
-                   FontSize="11" TextTrimming="CharacterEllipsis"
-                   HorizontalAlignment="Right"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                  HorizontalAlignment="Stretch">
+        <!-- A long provider ID may ellipsize but can never push duration out.
+             Both use independent width columns; tooltip retains the full ID. -->
+        <Grid x:Name="CandidateMetadataRow" ColumnSpacing="6">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock x:Name="CandidateIdText"
+                     Text="{Binding DisplayId}"
+                     ToolTipService.ToolTip="{Binding DisplayId}"
+                     FontSize="11" TextTrimming="CharacterEllipsis"
+                     TextWrapping="NoWrap" HorizontalAlignment="Stretch"
+                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+          <TextBlock x:Name="CandidateDurationText" Grid.Column="1"
+                     Text="{x:Bind DurationText, Mode=OneWay}"
+                     FontSize="11" TextWrapping="NoWrap"
+                     HorizontalAlignment="Right"
+                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+        </Grid>
         <HyperlinkButton x:Name="ExternalLinkButton"
                          Padding="0" FontSize="11"
                          Visibility="Collapsed"

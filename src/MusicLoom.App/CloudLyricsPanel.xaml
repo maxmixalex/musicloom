@@ -47,7 +47,7 @@
                   SongTitle="{Binding Title}"
                   ArtistName="{Binding Artist}"
                   AlbumName="{Binding Album}"
-                  DurationText="{Binding DisplayMetadata}"
+                  DurationText="{Binding Duration}"
                   ArtworkSource="{Binding Artwork}"
                   PreviewTooltip="{Binding PreviewTooltip}"
                   IsPreviewPlaying="{Binding PreviewIsPlaying, Mode=OneWay}"
