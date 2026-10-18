@@ -116,9 +116,9 @@ internal static class DatabasePersistenceRegression
             await TomlSettingsStore.SaveAsync(configPath,
                 actualSettings with { Matching = new MatchingSettings
                     { MaxConcurrency = 8 } });
-            MusicLoomSettings reloaded =
+            MusicLoomSettings concurrencyReloaded =
                 await TomlSettingsStore.LoadAsync(configPath);
-            Equal(8, reloaded.Matching.MaxConcurrency);
+            Equal(8, concurrencyReloaded.Matching.MaxConcurrency);
             await File.WriteAllTextAsync(configPath,
                 "[matching]\nmax_concurrency = 999\n");
             Equal(12, (await TomlSettingsStore.LoadAsync(
