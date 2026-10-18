@@ -47,6 +47,7 @@ internal static class DatabasePersistenceRegression
                                 {
                                     Enabled = true,
                                     OverrideExisting = true,
+                                    IncludeRomanization = true,
                                     RefreshIntervalHours = 6.5,
                                     StorageMode =
                                         LyricsStorageModes.Sidecar,
@@ -109,6 +110,20 @@ internal static class DatabasePersistenceRegression
             Equal(
                 expectedSettings.Ui.LyricsDisplayMode,
                 actualSettings.Ui.LyricsDisplayMode);
+            Equal(4, actualSettings.Matching.MaxConcurrency);
+            True(MatchingSettings.Normalize(0) == 1);
+            True(MatchingSettings.Normalize(16) == 12);
+            await TomlSettingsStore.SaveAsync(configPath,
+                actualSettings with { Matching = new MatchingSettings
+                    { MaxConcurrency = 8 } });
+            MusicLoomSettings concurrencyReloaded =
+                await TomlSettingsStore.LoadAsync(configPath);
+            Equal(8, concurrencyReloaded.Matching.MaxConcurrency);
+            await File.WriteAllTextAsync(configPath,
+                "[matching]\nmax_concurrency = 999\n");
+            Equal(12, (await TomlSettingsStore.LoadAsync(
+                configPath)).Matching.MaxConcurrency);
+            await TomlSettingsStore.SaveAsync(configPath, actualSettings);
             True(File.Exists(
                 configPath));
             True(

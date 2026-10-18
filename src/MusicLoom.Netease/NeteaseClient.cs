@@ -109,26 +109,31 @@ public sealed class NeteaseClient : IDisposable
             json,
             cancellationToken);
 
-        string? originalText = ReadNestedString(document.RootElement, "lrc", "lyric");
-        string? translatedText = ReadNestedString(document.RootElement, "tlyric", "lyric");
-        if (string.IsNullOrEmpty(originalText) && string.IsNullOrEmpty(translatedText))
-        {
+        string? originalText =
+            ReadNestedString(document.RootElement, "lrc", "lyric");
+        string? translatedText =
+            ReadNestedString(document.RootElement, "tlyric", "lyric");
+        string? romanizedText =
+            ReadNestedString(document.RootElement, "romalrc", "lyric");
+        if (string.IsNullOrEmpty(originalText)
+            && string.IsNullOrEmpty(translatedText))
             return null;
-        }
 
         LrcDocument original = LrcDocument.Parse(originalText);
         LrcDocument translated = LrcDocument.Parse(translatedText);
-        if (string.IsNullOrEmpty(translatedText))
-        {
-            return original;
-        }
+        LrcDocument result = original.Lines.Count == 0
+            ? translated
+            : translated.Lines.Count == 0
+                ? original : LrcDocument.Merge(original, translated);
 
-        if (string.IsNullOrEmpty(originalText))
-        {
-            return translated;
-        }
-
-        return LrcDocument.Merge(original, translated);
+        // NetEase romalrc uses line timestamps (sometimes no individual
+        // syllable timings). Treat it as ruby over the original, not as a
+        // third translation line or guessed per-character pronunciation.
+        if (original.Lines.Count > 0
+            && !string.IsNullOrWhiteSpace(romanizedText))
+            LrcRomanization.Attach(result, original,
+                LrcDocument.Parse(romanizedText));
+        return result;
     }
 
     public Task<long?> MatchSamplesAsync(

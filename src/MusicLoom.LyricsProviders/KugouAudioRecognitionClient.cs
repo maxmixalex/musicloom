@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net.Http.Headers;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -22,6 +23,15 @@ public sealed record KugouRecognitionCandidate(
 public sealed class KugouAudioRecognitionClient : IDisposable
 {
     private const string StandardClientSalt = "OIlwieks28dk2k092lksi2UIkp";
+    private const string NativeFingerprintPath =
+        "/fingerprint.service/v1/music_trackid_mulit";
+    private const string NativeGateway = "https://gateway.kugou.com";
+    // The original tracker.kugou.com implementation can return 404.
+    // KuGou's own gateway is used by current upstream client reversals.
+    private static readonly string DeviceMid = CalculateNativeMid("-");
+    private static readonly string DeviceUuid = Convert.ToHexString(
+        MD5.HashData(Encoding.UTF8.GetBytes("-" + DeviceMid)))
+        .ToLowerInvariant();
     private readonly HttpClient _http;
     private readonly bool _ownsClient;
 
@@ -49,16 +59,13 @@ public sealed class KugouAudioRecognitionClient : IDisposable
 
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         long millis = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        string mid = Convert.ToHexString(MD5.HashData(
-            Encoding.UTF8.GetBytes(
-                millis.ToString(CultureInfo.InvariantCulture))))
-            .ToLowerInvariant();
+        string mid = DeviceMid;
 
         Dictionary<string, string> request = new(StringComparer.Ordinal)
         {
             ["dfid"] = "-",
             ["mid"] = mid,
-            ["uuid"] = "-",
+            ["uuid"] = DeviceUuid,
             ["appid"] = "1005",
             ["clientver"] = "20489",
             ["clienttime"] = now.ToString(CultureInfo.InvariantCulture),
@@ -70,10 +77,8 @@ public sealed class KugouAudioRecognitionClient : IDisposable
         };
 
         request["signature"] = SignAndroidPcm(request, pcm.Span);
-        string url =
-            CloudLyricsClient.BuildKugouUrl(
-                "https://tracker.kugou.com/fingerprint.service/v1/music_trackid_mulit",
-                request);
+        string url = CloudLyricsClient.BuildKugouUrl(
+            NativeGateway + NativeFingerprintPath, request);
 
         using HttpRequestMessage message = new(HttpMethod.Post, url)
         {
@@ -89,13 +94,34 @@ public sealed class KugouAudioRecognitionClient : IDisposable
             "clienttime", request["clienttime"]);
         message.Headers.TryAddWithoutValidation("kg-rec", "1");
         message.Headers.TryAddWithoutValidation("kg-rc", "1");
+        message.Headers.TryAddWithoutValidation("kg-thash", "5d816a0");
+        message.Headers.TryAddWithoutValidation("kg-rf",
+            "B9EDA08A64250DEFFBCADDEE00F8F25F");
 
         using HttpResponseMessage response =
             await _http.SendAsync(message,
                 HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                $"KuGou native recognition gateway returned {(int)response.StatusCode} ({response.ReasonPhrase}).",
+                inner: null, statusCode: response.StatusCode);
+        }
         string json = await response.Content.ReadAsStringAsync(ct);
         return ParseResults(json);
+    }
+
+    internal static string CalculateNativeMid(string dfid)
+    {
+        string hex = Convert.ToHexString(MD5.HashData(
+            Encoding.UTF8.GetBytes(dfid)));
+        // KuGou's official Android client serializes the unsigned 128-bit
+        // MD5 as decimal, not as a randomly generated hexadecimal MID.
+        return BigInteger.Parse(
+            "0" + hex,
+            NumberStyles.AllowHexSpecifier,
+            CultureInfo.InvariantCulture)
+            .ToString(CultureInfo.InvariantCulture);
     }
 
     internal static string SignAndroidPcm(
@@ -124,8 +150,21 @@ public sealed class KugouAudioRecognitionClient : IDisposable
         if (!root.TryGetProperty("status", out JsonElement status)
             || status.ValueKind != JsonValueKind.Number
             || status.GetInt32() != 1
-            || !root.TryGetProperty("data", out JsonElement results)
-            || results.ValueKind != JsonValueKind.Array)
+            || !root.TryGetProperty("data", out JsonElement results))
+        {
+            return [];
+        }
+
+        // Some native versions nest candidates under data.list or
+        // data.songs. Do not interpret successful nested responses as empty.
+        if (results.ValueKind == JsonValueKind.Object)
+        {
+            if (results.TryGetProperty("list", out JsonElement list))
+                results = list;
+            else if (results.TryGetProperty("songs", out JsonElement nestedSongs))
+                results = nestedSongs;
+        }
+        if (results.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
@@ -134,7 +173,9 @@ public sealed class KugouAudioRecognitionClient : IDisposable
         foreach (JsonElement entry in results.EnumerateArray())
         {
             string title = Text(entry, "songname");
+            if (title.Length == 0) title = Text(entry, "song_name");
             string artist = Text(entry, "singername");
+            if (artist.Length == 0) artist = Text(entry, "singer_name");
             if (title.Length == 0)
             {
                 continue;
@@ -146,6 +187,7 @@ public sealed class KugouAudioRecognitionClient : IDisposable
                 && albums.GetArrayLength() > 0)
             {
                 album = Text(albums[0], "albumname");
+                if (album.Length == 0) album = Text(albums[0], "album_name");
             }
 
             double confidence = 0;
@@ -170,7 +212,9 @@ public sealed class KugouAudioRecognitionClient : IDisposable
                 album,
                 double.IsFinite(confidence)
                     ? Math.Clamp(confidence, 0, 1) : 0,
-                Text(entry, "hash")));
+                Text(entry, "hash").Length > 0
+                    ? Text(entry, "hash")
+                    : Text(entry, "hash_128")));
         }
         return songs;
     }

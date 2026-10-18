@@ -18,6 +18,25 @@ public sealed record MusicLoomSettings
 
     [JsonPropertyName("ui")]
     public UiSettings Ui { get; init; } = new();
+
+    [JsonPropertyName("matching")]
+    public MatchingSettings Matching { get; init; } = new();
+}
+
+/// <summary>
+/// Maximum in-flight automatic match lookups/recognition tasks, shared by
+/// NetEase, QQ, KuGou and Migu. This never controls file synchronization.
+/// </summary>
+public sealed record MatchingSettings
+{
+    public const int DefaultConcurrency = 4;
+    public const int MaximumConcurrency = 12;
+
+    [JsonPropertyName("maxConcurrency")]
+    public int MaxConcurrency { get; init; } = DefaultConcurrency;
+
+    public static int Normalize(int count) =>
+        Math.Clamp(count, 1, MaximumConcurrency);
 }
 
 public sealed record PathSettings
@@ -53,6 +72,9 @@ public sealed record LyricsSettings
 
     [JsonPropertyName("overrideExisting")]
     public bool OverrideExisting { get; init; }
+
+    [JsonPropertyName("includeRomanization")]
+    public bool IncludeRomanization { get; init; } = false;
 
     [JsonPropertyName("refreshIntervalHours")]
     public double RefreshIntervalHours { get; init; } = 24;

@@ -61,6 +61,22 @@ public partial class App : Application
             };
         }
 
+        // CI can exercise the exact NetEase-derived matching component,
+        // including real WinUI artwork rendering, asynchronous cover
+        // hydration and parity across all three providers.
+        string? matchingMarker =
+            Environment.GetEnvironmentVariable("MUSICLOOM_MATCH_SMOKE_MARKER");
+        if (!string.IsNullOrWhiteSpace(matchingMarker))
+        {
+            bool started = false;
+            _window.Activated += async (_, _) =>
+            {
+                if (started || _window is not MainWindow main) return;
+                started = true;
+                await main.RunMatchUiSmokeAsync(matchingMarker);
+            };
+        }
+
         StartupTrace.Mark("MainWindow.Activate.before");
         _window.Activate();
         StartupTrace.Mark("MainWindow.Activate.after");

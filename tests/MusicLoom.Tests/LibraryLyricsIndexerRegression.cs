@@ -258,6 +258,43 @@ internal static class LibraryLyricsIndexerRegression
             indexed = await GetCanonicalAsync(cache, sourcePath);
             Equal(LibraryLyricsOrigin.ManualNetease, indexed.Origin);
             Equal("[00:04.000]Previously confirmed cover", indexed.Text);
+
+            // An automatic QQ/KuGou metadata match must not be promoted
+            // into durable ManualEdited intent. It survives warm scans
+            // while no local source exists, but gives way to local lyrics.
+            state.Tracks[sourcePath] = state.Tracks[sourcePath] with
+            {
+                NeteaseSongId = null,
+                NeteaseMatchSuppressed = true,
+                NeteaseMatchConfirmed = false,
+            };
+            File.Delete(localLrc);
+            await cache.SaveLibraryAsync(new LibraryLyricsRecord(
+                sourcePath, LibraryLyricsOrigin.AutoKugou,
+                "[00:08.000]KuGou automatic candidate", null,
+                "auto-kugou:123", DateTimeOffset.UtcNow));
+            await indexer.RefreshAsync(plan, state);
+            indexed = await GetCanonicalAsync(cache, sourcePath);
+            Equal(LibraryLyricsOrigin.AutoKugou, indexed.Origin);
+            Equal("[00:08.000]KuGou automatic candidate", indexed.Text);
+            await indexer.RefreshAsync(plan, state);
+            indexed = await GetCanonicalAsync(cache, sourcePath);
+            Equal(LibraryLyricsOrigin.AutoKugou, indexed.Origin);
+
+            await File.WriteAllTextAsync(localLrc,
+                "[00:09.000]User local lyrics override automatic sources");
+            await indexer.RefreshAsync(plan, state);
+            indexed = await GetCanonicalAsync(cache, sourcePath);
+            Equal(LibraryLyricsOrigin.Sidecar, indexed.Origin);
+
+            await cache.SaveLibraryAsync(new LibraryLyricsRecord(
+                sourcePath, LibraryLyricsOrigin.ManualEdited,
+                "[00:10.000]Explicitly edited", null, "manual-edited",
+                DateTimeOffset.UtcNow));
+            await indexer.RefreshAsync(plan, state);
+            indexed = await GetCanonicalAsync(cache, sourcePath);
+            Equal(LibraryLyricsOrigin.ManualEdited, indexed.Origin);
+            Equal("[00:10.000]Explicitly edited", indexed.Text);
         }
         finally
         {

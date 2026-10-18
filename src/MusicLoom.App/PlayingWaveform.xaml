@@ -16,13 +16,13 @@
             IsHitTestVisible="False">
       <Polygon x:Name="WaveArea"
                Fill="{ThemeResource AccentFillColorTertiaryBrush}"
-               Opacity="0.16"
+               Opacity="0.045"
                IsHitTestVisible="False" />
       <Polyline x:Name="WaveLine"
-                Stroke="{ThemeResource TextFillColorSecondaryBrush}"
-                StrokeThickness="1.65"
+                Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                StrokeThickness="1.15"
                 StrokeLineJoin="Round"
-                Opacity="0.48"
+                Opacity="0.15"
                 IsHitTestVisible="False" />
     </Canvas>
   </Grid>

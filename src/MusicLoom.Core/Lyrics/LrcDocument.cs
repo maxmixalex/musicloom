@@ -31,6 +31,75 @@ public sealed partial class LrcDocument
                 continue;
             }
 
+            // MusicLoom's private, base64-encoded ruby extension is stored
+            // ONLY in the canonical cache. Generic LRC output omits it.
+            // It belongs to the immediately preceding enhanced word line.
+            if (line.StartsWith("[ml-ruby:", StringComparison.Ordinal)
+                && line.EndsWith(']'))
+            {
+                if (document.Lines.Count > 0
+                    && document.Lines[^1].Words is { Count: > 0 } previous)
+                {
+                    try
+                    {
+                        byte[] encoded = Convert.FromBase64String(line[9..^1]);
+                        // JsonDocument is trim/NativeAOT-safe: avoid the
+                        // reflection-based JsonSerializer overloads here.
+                        using var metadata = System.Text.Json.JsonDocument.Parse(encoded);
+                        if (metadata.RootElement.ValueKind
+                            == System.Text.Json.JsonValueKind.Array)
+                        {
+                            string?[] annotations = metadata.RootElement
+                                .EnumerateArray()
+                                .Select(static value => value.ValueKind
+                                    == System.Text.Json.JsonValueKind.String
+                                        ? value.GetString() : null)
+                                .ToArray();
+                            if (annotations.Length == previous.Count
+                                && annotations.Length <= 256)
+                            {
+                                LrcLine last = document.Lines[^1];
+                                document.Lines[^1] = last with
+                                {
+                                    Words = previous.Select((word, i) =>
+                                        word with { Ruby = annotations[i] }).ToArray(),
+                                };
+                            }
+                        }
+                    }
+                    catch (FormatException) { }
+                    catch (System.Text.Json.JsonException) { }
+                }
+                continue;
+            }
+
+            // A whole-line reading has no trustworthy per-word alignment.
+            // Preserve it above the original lyric rather than fabricating
+            // karaoke timestamps or adding it as a translation row.
+            if (line.StartsWith("[ml-romaji:", StringComparison.Ordinal)
+                && line.EndsWith(']'))
+            {
+                if (document.Lines.Count > 0)
+                {
+                    try
+                    {
+                        string value = Encoding.UTF8.GetString(
+                            Convert.FromBase64String(
+                                line["[ml-romaji:".Length..^1]));
+                        if (!string.IsNullOrWhiteSpace(value))
+                        {
+                            LrcLine previous = document.Lines[^1];
+                            document.Lines[^1] = previous with
+                            {
+                                Romanization = value,
+                            };
+                        }
+                    }
+                    catch (FormatException) { }
+                }
+                continue;
+            }
+
             Match metadataMatch = MetadataRegex().Match(line);
             if (metadataMatch.Success)
             {
@@ -378,19 +447,78 @@ public sealed partial class LrcDocument
                 ],
                 StringComparer.OrdinalIgnoreCase);
 
-    public override string ToString()
+    public override string ToString() => Serialize(includeRuby: true);
+
+    /// <summary>
+    /// Standard LRC for destination sidecars and audio tags. Internal ruby
+    /// annotations do not leak into players that cannot interpret them.
+    /// </summary>
+    public string ToStandardLrcString() => Serialize(includeRuby: false);
+
+    /// <summary>
+    /// Materialize human-readable romanization as separately timestamped
+    /// LRC rows ONLY when the user opts into target synchronization.
+    /// Canonical lyrics, their ruby annotations and the database remain
+    /// unchanged, and normal exports never leak MusicLoom private tags.
+    /// </summary>
+    public LrcDocument ForSynchronization(bool includeRomanization)
+    {
+        if (!includeRomanization) return this;
+        LrcDocument output = new();
+        foreach ((string key, string value) in Metadata)
+            output.Metadata[key] = value;
+        foreach (LrcLine line in Lines)
+        {
+            output.Lines.Add(line);
+            string? reading = line.Romanization;
+            if (string.IsNullOrWhiteSpace(reading)
+                && line.Words is { Count: > 0 } words
+                && words.Any(static word => !string.IsNullOrWhiteSpace(word.Ruby)))
+            {
+                reading = string.Join(" ", words
+                    .Select(static word => word.Ruby?.Trim())
+                    .Where(static word => !string.IsNullOrWhiteSpace(word)));
+            }
+            if (!string.IsNullOrWhiteSpace(reading))
+                output.Lines.Add(new LrcLine(line.Timestamp, reading));
+        }
+        return output;
+    }
+
+    private string Serialize(bool includeRuby)
     {
         StringBuilder builder = new();
         foreach ((string key, string value) in Metadata)
-        {
             builder.Append('[').Append(key).Append(':').Append(value).Append("]\n");
-        }
 
         foreach (LrcLine line in Lines)
         {
             builder.Append(line).Append('\n');
+            if (includeRuby && line.Words is { Count: > 0 and <= 256 } words
+                && words.Any(static word => !string.IsNullOrWhiteSpace(word.Ruby)))
+            {
+                using MemoryStream buffer = new();
+                using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+                {
+                    writer.WriteStartArray();
+                    foreach (LrcWord word in words)
+                    {
+                        if (word.Ruby is null) writer.WriteNullValue();
+                        else writer.WriteStringValue(word.Ruby);
+                    }
+                    writer.WriteEndArray();
+                    writer.Flush();
+                }
+                string marker = Convert.ToBase64String(buffer.ToArray());
+                builder.Append("[ml-ruby:").Append(marker).Append("]\n");
+            }
+            if (includeRuby && !string.IsNullOrWhiteSpace(line.Romanization))
+            {
+                string marker = Convert.ToBase64String(
+                    Encoding.UTF8.GetBytes(line.Romanization));
+                builder.Append("[ml-romaji:").Append(marker).Append("]\n");
+            }
         }
-
         return builder.ToString().TrimEnd('\n');
     }
 
@@ -462,12 +590,14 @@ public sealed partial class LrcDocument
 /// Word timing is optional; the canonical plain line remains in Text.
 /// Enhanced LRC serializes each word's absolute start and a final end tag.
 /// </summary>
-public sealed record LrcWord(TimeSpan Start, TimeSpan End, string Text);
+public sealed record LrcWord(TimeSpan Start, TimeSpan End, string Text,
+    string? Ruby = null);
 
 public sealed record LrcLine(
     TimeSpan Timestamp,
     string Text,
-    IReadOnlyList<LrcWord>? Words = null)
+    IReadOnlyList<LrcWord>? Words = null,
+    string? Romanization = null)
 {
     public override string ToString()
     {

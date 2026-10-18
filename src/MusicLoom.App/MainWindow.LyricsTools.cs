@@ -4,8 +4,6 @@ using System.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using MusicLoom.Core.Lyrics;
-using MusicLoom.Core.Synchronization;
-using MusicLoom.Tagging;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 
@@ -27,8 +25,8 @@ public sealed partial class MainWindow
         confirm.Content = new TextBlock
         {
             Text = L(
-                "Remove the lyrics from MusicLoom and the generated phone copy. Source audio and source-side LRC files will not be modified.",
-                "删除 MusicLoom 中的歌词和同步目标中的歌词。源音频与源目录的 LRC 不会被修改。"),
+                "Clear the stored lyrics. The destination will only be changed during the next sync; source files remain untouched.",
+                "清空歌词数据库中的歌词。目标文件仅在下次同步时修改，源文件保持不变。"),
             TextWrapping = TextWrapping.Wrap,
         };
         confirm.PrimaryButtonText = L("Clear", "清空");
@@ -53,23 +51,13 @@ public sealed partial class MainWindow
             _currentLyricsRaw = null;
             RenderLyrics();
 
-            if (_settings is not null
-                && item.Entry.DestinationPath is string path
-                && File.Exists(path)
-                && IsPathInside(path, _settings.Path.DestinationDirectory))
-            {
-                await new TagLibSharpLyricsWriter().RemoveAsync(path);
-                string sidecar = SidecarLrcLyricsWriter.GetSidecarPath(path);
-                if (File.Exists(sidecar))
-                {
-                    File.Delete(sidecar);
-                }
-            }
-
+            // Only the SQLite canonical lyric changes here. The sync
+            // executor owns ALL target filesystem mutations, including
+            // removing embedded tags and orphaned sidecar LRC files.
             ShowInfo(InfoBarSeverity.Success,
                 L("Lyrics cleared", "歌词已清空"),
-                L("Generated lyrics removed. The source library is unchanged.",
-                  "已删除同步目标歌词，源音乐库未修改。"));
+                L("Lyrics cleared in MusicLoom; synchronize to update destination files. The source library is unchanged.",
+                  "已清空 Musicloom 中的歌词；同步后才修改目标文件。源音乐库未修改。"));
         }
         catch (Exception error)
         {
@@ -79,15 +67,8 @@ public sealed partial class MainWindow
         }
     }
 
-    private async void AdvanceLyricsItem_Click(
-        object sender, RoutedEventArgs e) =>
-        await AdjustLyricsAsync(moveEarlier: true);
-
-    private async void DelayLyricsItem_Click(
-        object sender, RoutedEventArgs e) =>
-        await AdjustLyricsAsync(moveEarlier: false);
-
-    private async Task AdjustLyricsAsync(bool moveEarlier)
+    private async void AdjustLyricsButton_Click(
+        object sender, RoutedEventArgs e)
     {
         if (_busy || _lyricsEditInProgress ||
             _selectedLibraryItem is not LibraryDisplayItem item)
@@ -101,12 +82,12 @@ public sealed partial class MainWindow
             int previous = await store.GetOffsetMillisecondsAsync(
                 item.Entry.SourcePath) ?? 0;
 
-            NumberBox amount = new()
+            NumberBox offset = new()
             {
-                Header = L("Offset (milliseconds)", "偏移量（毫秒）"),
-                Minimum = 0,
+                Header = L("Total offset (milliseconds)", "总偏移量（毫秒）"),
+                Minimum = -3_600_000,
                 Maximum = 3_600_000,
-                Value = 500,
+                Value = previous,
                 SmallChange = 50,
                 LargeChange = 1000,
                 SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
@@ -115,15 +96,14 @@ public sealed partial class MainWindow
             panel.Children.Add(new TextBlock
             {
                 Text = L(
-                    $"Current total offset: {previous:+#;-#;0} ms. Enter the amount to {(moveEarlier ? "move earlier" : "delay")}.",
-                    $"当前累计偏移：{previous:+#;-#;0} 毫秒。请输入本次{(moveEarlier ? "前移" : "后移")}的毫秒数。"),
+                    "Set the total lyric offset. Negative values move lyrics earlier, positive values delay them, and zero resets it.",
+                    "直接设置歌词总偏移量：负数提前，正数延后，输入 0 即重置。"),
                 TextWrapping = TextWrapping.Wrap,
             });
-            panel.Children.Add(amount);
+            panel.Children.Add(offset);
+
             ContentDialog dialog = CreateLyricsDialog(
-                moveEarlier
-                    ? L("Move lyrics earlier", "歌词前移")
-                    : L("Delay lyrics", "歌词后移"));
+                L("Set lyric offset", "设置歌词偏移量"));
             dialog.Content = panel;
             dialog.PrimaryButtonText = L("Apply", "应用");
             dialog.CloseButtonText = L("Cancel", "取消");
@@ -131,27 +111,31 @@ public sealed partial class MainWindow
             {
                 return;
             }
-            if (!double.IsFinite(amount.Value) || amount.Value < 0
-                || amount.Value > 3_600_000)
+            if (!double.IsFinite(offset.Value)
+                || offset.Value < -3_600_000 || offset.Value > 3_600_000)
             {
-                throw new InvalidDataException(
-                    "Invalid lyric offset value.");
+                throw new InvalidDataException("Invalid lyric offset value.");
             }
-            int shift = checked((int)Math.Round(amount.Value));
-            int total = checked(previous + (moveEarlier ? -shift : shift));
+
+            int total = checked((int)Math.Round(offset.Value));
+            if (total == previous)
+            {
+                return;
+            }
+
             await store.SetOffsetMillisecondsAsync(
                 item.Entry.SourcePath, total);
             await QueueLyricOutputSyncAsync(item);
             ShowInfo(InfoBarSeverity.Success,
-                L("Lyric timing adjusted", "歌词时间已调整"),
+                L("Lyric offset saved", "歌词偏移量已保存"),
                 L(
-                    $"Output offset is now {total:+#;-#;0} ms; apply it on the next synchronization.",
-                    $"输出偏移已设为 {total:+#;-#;0} 毫秒；下次同步时生效。"));
+                    $"Total output offset is {total:+#;-#;0} ms; the next sync will apply it.",
+                    $"输出总偏移量为 {total:+#;-#;0} 毫秒；将在下次同步时生效。"));
         }
         catch (Exception error)
         {
             HandleUiException(
-                L("Could not adjust lyric timing.", "无法调整歌词时间。"),
+                L("Could not set lyric offset.", "无法设置歌词偏移量。"),
                 error);
         }
     }
@@ -170,6 +154,8 @@ public sealed partial class MainWindow
         EditLyricsButton.IsEnabled = false;
         ClearLyricsButton.IsEnabled = false;
         AdjustLyricsButton.IsEnabled = false;
+        bool preserveTemporaryFile = false;
+        string originalLyrics = _currentLyricsRaw;
         string tempPath = Path.Combine(
             Path.GetTempPath(),
             "MusicLoom",
@@ -178,63 +164,53 @@ public sealed partial class MainWindow
         {
             Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
             await File.WriteAllTextAsync(
-                tempPath, _currentLyricsRaw, new UTF8Encoding(false));
+                tempPath, originalLyrics, new UTF8Encoding(false));
 
             string? configured = _settings?.Ui.LyricsEditorPath;
-            if (!string.IsNullOrWhiteSpace(configured))
+            if (!string.IsNullOrWhiteSpace(configured)
+                && !File.Exists(configured))
             {
-                if (!File.Exists(configured))
-                {
-                    throw new FileNotFoundException(
-                        "Configured lyric editor was not found.", configured);
-                }
-
-                ProcessStartInfo info = new()
-                {
-                    FileName = configured,
-                    UseShellExecute = true,
-                };
-                info.ArgumentList.Add(tempPath);
-                Process.Start(info);
-            }
-            else
-            {
-                StorageFile temp = await StorageFile.GetFileFromPathAsync(tempPath);
-                bool opened = await Windows.System.Launcher.LaunchFileAsync(temp);
-                if (!opened)
-                {
-                    ProcessStartInfo fallback = new()
-                    {
-                        FileName = "notepad.exe",
-                        UseShellExecute = true,
-                    };
-                    fallback.ArgumentList.Add(tempPath);
-                    Process.Start(fallback);
-                }
+                throw new FileNotFoundException(
+                    L("Configured lyrics editor does not exist.",
+                      "指定的歌词编辑器不存在。"), configured);
             }
 
-            ContentDialog dialog = CreateLyricsDialog(
-                L("Editing lyrics", "正在编辑歌词"));
-            dialog.Content = new TextBlock
+            // Git commit-message semantics: block this editor session
+            // without blocking the UI; automatically import on exit.
+            // Notepad is the default text editor rather than the .lrc
+            // shell association, which could launch an audio player.
+            ProcessStartInfo info = new()
             {
-                Text = L(
-                    "Edit and save the temporary LRC file in your editor. Click Import once saved; Cancel leaves the library unchanged.",
-                    "请在编辑器中修改并保存临时 LRC 文件，完成后点击“导入”；取消则不修改音乐库。"),
-                TextWrapping = TextWrapping.Wrap,
+                FileName = string.IsNullOrWhiteSpace(configured)
+                    ? "notepad.exe" : configured,
+                UseShellExecute = false,
             };
-            dialog.PrimaryButtonText = L("Import changes", "导入修改");
-            dialog.CloseButtonText = L("Cancel", "取消");
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-            {
-                return;
-            }
+            ConfigureBlockingEditor(info);
+            info.ArgumentList.Add(tempPath);
+            using Process editor = Process.Start(info)
+                ?? throw new InvalidOperationException(
+                    L("The lyrics editor did not start.",
+                      "无法启动歌词编辑器。"));
+
+            ShowInfo(InfoBarSeverity.Informational,
+                L("Editing lyrics", "正在编辑歌词"),
+                L("Save the temporary LRC and close the editor to import changes.",
+                  "保存临时 LRC 并关闭编辑器，Musicloom 将自动导入修改。"));
+            await editor.WaitForExitAsync();
 
             string updated = await File.ReadAllTextAsync(tempPath);
+            if (string.Equals(originalLyrics, updated, StringComparison.Ordinal))
+            {
+                return; // Closing without edits must never dirty SQLite.
+            }
+
             LrcDocument doc = LrcDocument.Parse(updated);
             if (doc.Lines.Count == 0)
             {
+                preserveTemporaryFile = true;
                 throw new InvalidDataException(
-                    "Edited LRC has no valid timestamped lyric lines.");
+                    L($"Edited lyrics were not valid timed LRC. Your draft was preserved at: {tempPath}",
+                      $"编辑后的歌词不是有效的带时间戳 LRC，草稿已保留：{tempPath}"));
             }
 
             await SaveManualLyricsAsync(item, new LibraryLyricsRecord(
@@ -264,15 +240,53 @@ public sealed partial class MainWindow
         finally
         {
             _lyricsEditInProgress = false;
-            try
+            if (!preserveTemporaryFile)
             {
-                if (File.Exists(tempPath)) File.Delete(tempPath);
-            }
-            catch (IOException)
-            {
-                // External editor may still have an open handle.
+                try
+                {
+                    if (File.Exists(tempPath)) File.Delete(tempPath);
+                }
+                catch (IOException)
+                {
+                    // A file lock is nonfatal; do not replace the source.
+                }
             }
             RenderLyrics();
+        }
+    }
+
+    /// <summary>
+    /// Some editors hand the file to an existing instance and their launcher
+    /// exits immediately. Git's commit-message workflow uses an editor wait
+    /// flag; apply the same documented flags to common user-selected editors.
+    /// An unknown executable is launched unchanged.
+    /// </summary>
+    private static void ConfigureBlockingEditor(ProcessStartInfo info)
+    {
+        string executable = Path.GetFileNameWithoutExtension(info.FileName)
+            .ToLowerInvariant();
+        switch (executable)
+        {
+            case "code":
+            case "code - insiders":
+            case "codium":
+            case "vscodium":
+            case "cursor":
+            case "windsurf":
+                info.ArgumentList.Add("--wait");
+                break;
+            case "subl":
+            case "sublime_text":
+                info.ArgumentList.Add("--wait");
+                break;
+            case "notepad++":
+                // Force an independent editor process so WaitForExitAsync
+                // follows the actual editing window, not IPC hand-off.
+                info.ArgumentList.Add("-multiInst");
+                break;
+            case "kate":
+                info.ArgumentList.Add("--block");
+                break;
         }
     }
 
@@ -282,6 +296,7 @@ public sealed partial class MainWindow
     {
         SqliteLyricsCache store = new(DatabasePath);
         await store.SaveLibraryAsync(record);
+        InvalidateLibraryFacetSnapshot();
         await QueueLyricOutputSyncAsync(item);
     }
 

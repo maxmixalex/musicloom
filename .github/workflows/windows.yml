@@ -212,13 +212,16 @@ jobs:
             $marker = Join-Path $PWD "artifacts/$safeLabel.launch-ok"
             $waveMarker = Join-Path $PWD "artifacts/$safeLabel.waveform-ok"
             $karaokeMarker = Join-Path $PWD "artifacts/$safeLabel.karaoke-ok"
+            $matchMarker = Join-Path $PWD "artifacts/$safeLabel.match-ui.ok"
+            $matchError = "$matchMarker.failed"
             $trace = Join-Path $PWD "artifacts/$safeLabel.startup.log"
             $karaokeError = "$karaokeMarker.failed"
-            Remove-Item $marker, $waveMarker, $karaokeMarker, $karaokeError, $trace -Force -ErrorAction SilentlyContinue
+            Remove-Item $marker, $waveMarker, $karaokeMarker, $karaokeError, $matchMarker, $matchError, $trace -Force -ErrorAction SilentlyContinue
 
             $env:MUSICLOOM_SMOKE_MARKER = $marker
             $env:MUSICLOOM_WAVEFORM_SMOKE_MARKER = $waveMarker
             $env:MUSICLOOM_KARAOKE_SMOKE_MARKER = $karaokeMarker
+            $env:MUSICLOOM_MATCH_SMOKE_MARKER = $matchMarker
             $env:MUSICLOOM_STARTUP_TRACE = $trace
             $startedAt = Get-Date
             $process = Start-Process -FilePath $Exe -PassThru
@@ -227,10 +230,12 @@ jobs:
             try {
               $deadline = (Get-Date).AddSeconds(30)
               while ((Get-Date) -lt $deadline -and
-                     (-not (Test-Path $marker) -or
-                      -not (Test-Path $waveMarker) -or
-                      -not (Test-Path $karaokeMarker)) -and
-                     -not (Test-Path $karaokeError)) {
+                      (-not (Test-Path $marker) -or
+                       -not (Test-Path $waveMarker) -or
+                       -not (Test-Path $karaokeMarker) -or
+                       -not (Test-Path $matchMarker)) -and
+                      -not (Test-Path $karaokeError) -and
+                      -not (Test-Path $matchError)) {
                 if ($process.HasExited) {
                   $failure = "$Label exited before its main window activated. Exit code: $($process.ExitCode)"
                   break
@@ -249,6 +254,24 @@ jobs:
               }
               if (-not $failure -and -not (Test-Path $karaokeMarker)) {
                 $failure = "$Label failed karaoke render/seek smoke test."
+              }
+              if (-not $failure -and (Test-Path $matchError)) {
+                $failure = "$Label matching behavior smoke: $(Get-Content $matchError -Raw)"
+              }
+              if (-not $failure -and -not (Test-Path $matchMarker)) {
+                $failure = "$Label failed the matching UI behavior regression."
+              }
+              if (-not $failure) {
+                foreach ($provider in @("Netease", "QqMusic", "KugouMusic", "SearchDialog", "ImmersiveViewport", "RubyViewport")) {
+                  $picture = "$matchMarker.$provider.png"
+                  # The ruby test separately asserts actual bright glyph pixels;
+                  # repeated characters compress exceptionally well in PNG.
+                  $minBytes = if ($provider -eq "RubyViewport") { 500 } else { 1800 }
+                  if (-not (Test-Path $picture) -or (Get-Item $picture).Length -lt $minBytes) {
+                    $failure = "$Label failed to render $provider matching panel PNG."
+                    break
+                  }
+                }
               }
 
               if (Test-Path $trace) {
@@ -281,10 +304,11 @@ jobs:
                 return $false
               }
 
-              Write-Host "=== $Label activated and waveform / karaoke rendered ==="
+              Write-Host "=== $Label activated; waveform, karaoke and matching UI verified ==="
               Get-Content $marker | ForEach-Object { Write-Host $_ }
               Get-Content $waveMarker | ForEach-Object { Write-Host $_ }
               Get-Content $karaokeMarker | ForEach-Object { Write-Host $_ }
+              Get-Content $matchMarker | ForEach-Object { Write-Host $_ }
               return $true
             }
             finally {
@@ -294,6 +318,7 @@ jobs:
               Remove-Item Env:MUSICLOOM_SMOKE_MARKER -ErrorAction SilentlyContinue
               Remove-Item Env:MUSICLOOM_WAVEFORM_SMOKE_MARKER -ErrorAction SilentlyContinue
               Remove-Item Env:MUSICLOOM_KARAOKE_SMOKE_MARKER -ErrorAction SilentlyContinue
+              Remove-Item Env:MUSICLOOM_MATCH_SMOKE_MARKER -ErrorAction SilentlyContinue
               Remove-Item Env:MUSICLOOM_STARTUP_TRACE -ErrorAction SilentlyContinue
             }
           }
@@ -317,6 +342,19 @@ jobs:
             throw "Runtime AppWindow icon is unexpectedly small or invalid."
           }
           Write-Host "Runtime AppWindow icon materialized: $($runtimeIconInfo.FullName) ($($runtimeIconInfo.Length) bytes)"
+
+      - name: Upload matching behavior and screenshot proof
+        # Retain screenshots even when a visual assertion fails. They are
+        # diagnostic evidence, NOT acceptance on failed workflows.
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: musicloom-match-ui-evidence
+          path: |
+            artifacts/*.match-ui.ok
+            artifacts/*.match-ui.ok.*.png
+            artifacts/*.match-ui.ok.failed
+          if-no-files-found: warn
 
       - name: Upload Windows CLI
         uses: actions/upload-artifact@v6

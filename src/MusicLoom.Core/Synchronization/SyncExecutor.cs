@@ -337,7 +337,9 @@ public sealed class SyncExecutor
 
                     if (canonical is
                         {
-                            Origin: LibraryLyricsOrigin.ManualEdited,
+                            Origin: LibraryLyricsOrigin.ManualEdited
+                                or LibraryLyricsOrigin.AutoQq
+                                or LibraryLyricsOrigin.AutoKugou,
                             HasLyrics: true,
                         } && canonical.Text is string editedText)
                     {
@@ -346,10 +348,15 @@ public sealed class SyncExecutor
                         int offset = _lyricsOffsetStore is null ? 0 :
                             await _lyricsOffsetStore.GetOffsetMillisecondsAsync(
                                 entry.SourcePath, cancellationToken) ?? 0;
+                        LrcDocument shifted = LrcDocument.Shift(edited, offset);
+                        bool explicitlyEdited = canonical.Origin
+                            == LibraryLyricsOrigin.ManualEdited;
                         LyricsWriteResult output = await _lyricsWriter.WriteAsync(
                             entry.DestinationPath,
-                            LrcDocument.Shift(edited, offset),
-                            overrideExisting: true,
+                            shifted.ForSynchronization(
+                                settings.Organizer.Lyrics.IncludeRomanization),
+                            overrideExisting: explicitlyEdited
+                                || settings.Organizer.Lyrics.OverrideExisting,
                             cancellationToken);
                         partial = partial with
                         {
@@ -358,7 +365,10 @@ public sealed class SyncExecutor
                                 : output.Status == LyricsWriteStatus.SkippedExisting
                                     ? LyricsState.Existing : LyricsState.Unsupported,
                             LyricsCheckedAt = DateTimeOffset.UtcNow,
-                            LyricsFingerprint = ComputeLyricsFingerprint(edited),
+                            LyricsFingerprint = output.Status
+                                == LyricsWriteStatus.Written
+                                    ? ComputeLyricsFingerprint(shifted)
+                                    : partial.LyricsFingerprint,
                         };
                         if (output.Status == LyricsWriteStatus.Written) writtenLyrics++;
                         else if (output.Status == LyricsWriteStatus.SkippedExisting) existingLyrics++;
@@ -388,7 +398,8 @@ public sealed class SyncExecutor
                                 storedOffset ?? 0);
                             LyricsWriteResult result = await _lyricsWriter.WriteAsync(
                                 entry.DestinationPath,
-                                shifted,
+                                shifted.ForSynchronization(
+                                    settings.Organizer.Lyrics.IncludeRomanization),
                                 storedOffset.HasValue
                                     || settings.Organizer.Lyrics.OverrideExisting,
                                 cancellationToken);
@@ -500,7 +511,8 @@ public sealed class SyncExecutor
                         LyricsWriteResult localWrite =
                             await _lyricsWriter.WriteAsync(
                                 entry.DestinationPath,
-                                shiftedLocal,
+                                shiftedLocal.ForSynchronization(
+                                    settings.Organizer.Lyrics.IncludeRomanization),
                                 localOffset.HasValue
                                     || settings.Organizer.Lyrics.OverrideExisting,
                                 cancellationToken);
@@ -967,45 +979,41 @@ public sealed class SyncExecutor
             return null;
         }
 
-        string? recordedTitle =
-            entry.Metadata.Title;
-        string? recordedArtist =
-            entry.Metadata.AlbumArtist
-            ?? entry.Metadata.Artist;
-
-        bool titleMismatch =
-            HasComparableValue(
-                recordedTitle)
-            && HasComparableValue(
-                state.NeteaseTrackName)
-            && !MetadataValuesEqual(
-                recordedTitle!,
-                state.NeteaseTrackName!);
-
-        bool artistMismatch =
-            HasComparableValue(
-                recordedArtist)
-            && HasComparableValue(
-                state.NeteaseTrackArtist)
-            && !ArtistsCompatible(
-                recordedArtist!,
-                state.NeteaseTrackArtist!);
-
-        if (!titleMismatch
-            && !artistMismatch)
-        {
-            return null;
-        }
-
-        return new TrackSyncWarning(
+        return DetectMetadataWarning(
             entry.SourcePath,
-            recordedTitle,
+            entry.Metadata.Title,
+            entry.Metadata.AlbumArtist ?? entry.Metadata.Artist,
             state.NeteaseTrackName,
-            recordedArtist,
-            state.NeteaseTrackArtist,
-            titleMismatch,
-            artistMismatch);
+            state.NeteaseTrackArtist);
     }
+
+    /// <summary>
+    /// Shared metadata review rule, used by the original NetEase warning
+    /// path and the additional QQ/KuGou/Migu adapters. Normalize Unicode,
+    /// traditional/simplified Chinese and multi-artist credit subsets once.
+    /// The caller separately enforces its provider's confirmation flag.
+    /// </summary>
+    public static TrackSyncWarning? DetectMetadataWarning(
+        string sourcePath, string? recordedTitle, string? recordedArtist,
+        string? matchedTitle, string? matchedArtist)
+    {
+        bool titleMismatch = HasComparableValue(recordedTitle)
+            && HasComparableValue(matchedTitle)
+            && !MetadataValuesEqual(recordedTitle!, matchedTitle!);
+
+        bool artistMismatch = HasComparableValue(recordedArtist)
+            && HasComparableValue(matchedArtist)
+            && !ArtistsCompatible(recordedArtist!, matchedArtist!);
+
+        return titleMismatch || artistMismatch
+            ? new TrackSyncWarning(sourcePath, recordedTitle, matchedTitle,
+                recordedArtist, matchedArtist, titleMismatch, artistMismatch)
+            : null;
+    }
+
+    public static bool MetadataValuesEquivalent(string? left, string? right) =>
+        HasComparableValue(left) && HasComparableValue(right)
+        && MetadataValuesEqual(left!, right!);
 
     private static bool HasComparableValue(
         string? value) =>
