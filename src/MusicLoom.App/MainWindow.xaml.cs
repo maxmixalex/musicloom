@@ -3086,14 +3086,18 @@ public sealed partial class MainWindow : Window
                 latest.IsError
                     ? "error"
                     : item.Kind);
-            TrackSyncStateText.Text =
-                latest.Status;
-            TrackSyncTimeText.Text =
-                L(
-                    $"Updated {latest.UpdatedAt:G}",
-                    $"更新于 {latest.UpdatedAt:G}");
-            TrackSyncLogText.Text =
-                latest.Detail;
+            // A previous successful output sync remains valid, but a
+            // newly discovered suspicious provider match is now a review
+            // warning. Do not display "Synced" beside the amber warning.
+            string? review = item.Kind == "warning" && !latest.IsError
+                ? GetProviderReviewDescription(item.Entry) : null;
+            TrackSyncStateText.Text = review is null
+                ? latest.Status : L("Warning", "警告");
+            TrackSyncTimeText.Text = L(
+                $"Updated {latest.UpdatedAt:G}",
+                $"更新于 {latest.UpdatedAt:G}");
+            TrackSyncLogText.Text = review is null
+                ? latest.Detail : review;
             return;
         }
 
