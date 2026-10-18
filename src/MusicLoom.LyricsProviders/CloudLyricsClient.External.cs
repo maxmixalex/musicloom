@@ -272,7 +272,18 @@ public sealed partial class CloudLyricsClient
         string? url, CloudLyricsSource source)
     {
         if (source != CloudLyricsSource.MiguMusic
-            || !Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)
+            || string.IsNullOrWhiteSpace(url))
+            return null;
+        string address = url.Trim();
+        // Search JSON often returns relative OSS paths, // CDN URLs,
+        // or HTTP while the same first-party CDN supports HTTPS.
+        if (address.StartsWith("//", StringComparison.Ordinal))
+            address = "https:" + address;
+        else if (address.StartsWith("/", StringComparison.Ordinal))
+            address = "https://d.musicapp.migu.cn" + address;
+        else if (address.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            address = "https://" + address[7..];
+        if (!Uri.TryCreate(address, UriKind.Absolute, out Uri? uri)
             || uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort
             || uri.UserInfo.Length > 0
             || uri.HostNameType != UriHostNameType.Dns)

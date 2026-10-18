@@ -25,6 +25,7 @@ internal static class ExternalProviderIntegrationRegression
         // graph and the anonymous-only dispatch assertions below.
         TestAuthenticatedProvidersNotExposed();
         TestMiguSongPageLinks();
+        TestMiguArtworkVariants();
         TestMiguSearchFallback();
         await TestLegacyDbAndMiguAsync();
         await TestAnonymousMiguFlowAsync();
@@ -79,6 +80,40 @@ internal static class ExternalProviderIntegrationRegression
             Assert(searchBlocked && lyricsBlocked && playbackBlocked,
                 "Removed account-dependent provider remains callable in release.");
         }
+    }
+
+    private static void TestMiguArtworkVariants()
+    {
+        using JsonDocument json = JsonDocument.Parse("""
+        {"contentId":"1004665871","name":"Song",
+         "singers":[{"id":"116","name":"Singer"}],
+         "albums":[{"id":"600927015009001074","name":"Album"}],
+         "img1":"/data/oss/resource/00/2u/example.webp"}
+        """);
+        ProviderTrack track = MiguProviderClient.ParseSong(json.RootElement)
+            ?? throw new InvalidOperationException("No Migu parsed track");
+        CloudLyricsCandidate candidate = new(
+            CloudLyricsSource.MiguMusic, track.Id, track.Title,
+            track.Artist, track.Album, track.DurationMilliseconds,
+            CoverUrl: CloudLyricsClient.NormalizeExternalArtwork(
+                track.ArtworkUrl, CloudLyricsSource.MiguMusic),
+            AlbumId: track.AlbumId, ExternalUrl: track.ExternalUrl);
+        if (candidate.CoverUrl !=
+                "https://d.musicapp.migu.cn/data/oss/resource/00/2u/example.webp"
+            || CloudLyricsSourceNames.AlbumPage(candidate) is null
+            || CloudLyricsSourceNames.SingerPage(candidate)?.Fragment
+                != "#/singerDetail?id=116")
+            throw new InvalidOperationException(
+                "Migu first-party album art/album ID/singer page lost.");
+        if (CloudLyricsClient.NormalizeExternalArtwork(
+                "http://d.musicapp.migu.cn/cover.jpg",
+                CloudLyricsSource.MiguMusic)
+                != "https://d.musicapp.migu.cn/cover.jpg"
+            || CloudLyricsClient.NormalizeExternalArtwork(
+                "https://migu.cn.evil.example/cover.jpg",
+                CloudLyricsSource.MiguMusic) is not null)
+            throw new InvalidOperationException(
+                "Migu CDN protocol-relative normalization/host check failed.");
     }
 
     private static void TestMiguSongPageLinks()

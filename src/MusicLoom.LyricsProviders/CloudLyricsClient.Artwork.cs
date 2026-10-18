@@ -195,7 +195,8 @@ public sealed partial class CloudLyricsClient
             root = data;
         }
 
-        JsonElement basics = Child(root, "basicInfo", "basic_info", "album");
+        JsonElement basics = Child(root, "basicInfo", "basic_info",
+            "album", "track_info", "trackInfo");
         string? provided = QqArtworkUrl(basics);
         provided ??= QqArtworkUrl(root);
         return provided;
@@ -215,7 +216,26 @@ public sealed partial class CloudLyricsClient
 
         if (candidate.Source == CloudLyricsSource.QqMusic)
         {
-            return await ResolveQqAlbumArtworkAsync(candidate.AlbumId, ct);
+            string? cover = await ResolveQqAlbumArtworkAsync(candidate.AlbumId, ct);
+            if (cover is not null) return cover;
+            // Older QQ Lite search records may have neither album MID
+            // nor valid album ID. The guest web search can return an
+            // album MID for the same song without any account.
+            if (string.IsNullOrWhiteSpace(candidate.SongMid)
+                || string.IsNullOrWhiteSpace(candidate.Title))
+                return null;
+            try
+            {
+                IReadOnlyList<CloudLyricsCandidate> found =
+                    await SearchQqWebAsync(candidate.Artist + " "
+                        + candidate.Title, ct);
+                CloudLyricsCandidate? same = found.FirstOrDefault(song =>
+                    string.Equals(song.SongMid, candidate.SongMid,
+                        StringComparison.Ordinal));
+                return NormalizeArtworkUrl(same?.CoverUrl);
+            }
+            catch (HttpRequestException) { return null; }
+            catch (JsonException) { return null; }
         }
         if (candidate.Source != CloudLyricsSource.KugouMusic)
             return null;

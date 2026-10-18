@@ -61,6 +61,15 @@ internal static class CloudLyricsProviderRegression
                 "QQ album cover URLs were lost by a Lite/Web search variant.");
         }
 
+        const string qqDetailTrackInfo = """
+        {"req_0":{"code":0,"data":{"track_info":{"album":{
+            "name":"Album","pmid":"002fRO0N4FftzY"}}}}}
+        """;
+        if (CloudLyricsClient.ParseQqAlbumArtwork(qqDetailTrackInfo) !=
+            "https://y.gtimg.cn/music/photo_new/T002R300x300M000002fRO0N4FftzY.jpg")
+            throw new InvalidOperationException(
+                "QQ track detail album PMIDs do not hydrate artwork.");
+
         const string kugouArtwork = """
         {"data":{"lists":[
           {"FileHash":"ABCD1234ABCD1234ABCD1234ABCD1234","ID":42,

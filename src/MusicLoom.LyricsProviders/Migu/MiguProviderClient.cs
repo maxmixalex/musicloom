@@ -144,6 +144,7 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         return track with
         {
             Title = FirstNonempty(ProviderProtocol.Text(item, "name", "title"), track.Title),
+            ArtworkUrl = FirstNonempty(MiguCoverFromPayload(item), track.ArtworkUrl),
             Album = FirstNonempty(ProviderProtocol.Text(item, "album", "albumName"), track.Album),
             AlbumId = FirstNonempty(ProviderProtocol.Text(item, "albumId", "albumID"),
                 ProviderProtocol.Text(ProviderProtocol.First(
@@ -393,15 +394,7 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
             .Where(static name => !string.IsNullOrWhiteSpace(name)));
         artist = FirstNonempty(artist,
             ProviderProtocol.Text(item, "singerName", "artist"));
-        string art = "";
-        foreach (JsonElement image in ProviderProtocol.Array(
-            ProviderProtocol.Get(item, "imgItems")))
-        {
-            string url = ProviderProtocol.Text(image, "img");
-            if (url.Length == 0) continue;
-            art = url;
-            if (ProviderProtocol.Text(image, "imgSizeType") == "03") break;
-        }
+        string art = MiguCoverFromPayload(item) ?? "";
         int duration = ReadDurationMilliseconds(item);
         return new ProviderTrack(ExternalProvider.Migu, id,
             ProviderProtocol.Text(item, "name", "songName", "title"),
@@ -419,6 +412,29 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
                 ProviderProtocol.Text(item, "previewUrl", "auditionUrl")),
             StreamUrl: TrustedGuestUrl(
                 ProviderProtocol.Text(item, "listenUrl", "playUrl")));
+    }
+
+    // Migu search and resource-detail JSON differ in cover structure;
+    // prefer a real album image rather than a singer portrait.
+    private static string? MiguCoverFromPayload(JsonElement item)
+    {
+        string chosen = "";
+        foreach (JsonElement image in ProviderProtocol.Array(
+            ProviderProtocol.Get(item, "imgItems")))
+        {
+            string address = ProviderProtocol.Text(image, "img", "url");
+            if (address.Length == 0) continue;
+            chosen = address;
+            if (ProviderProtocol.Text(image, "imgSizeType") == "03") break;
+        }
+        JsonElement album = ProviderProtocol.First(ProviderProtocol.Get(item, "albums"));
+        if (album.ValueKind != JsonValueKind.Object)
+            album = ProviderProtocol.Get(item, "album");
+        chosen = FirstNonempty(chosen,
+            ProviderProtocol.Text(item, "img3", "img2", "img1",
+                "albumImg", "albumPic", "coverUrl", "picUrl"),
+            ProviderProtocol.Text(album, "img", "picUrl", "coverUrl"));
+        return chosen.Length > 0 ? chosen : null;
     }
 
     private static string? MiguSingerPage(JsonElement song)
