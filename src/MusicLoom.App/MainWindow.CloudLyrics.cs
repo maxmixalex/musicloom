@@ -576,12 +576,38 @@ public sealed partial class MainWindow
                         chosen = strict[0];
                     }
 
-                    if (chosen.CoverUrl is null)
+                    // Do not block each QQ auto-match on a second HTTP
+                    // album-image lookup. Most QQ search results already
+                    // carry an album MID; truly missing covers are hydrated
+                    // by the selected match card in the background.
+                    if (chosen.CoverUrl is null
+                        && source != CloudLyricsSource.QqMusic)
                     {
-                        string? artwork = await client.ResolveArtworkAsync(
-                            chosen, cancellation.Token);
-                        if (artwork is not null)
-                            chosen = chosen with { CoverUrl = artwork };
+                        using CancellationTokenSource coverBudget =
+                            CancellationTokenSource.CreateLinkedTokenSource(
+                                cancellation.Token);
+                        coverBudget.CancelAfter(TimeSpan.FromSeconds(4));
+                        try
+                        {
+                            string? artwork = await client.ResolveArtworkAsync(
+                                chosen, coverBudget.Token);
+                            if (artwork is not null)
+                                chosen = chosen with { CoverUrl = artwork };
+                        }
+                        catch (OperationCanceledException) when (
+                            cancellation.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+                        catch (Exception error) when (error is
+                            OperationCanceledException or HttpRequestException
+                            or InvalidDataException)
+                        {
+                            // A cover is optional; a successfully identified
+                            // song must never be lost to an image/CDN outage.
+                            AppDiagnostics.LogException(
+                                "Optional provider artwork lookup failed.", error);
+                        }
                     }
 
                     // Auto-matching records actual provider metadata,

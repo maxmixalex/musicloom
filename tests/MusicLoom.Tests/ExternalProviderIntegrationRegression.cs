@@ -98,6 +98,22 @@ internal static class ExternalProviderIntegrationRegression
             CoverUrl: CloudLyricsClient.NormalizeExternalArtwork(
                 track.ArtworkUrl, CloudLyricsSource.MiguMusic),
             AlbumId: track.AlbumId, ExternalUrl: track.ExternalUrl);
+        using JsonDocument alternate = JsonDocument.Parse("""
+        {"contentId":"1004665872","name":"Another Song",
+         "singerList":[{"id":116,"name":"Guest Artist"}],
+         "img3":"","img2":"/data/oss/another.webp",
+         "albums":[{"id":"600927015009001074","name":"Release"}]}
+        """);
+        ProviderTrack other = MiguProviderClient.ParseSong(
+            alternate.RootElement) ??
+            throw new InvalidOperationException("Missing alternate Migu song");
+        if (other.Artist != "Guest Artist"
+            || other.ArtworkUrl != "/data/oss/another.webp"
+            || other.ExternalUrl !=
+                "https://music.migu.cn/v5/#/singerDetail?id=116")
+            throw new InvalidOperationException(
+                "Migu singerList / empty img3 masked valid img2 cover.");
+
         if (candidate.CoverUrl !=
                 "https://d.musicapp.migu.cn/data/oss/resource/00/2u/example.webp"
             || CloudLyricsSourceNames.AlbumPage(candidate) is null

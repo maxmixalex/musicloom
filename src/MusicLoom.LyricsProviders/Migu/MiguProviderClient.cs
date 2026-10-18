@@ -388,9 +388,11 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
             ProviderProtocol.Text(item, "albumName", "album"));
         albumId = FirstNonempty(albumId,
             ProviderProtocol.Text(item, "albumId", "albumID"));
-        string artist = string.Join("/", ProviderProtocol.Array(
-            ProviderProtocol.Get(item, "singers"))
-            .Select(static s => ProviderProtocol.Text(s, "name"))
+        JsonElement singers = ProviderProtocol.Get(item, "singers");
+        if (singers.ValueKind != JsonValueKind.Array)
+            singers = ProviderProtocol.Get(item, "singerList");
+        string artist = string.Join("/", ProviderProtocol.Array(singers)
+            .Select(static s => ProviderProtocol.Text(s, "name", "singerName"))
             .Where(static name => !string.IsNullOrWhiteSpace(name)));
         artist = FirstNonempty(artist,
             ProviderProtocol.Text(item, "singerName", "artist"));
@@ -431,9 +433,16 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         if (album.ValueKind != JsonValueKind.Object)
             album = ProviderProtocol.Get(item, "album");
         chosen = FirstNonempty(chosen,
-            ProviderProtocol.Text(item, "img3", "img2", "img1",
-                "albumImg", "albumPic", "coverUrl", "picUrl"),
-            ProviderProtocol.Text(album, "img", "picUrl", "coverUrl"));
+            ProviderProtocol.Text(item, "img3"),
+            ProviderProtocol.Text(item, "img2"),
+            ProviderProtocol.Text(item, "img1"),
+            ProviderProtocol.Text(item, "albumImg"),
+            ProviderProtocol.Text(item, "albumPic"),
+            ProviderProtocol.Text(item, "coverUrl"),
+            ProviderProtocol.Text(item, "picUrl"),
+            ProviderProtocol.Text(album, "img"),
+            ProviderProtocol.Text(album, "picUrl"),
+            ProviderProtocol.Text(album, "coverUrl"));
         return chosen.Length > 0 ? chosen : null;
     }
 
