@@ -2,6 +2,7 @@ using MusicLoom.Core.Configuration;
 using MusicLoom.Core.Scanning;
 using MusicLoom.Core.State;
 using MusicLoom.Core.Synchronization;
+using MusicLoom.LyricsProviders;
 
 namespace MusicLoom.App;
 
@@ -19,7 +20,9 @@ internal static class LibraryMatchStatusResolver
     public static IReadOnlyDictionary<string, LibraryMatchRowState> Reconcile(
         IEnumerable<PlanEntry> entries,
         StateDocument state,
-        MusicLoomSettings settings)
+        MusicLoomSettings settings,
+        IReadOnlyDictionary<string,
+            Dictionary<CloudLyricsSource, StoredProviderMatch>>? providerMatches = null)
     {
         ArgumentNullException.ThrowIfNull(entries);
         ArgumentNullException.ThrowIfNull(state);
@@ -36,13 +39,19 @@ internal static class LibraryMatchStatusResolver
         return reconciled.Entries.ToDictionary(
             static entry => entry.SourcePath,
             entry => new LibraryMatchRowState(
-                entry, GetKind(entry, state)),
+                entry, GetKind(entry, state,
+                    providerMatches is not null
+                        && providerMatches.TryGetValue(entry.SourcePath,
+                            out var sourceMatches)
+                            ? sourceMatches : null)),
             StringComparer.OrdinalIgnoreCase);
     }
 
     public static string GetKind(
         PlanEntry entry,
-        StateDocument? state)
+        StateDocument? state,
+        IReadOnlyDictionary<CloudLyricsSource, StoredProviderMatch>?
+            providerMatches = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
         if (entry.Status == PlanEntryStatus.Error)
@@ -57,6 +66,9 @@ internal static class LibraryMatchStatusResolver
         {
             return "warning";
         }
+
+        if (ProviderMatchReviewPolicy.AnyNeedsReview(entry, providerMatches))
+            return "warning";
 
         return entry.Status == PlanEntryStatus.Unchanged
             ? "synced"

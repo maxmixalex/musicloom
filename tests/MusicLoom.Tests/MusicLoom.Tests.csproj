@@ -26,6 +26,8 @@
              Link="AppPersistence/UserFacingErrors.cs" />
     <Compile Include="../../src/MusicLoom.App/LibraryMatchStatusResolver.cs"
              Link="AppPresentation/LibraryMatchStatusResolver.cs" />
+    <Compile Include="../../src/MusicLoom.App/ProviderMatchReviewPolicy.cs"
+             Link="AppPresentation/ProviderMatchReviewPolicy.cs" />
     <Compile Include="../../src/MusicLoom.App/ProviderMetadataSearchPrefetch.cs"
              Link="AppPresentation/ProviderMetadataSearchPrefetch.cs" />
     <Compile Include="../../src/MusicLoom.App/BoundedMatchWorkQueue.cs"

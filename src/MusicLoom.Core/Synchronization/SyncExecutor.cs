@@ -979,45 +979,41 @@ public sealed class SyncExecutor
             return null;
         }
 
-        string? recordedTitle =
-            entry.Metadata.Title;
-        string? recordedArtist =
-            entry.Metadata.AlbumArtist
-            ?? entry.Metadata.Artist;
-
-        bool titleMismatch =
-            HasComparableValue(
-                recordedTitle)
-            && HasComparableValue(
-                state.NeteaseTrackName)
-            && !MetadataValuesEqual(
-                recordedTitle!,
-                state.NeteaseTrackName!);
-
-        bool artistMismatch =
-            HasComparableValue(
-                recordedArtist)
-            && HasComparableValue(
-                state.NeteaseTrackArtist)
-            && !ArtistsCompatible(
-                recordedArtist!,
-                state.NeteaseTrackArtist!);
-
-        if (!titleMismatch
-            && !artistMismatch)
-        {
-            return null;
-        }
-
-        return new TrackSyncWarning(
+        return DetectMetadataWarning(
             entry.SourcePath,
-            recordedTitle,
+            entry.Metadata.Title,
+            entry.Metadata.AlbumArtist ?? entry.Metadata.Artist,
             state.NeteaseTrackName,
-            recordedArtist,
-            state.NeteaseTrackArtist,
-            titleMismatch,
-            artistMismatch);
+            state.NeteaseTrackArtist);
     }
+
+    /// <summary>
+    /// Shared metadata review rule, used by the original NetEase warning
+    /// path and the additional QQ/KuGou/Migu adapters. Normalize Unicode,
+    /// traditional/simplified Chinese and multi-artist credit subsets once.
+    /// The caller separately enforces its provider's confirmation flag.
+    /// </summary>
+    public static TrackSyncWarning? DetectMetadataWarning(
+        string sourcePath, string? recordedTitle, string? recordedArtist,
+        string? matchedTitle, string? matchedArtist)
+    {
+        bool titleMismatch = HasComparableValue(recordedTitle)
+            && HasComparableValue(matchedTitle)
+            && !MetadataValuesEqual(recordedTitle!, matchedTitle!);
+
+        bool artistMismatch = HasComparableValue(recordedArtist)
+            && HasComparableValue(matchedArtist)
+            && !ArtistsCompatible(recordedArtist!, matchedArtist!);
+
+        return titleMismatch || artistMismatch
+            ? new TrackSyncWarning(sourcePath, recordedTitle, matchedTitle,
+                recordedArtist, matchedArtist, titleMismatch, artistMismatch)
+            : null;
+    }
+
+    public static bool MetadataValuesEquivalent(string? left, string? right) =>
+        HasComparableValue(left) && HasComparableValue(right)
+        && MetadataValuesEqual(left!, right!);
 
     private static bool HasComparableValue(
         string? value) =>

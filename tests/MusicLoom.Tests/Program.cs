@@ -35,6 +35,8 @@ List<(string Name, Action Test)> tests =
     ("QQ metadata search prefetch deduplicates requests and bounds concurrency", ProviderMetadataSearchPrefetchRegression.Run),
     ("Four-source recognition respects concurrency and commits in order", BoundedMatchWorkQueueRegression.Run),
     ("Match confirmation and clearing immediately reconcile row status", MatchActionStatusRegression.Run),
+    ("All providers share review/warning semantics without changing confirmed flags",
+        ProviderMatchReviewPolicyRegression.Run),
     ("Clipboard busy errors use bounded asynchronous retries", ClipboardAccessRetryRegression.Run),
     ("Library layout keeps legacy artist/album behavior", Layout),
     ("M3U parser ignores extended-M3U comments", PlaylistParsing),
