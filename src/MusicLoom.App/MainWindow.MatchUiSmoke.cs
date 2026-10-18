@@ -143,6 +143,11 @@ public sealed partial class MainWindow
                 && LibrarySortDescendingHost.Visibility == Visibility.Visible,
                 "Library: sort direction updates actual vector icons");
             LibrarySortDirectionBox.SelectedIndex = 0;
+            Assert(AutoMatchKugouItem.Text is
+                    "KuGou Music (audio recognition, metadata fallback)"
+                    or "酷狗音乐（音频识曲，元数据回退）",
+                "KuGou batch menu correctly describes audio recognition "
+                + "followed by metadata fallback");
             Assert(MatchConcurrencyBox.Minimum == 1
                 && MatchConcurrencyBox.Maximum == 12
                 && MatchConcurrencyBox.Value >= 1

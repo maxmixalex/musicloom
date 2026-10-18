@@ -9943,7 +9943,8 @@ public sealed partial class MainWindow : Window
         AutoMatchQqItem.Text = L(
             "QQ Music (metadata search)", "QQ 音乐（元数据搜索）");
         AutoMatchKugouItem.Text = L(
-            "KuGou Music (metadata search)", "酷狗音乐（元数据搜索）");
+            "KuGou Music (audio recognition, metadata fallback)",
+            "酷狗音乐（音频识曲，元数据回退）");
         AutoMatchMiguItem.Text = L(
             "Migu Music (metadata search)", "咪咕音乐（元数据搜索）");
         SyncButtonText.Text =

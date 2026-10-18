@@ -364,7 +364,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        await RunAutomaticProviderMetadataMatchAsync(source);
+        await RunAutomaticProviderMatchAsync(source);
     }
 
     private static string CanonicalMatchKey(string? text) =>
@@ -471,7 +471,7 @@ public sealed partial class MainWindow
             false, strict.Length > 1);
     }
 
-    private async Task RunAutomaticProviderMetadataMatchAsync(
+    private async Task RunAutomaticProviderMatchAsync(
         CloudLyricsSource source)
     {
         if (_busy || _settings is null)
@@ -693,7 +693,7 @@ public sealed partial class MainWindow
                 {
                     failures++;
                     AppDiagnostics.LogException(
-                        $"Automatic {provider} metadata search failed for {item.Entry.SourcePath}.",
+                        $"Automatic {provider} matching failed for {item.Entry.SourcePath}.",
                         error);
                 }
             }
@@ -705,8 +705,10 @@ public sealed partial class MainWindow
         finally
         {
             _operationCancellation = null;
-            SetBusy(false,
-                L("Metadata search finished.", "元数据匹配已结束。"));
+            SetBusy(false, source == CloudLyricsSource.KugouMusic
+                ? L("KuGou recognition and metadata fallback finished.",
+                    "酷狗音频识曲及元数据回退已结束。")
+                : L("Metadata search finished.", "元数据匹配已结束。"));
         }
 
         InvalidateLibraryFacetSnapshot();
@@ -714,7 +716,9 @@ public sealed partial class MainWindow
         ShowInfo(
             failures > 0 ? InfoBarSeverity.Warning
                          : InfoBarSeverity.Informational,
-            L($"{provider} metadata matching", $"{provider} 元数据匹配"),
+            source == CloudLyricsSource.KugouMusic
+                ? L("KuGou audio matching", "酷狗音频识曲")
+                : L($"{provider} metadata matching", $"{provider} 元数据匹配"),
             L(
                 $"{updated} matches ({recognized} by audio); {ambiguous} ambiguous results skipped; {failures} errors.",
                 $"匹配成功 {updated} 首（音频识曲 {recognized} 首），跳过歧义结果 {ambiguous} 个，错误 {failures} 个。"));

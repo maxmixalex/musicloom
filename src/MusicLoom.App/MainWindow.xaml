@@ -100,7 +100,7 @@
                                     Text="QQ Music (metadata)"
                                     Click="AutoMatchQqItem_Click" />
                     <MenuFlyoutItem x:Name="AutoMatchKugouItem"
-                                    Text="KuGou Music (metadata)"
+                                    Text="KuGou Music (audio recognition, metadata fallback)"
                                     Click="AutoMatchKugouItem_Click" />
                     <MenuFlyoutItem x:Name="AutoMatchMiguItem"
                                     Text="Migu Music (metadata)"
