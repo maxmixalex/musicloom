@@ -1492,6 +1492,34 @@
               </StackPanel>
 
               <StackPanel Spacing="10">
+                <TextBlock x:Name="MatchSettingsHeadingText" Text="Automatic matching"
+                           FontSize="18" FontWeight="SemiBold"/>
+                <Border Padding="18" CornerRadius="10"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                  <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="280"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                      <TextBlock x:Name="MatchConcurrencyTitle" Text="Concurrent matching tasks"
+                                 FontWeight="SemiBold"/>
+                      <TextBlock x:Name="MatchConcurrencyDescription"
+                                 Text="Shared across NetEase, QQ, KuGou and Migu. Changes apply to the next match run."
+                                 TextWrapping="WrapWholeWords"
+                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+                    <NumberBox x:Name="MatchConcurrencyBox" Grid.Column="1"
+                               HorizontalAlignment="Stretch"
+                               Minimum="1" Maximum="12" Value="4"
+                               SmallChange="1" LargeChange="2"
+                               SpinButtonPlacementMode="Compact"
+                               ValueChanged="MatchConcurrencyBox_ValueChanged"/>
+                  </Grid>
+                </Border>
+              </StackPanel>
+
+              <StackPanel Spacing="10">
                 <TextBlock x:Name="LyricsSettingsHeadingText" Text="Lyrics" FontSize="18" FontWeight="SemiBold" />
 
                 <Border Padding="18" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">

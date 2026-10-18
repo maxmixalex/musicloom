@@ -8708,6 +8708,10 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void MatchConcurrencyBox_ValueChanged(
+        NumberBox sender, NumberBoxValueChangedEventArgs args) =>
+        ScheduleSettingsSave();
+
     private void LyricsRefreshHoursBox_ValueChanged(
         NumberBox sender,
         NumberBoxValueChangedEventArgs args) =>
@@ -8910,6 +8914,13 @@ public sealed partial class MainWindow : Window
                             .Text.Trim(),
                 AutoScanOnStartup = AutoScanOnStartupToggle.IsOn,
             },
+            Matching = new MatchingSettings
+            {
+                MaxConcurrency = MatchingSettings.Normalize(
+                    double.IsFinite(MatchConcurrencyBox.Value)
+                        ? (int)Math.Round(MatchConcurrencyBox.Value)
+                        : MatchingSettings.DefaultConcurrency),
+            },
             Organizer =
                 new OrganizerSettings
                 {
@@ -8983,6 +8994,8 @@ public sealed partial class MainWindow : Window
                     .DestinationPlaylistBase;
             AutoScanOnStartupToggle.IsOn =
                 settings.Path.AutoScanOnStartup;
+            MatchConcurrencyBox.Value = MatchingSettings.Normalize(
+                settings.Matching.MaxConcurrency);
             LyricsOverrideToggle.IsOn =
                 settings.Organizer.Lyrics
                     .OverrideExisting;
@@ -10139,6 +10152,13 @@ public sealed partial class MainWindow : Window
             L(
                 "Library",
                 "音乐库");
+        MatchSettingsHeadingText.Text = L(
+            "Automatic matching", "自动匹配");
+        MatchConcurrencyTitle.Text = L(
+            "Concurrent matching tasks", "自动匹配并发数");
+        MatchConcurrencyDescription.Text = L(
+            "Shared across NetEase, QQ, KuGou and Migu. Changes apply to the next match run.",
+            "网易云、QQ、酷狗和咪咕共用；下次自动匹配开始时生效。");
         LyricsSettingsHeadingText.Text =
             L(
                 "Lyrics",

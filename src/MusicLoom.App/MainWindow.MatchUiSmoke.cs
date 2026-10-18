@@ -143,6 +143,14 @@ public sealed partial class MainWindow
                 && LibrarySortDescendingHost.Visibility == Visibility.Visible,
                 "Library: sort direction updates actual vector icons");
             LibrarySortDirectionBox.SelectedIndex = 0;
+            Assert(MatchConcurrencyBox.Minimum == 1
+                && MatchConcurrencyBox.Maximum == 12
+                && MatchConcurrencyBox.Value >= 1
+                && MatchConcurrencyTitle is not null
+                && new MusicLoom.Core.Configuration.MatchingSettings()
+                    .MaxConcurrency == 4,
+                "Settings: bounded editable automatic matching concurrency "
+                + "is shared by all four providers");
             Assert(LyricsRomanizationToggle is not null
                 && !new MusicLoom.Core.Configuration.LyricsSettings()
                     .IncludeRomanization,

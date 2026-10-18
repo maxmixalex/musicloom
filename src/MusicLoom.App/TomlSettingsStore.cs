@@ -89,6 +89,12 @@ internal static class TomlSettingsStore
                                 .DestinationPlaylistBase
                             : destinationPlaylistBase,
                 },
+            Matching = new MatchingSettings
+                {
+                    MaxConcurrency = MatchingSettings.Normalize(
+                        ReadInteger(values, "matching.max_concurrency",
+                            defaults.Matching.MaxConcurrency)),
+                },
             Organizer =
                 new OrganizerSettings
                 {
@@ -233,6 +239,12 @@ internal static class TomlSettingsStore
         builder.Append("auto_scan_on_startup = ")
             .AppendLine(Bool(settings.Path.AutoScanOnStartup));
 
+        builder.AppendLine();
+        builder.AppendLine("[matching]");
+        builder.Append("max_concurrency = ")
+            .AppendLine(MatchingSettings.Normalize(
+                settings.Matching.MaxConcurrency).ToString(
+                    CultureInfo.InvariantCulture));
         builder.AppendLine();
         builder.AppendLine("[organizer.lyrics]");
         builder.Append("override_existing = ")
@@ -541,6 +553,15 @@ internal static class TomlSettingsStore
             out bool value)
                 ? value
                 : fallback;
+
+    private static int ReadInteger(
+        IReadOnlyDictionary<string, string> values, string key, int fallback)
+    {
+        string? text = ReadNullableString(values, key);
+        return int.TryParse(text, NumberStyles.Integer,
+            CultureInfo.InvariantCulture, out int result)
+                ? result : fallback;
+    }
 
     private static double ReadDouble(
         IReadOnlyDictionary<string, string> values,
