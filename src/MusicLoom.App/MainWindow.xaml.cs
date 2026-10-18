@@ -17,6 +17,7 @@ using MusicLoom.Core.State;
 using MusicLoom.Core.Synchronization;
 using MusicLoom.Metadata;
 using MusicLoom.Netease;
+using MusicLoom.LyricsProviders;
 using MusicLoom.Tagging;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Media.Core;

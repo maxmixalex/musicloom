@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using MusicLoom.Core.Lyrics;
+using MusicLoom.Core.Scanning;
 using MusicLoom.Core.State;
 using MusicLoom.Core.Synchronization;
 using MusicLoom.LyricsProviders;
