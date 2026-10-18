@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using MusicLoom.Audio.Windows;
 using MusicLoom.Core.Lyrics;
+using MusicLoom.Core.Configuration;
 using MusicLoom.LyricsProviders;
 using MusicLoom.Metadata;
 using Windows.Media.Core;
