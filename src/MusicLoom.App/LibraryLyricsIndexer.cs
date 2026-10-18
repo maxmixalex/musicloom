@@ -202,7 +202,8 @@ internal sealed class LibraryLyricsIndexer
             && current is
             {
                 Origin: LibraryLyricsOrigin.AutoQq
-                    or LibraryLyricsOrigin.AutoKugou,
+                    or LibraryLyricsOrigin.AutoKugou
+                    or LibraryLyricsOrigin.AutoMigu,
                 HasLyrics: true,
             })
         {

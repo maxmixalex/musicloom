@@ -57,6 +57,7 @@ public enum LibraryLyricsOrigin
     // Append these values: existing SQLite origin integers are stable.
     AutoQq,
     AutoKugou,
+    AutoMigu,
 }
 
 public sealed record LibraryLyricsRecord(

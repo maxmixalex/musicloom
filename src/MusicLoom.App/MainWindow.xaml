@@ -102,6 +102,9 @@
                     <MenuFlyoutItem x:Name="AutoMatchKugouItem"
                                     Text="KuGou Music (metadata)"
                                     Click="AutoMatchKugouItem_Click" />
+                    <MenuFlyoutItem x:Name="AutoMatchMiguItem"
+                                    Text="Migu Music (metadata)"
+                                    Click="AutoMatchMiguItem_Click" />
                   </MenuFlyout>
                 </DropDownButton.Flyout>
               </DropDownButton>

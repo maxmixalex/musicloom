@@ -343,6 +343,10 @@ public sealed partial class MainWindow
         object sender, RoutedEventArgs e) => await RunAutomaticMatchFromMenuAsync(
             CloudLyricsSource.KugouMusic, netease: false);
 
+    private async void AutoMatchMiguItem_Click(
+        object sender, RoutedEventArgs e) => await RunAutomaticMatchFromMenuAsync(
+            CloudLyricsSource.MiguMusic, netease: false);
+
     private async Task RunAutomaticMatchFromMenuAsync(
         CloudLyricsSource source, bool netease)
     {
@@ -392,8 +396,13 @@ public sealed partial class MainWindow
             return;
         }
 
-        string provider = source == CloudLyricsSource.QqMusic
-            ? "QQ Music" : "KuGou Music";
+        string provider = source switch
+        {
+            CloudLyricsSource.QqMusic => "QQ Music",
+            CloudLyricsSource.KugouMusic => "KuGou Music",
+            CloudLyricsSource.MiguMusic => "Migu Music",
+            _ => throw new ArgumentOutOfRangeException(nameof(source)),
+        };
         LibraryDisplayItem[] snapshot = _allLibraryItems.ToArray();
 
         using CancellationTokenSource cancellation = new();
@@ -401,7 +410,10 @@ public sealed partial class MainWindow
         SetBusy(true, source == CloudLyricsSource.KugouMusic
             ? L("Recognizing KuGou audio, with metadata fallback…",
                 "正在使用酷狗音频识曲，必要时回退元数据……")
-            : L("Searching QQ Music by metadata…", "正在按元数据搜索QQ音乐……"));
+            : source == CloudLyricsSource.MiguMusic
+                ? L("Searching Migu Music by metadata…",
+                    "正在按元数据搜索咪咕音乐……")
+                : L("Searching QQ Music by metadata…", "正在按元数据搜索QQ音乐……"));
 
         int updated = 0, recognized = 0, ambiguous = 0, failures = 0;
         try
@@ -425,8 +437,11 @@ public sealed partial class MainWindow
                     source == CloudLyricsSource.KugouMusic
                         ? L($"KuGou audio/fallback {i+1:N0}/{snapshot.Length:N0} · {item.Title}",
                             $"酷狗识曲/元数据回退 {i+1:N0}/{snapshot.Length:N0} · {item.Title}")
-                        : L($"QQ Music metadata {i+1:N0}/{snapshot.Length:N0} · {item.Title}",
-                            $"QQ音乐元数据匹配 {i+1:N0}/{snapshot.Length:N0} · {item.Title}"));
+                        : source == CloudLyricsSource.MiguMusic
+                            ? L($"Migu Music metadata {i+1:N0}/{snapshot.Length:N0} · {item.Title}",
+                                $"咪咕音乐元数据匹配 {i+1:N0}/{snapshot.Length:N0} · {item.Title}")
+                            : L($"QQ Music metadata {i+1:N0}/{snapshot.Length:N0} · {item.Title}",
+                                $"QQ音乐元数据匹配 {i+1:N0}/{snapshot.Length:N0} · {item.Title}"));
 
                 try
                 {
@@ -527,6 +542,14 @@ public sealed partial class MainWindow
                         chosen = strict[0];
                     }
 
+                    if (chosen.CoverUrl is null)
+                    {
+                        string? artwork = await client.ResolveArtworkAsync(
+                            chosen, cancellation.Token);
+                        if (artwork is not null)
+                            chosen = chosen with { CoverUrl = artwork };
+                    }
+
                     // Auto-matching records actual provider metadata,
                     // even if the track has no downloadable lyrics.
                     await matchStore.SaveMatchAsync(
@@ -546,13 +569,17 @@ public sealed partial class MainWindow
                         {
                             await cache.SaveLibraryAsync(new LibraryLyricsRecord(
                                 item.Entry.SourcePath,
-                                source == CloudLyricsSource.QqMusic
-                                    ? LibraryLyricsOrigin.AutoQq
-                                    : LibraryLyricsOrigin.AutoKugou,
+                                source switch
+                                {
+                                    CloudLyricsSource.QqMusic => LibraryLyricsOrigin.AutoQq,
+                                    CloudLyricsSource.KugouMusic => LibraryLyricsOrigin.AutoKugou,
+                                    CloudLyricsSource.MiguMusic => LibraryLyricsOrigin.AutoMigu,
+                                    _ => LibraryLyricsOrigin.None,
+                                },
                                 lyrics.ToString(),
                                 null,
-                                (source == CloudLyricsSource.QqMusic
-                                    ? "auto-qq:" : "auto-kugou:") + chosen.Id,
+                                "auto-" + CloudLyricsSourceNames.Slug(source)
+                                    + ":" + chosen.Id,
                                 DateTimeOffset.UtcNow),
                                 cancellation.Token);
                             await QueueLyricOutputSyncAsync(item);
