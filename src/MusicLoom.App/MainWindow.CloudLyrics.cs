@@ -392,6 +392,84 @@ public sealed partial class MainWindow
                     && otherArtist.Contains(artist, StringComparison.Ordinal)));
     }
 
+    private sealed record CloudAutomaticLookup(
+        CloudLyricsCandidate? Match, bool Recognized, bool Ambiguous);
+
+    // KuGou's PCM fingerprinting may be costly and involve multiple HTTP
+    // requests. Each worker owns decoder, recognizer and HTTP client.
+    // Nothing here changes UI, canonical lyrics or persisted match records.
+    private async Task<CloudAutomaticLookup> LookUpKugouAsync(
+        LibraryDisplayItem item, CancellationToken ct)
+    {
+        using CloudLyricsClient client = new();
+        CloudLyricsCandidate? chosen = null;
+        try
+        {
+            KugouPcmWindowDecoder decoder = new();
+            using KugouAudioRecognitionClient recognizer = new();
+            byte[]? pcm = await decoder.DecodeAsync(
+                item.Entry.SourcePath, ct);
+            if (pcm is { Length: > 0 })
+            {
+                IReadOnlyList<KugouRecognitionCandidate> identified =
+                    await recognizer.RecognizeAsync(pcm, ct);
+                foreach (KugouRecognitionCandidate hit
+                    in identified.OrderByDescending(
+                        static entry => entry.Confidence))
+                {
+                    if (string.IsNullOrWhiteSpace(hit.Title)
+                        || string.IsNullOrWhiteSpace(hit.Artist))
+                        continue;
+                    IReadOnlyList<CloudLyricsCandidate> results =
+                        await client.SearchAsync(CloudLyricsSource.KugouMusic,
+                            hit.Artist + " " + hit.Title, ct);
+                    CloudLyricsCandidate[] hashes = results.Where(candidate =>
+                        !string.IsNullOrWhiteSpace(hit.AudioHash)
+                        && string.Equals(candidate.Hash,
+                            hit.AudioHash, StringComparison.OrdinalIgnoreCase))
+                        .ToArray();
+                    CloudLyricsCandidate[] exact = hashes.Length > 0
+                        ? hashes
+                        : results.Where(candidate =>
+                            CanonicalMatchKey(candidate.Title)
+                                == CanonicalMatchKey(hit.Title)
+                            && CanonicalMatchKey(candidate.Artist)
+                                == CanonicalMatchKey(hit.Artist))
+                            .ToArray();
+                    if (exact.Length == 1)
+                    {
+                        chosen = exact[0];
+                        break;
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception error)
+        {
+            AppDiagnostics.LogException(
+                "KuGou fingerprint unavailable; using metadata fallback.",
+                error);
+        }
+
+        if (chosen is not null)
+            return new CloudAutomaticLookup(chosen, true, false);
+        if (string.IsNullOrWhiteSpace(item.Title)
+            || string.IsNullOrWhiteSpace(item.Artist))
+            return new CloudAutomaticLookup(null, false, false);
+        IReadOnlyList<CloudLyricsCandidate> found =
+            await client.SearchAsync(CloudLyricsSource.KugouMusic,
+                item.Artist + " " + item.Title, ct);
+        CloudLyricsCandidate[] strict = found.Where(candidate =>
+            ExactProviderMetadataMatch(item, candidate)).ToArray();
+        return new CloudAutomaticLookup(
+            strict.Length == 1 ? strict[0] : null,
+            false, strict.Length > 1);
+    }
+
     private async Task RunAutomaticProviderMetadataMatchAsync(
         CloudLyricsSource source)
     {
@@ -429,37 +507,43 @@ public sealed partial class MainWindow
             // large library. Explicit no-match records still take priority.
             var knownMatches = await matchStore.LoadSnapshotAsync(cancellation.Token);
             var knownLyrics = await cache.LoadLibrarySnapshotAsync(cancellation.Token);
-            using KugouAudioRecognitionClient kugouRecognizer = new();
-            KugouPcmWindowDecoder pcmDecoder = new();
-            await using ProviderMetadataSearchPrefetch? qqPrefetch =
-                source == CloudLyricsSource.QqMusic
+            int concurrency = MatchingSettings.Normalize(
+                _settings.Matching.MaxConcurrency);
+            await using ProviderMetadataSearchPrefetch? metadataPrefetch =
+                source is CloudLyricsSource.QqMusic or CloudLyricsSource.MiguMusic
                     ? new((query, token) =>
                         client.SearchAsync(source, query, token),
-                        cancellation.Token, maxConcurrency: 4)
+                        cancellation.Token, maxConcurrency: concurrency)
+                    : null;
+            await using BoundedMatchWorkQueue<CloudAutomaticLookup>? kugouWork =
+                source == CloudLyricsSource.KugouMusic
+                    ? new((position, token) =>
+                        LookUpKugouAsync(snapshot[position], token),
+                        cancellation.Token, concurrency)
                     : null;
 
             for (int i = 0; i < snapshot.Length; i++)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
                 LibraryDisplayItem item = snapshot[i];
-                if (qqPrefetch is not null)
+                for (int ahead = i;
+                     ahead < Math.Min(snapshot.Length, i + concurrency * 2);
+                     ahead++)
                 {
-                    for (int ahead = i;
-                         ahead < Math.Min(snapshot.Length, i + 12); ahead++)
-                    {
-                        LibraryDisplayItem next = snapshot[ahead];
-                        if (string.IsNullOrWhiteSpace(next.Title)
-                            || string.IsNullOrWhiteSpace(next.Artist))
-                            continue;
-                        if (knownMatches.TryGetValue(next.Entry.SourcePath,
-                                out var existingSources)
-                            && existingSources.TryGetValue(source,
-                                out StoredProviderMatch? existing)
-                            && (existing.Suppressed || existing.IsMatched))
-                            continue;
-                        _ = qqPrefetch.Prefetch(ProviderSearchKey(next),
+                    LibraryDisplayItem next = snapshot[ahead];
+                    if (knownMatches.TryGetValue(next.Entry.SourcePath,
+                            out var existingSources)
+                        && existingSources.TryGetValue(source,
+                            out StoredProviderMatch? existing)
+                        && (existing.Suppressed || existing.IsMatched))
+                        continue;
+                    if (kugouWork is not null)
+                        kugouWork.Prefetch(ahead);
+                    else if (metadataPrefetch is not null
+                        && !string.IsNullOrWhiteSpace(next.Title)
+                        && !string.IsNullOrWhiteSpace(next.Artist))
+                        _ = metadataPrefetch.Prefetch(ProviderSearchKey(next),
                             next.Artist + " " + next.Title);
-                    }
                 }
                 SetProgress(i, snapshot.Length);
                 SetOperationStatus(
@@ -488,82 +572,25 @@ public sealed partial class MainWindow
                     knownLyrics.TryGetValue(
                         item.Entry.SourcePath, out LibraryLyricsRecord? canonical);
 
-                    CloudLyricsCandidate? chosen = null;
-                    if (source == CloudLyricsSource.KugouMusic)
+                    CloudLyricsCandidate? chosen;
+                    if (kugouWork is not null)
                     {
-                        try
-                        {
-                            byte[]? pcm = await pcmDecoder.DecodeAsync(
-                                item.Entry.SourcePath, cancellation.Token);
-                            if (pcm is { Length: > 0 })
-                            {
-                                var identified = await kugouRecognizer
-                                    .RecognizeAsync(pcm, cancellation.Token);
-                                foreach (KugouRecognitionCandidate recognizedSong
-                                    in identified.OrderByDescending(
-                                        static candidate => candidate.Confidence))
-                                {
-                                    if (string.IsNullOrWhiteSpace(recognizedSong.Title)
-                                        || string.IsNullOrWhiteSpace(recognizedSong.Artist))
-                                        continue;
-                                    var search = await client.SearchAsync(source,
-                                        recognizedSong.Artist + " " + recognizedSong.Title,
-                                        cancellation.Token);
-                                    // A matching provider file hash is preferred to
-                                    // metadata; otherwise require a unique exact
-                                    // recognized title+artist combination.
-                                    CloudLyricsCandidate[] hashMatches = search
-                                        .Where(candidate =>
-                                            !string.IsNullOrWhiteSpace(recognizedSong.AudioHash)
-                                            && string.Equals(candidate.Hash,
-                                                recognizedSong.AudioHash,
-                                                StringComparison.OrdinalIgnoreCase))
-                                        .ToArray();
-                                    CloudLyricsCandidate[] strictAudio = hashMatches.Length > 0
-                                        ? hashMatches
-                                        : search.Where(candidate =>
-                                            CanonicalMatchKey(candidate.Title)
-                                                == CanonicalMatchKey(recognizedSong.Title)
-                                            && CanonicalMatchKey(candidate.Artist)
-                                                == CanonicalMatchKey(recognizedSong.Artist))
-                                            .ToArray();
-                                    if (strictAudio.Length == 1)
-                                    {
-                                        chosen = strictAudio[0];
-                                        recognized++;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            throw;
-                        }
-                        catch (Exception error)
-                        {
-                            // Unavailable recognition must not prevent
-                            // the explicitly requested metadata fallback.
-                            AppDiagnostics.LogException(
-                                "KuGou audio recognition failed; using metadata fallback.",
-                                error);
-                        }
+                        CloudAutomaticLookup lookup =
+                            await kugouWork.TakeAsync(i);
+                        chosen = lookup.Match;
+                        if (lookup.Recognized) recognized++;
+                        if (lookup.Ambiguous) ambiguous++;
+                        if (chosen is null) continue;
                     }
-
-                    if (chosen is null)
+                    else
                     {
                         if (string.IsNullOrWhiteSpace(item.Title)
                             || string.IsNullOrWhiteSpace(item.Artist))
                             continue;
-
                         IReadOnlyList<CloudLyricsCandidate> found =
-                            qqPrefetch is not null
-                                ? await qqPrefetch.GetAsync(
-                                    ProviderSearchKey(item),
-                                    item.Artist + " " + item.Title)
-                                : await client.SearchAsync(source,
-                                    item.Artist + " " + item.Title,
-                                    cancellation.Token);
+                            await metadataPrefetch!.GetAsync(
+                                ProviderSearchKey(item),
+                                item.Artist + " " + item.Title);
                         CloudLyricsCandidate[] strict = found
                             .Where(candidate =>
                                 ExactProviderMetadataMatch(item, candidate))
@@ -619,8 +646,12 @@ public sealed partial class MainWindow
 
                     // The lyrics are independent: preserve source-embedded,
                     // sidecar and user-edited canonical documents.
-                    if (canonical?.HasLyrics != true
-                        && canonical?.Origin != LibraryLyricsOrigin.ManualEmpty)
+                    if (canonical is null
+                        || (!canonical.HasLyrics
+                            && canonical.Origin is not (
+                                LibraryLyricsOrigin.ManualEdited
+                                or LibraryLyricsOrigin.ManualNetease
+                                or LibraryLyricsOrigin.ManualEmpty)))
                     {
                         LrcDocument? lyrics =
                             await client.GetLyricsAsync(chosen,
