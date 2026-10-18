@@ -21,8 +21,7 @@ public sealed partial class CloudLyricsPanel
         CancelArtworkLoad();
         if (rows.All(static row => row.Artwork is not null
             && (row.Candidate.Source != CloudLyricsSource.MiguMusic
-                || (row.Candidate.DurationMilliseconds > 0
-                    && CloudLyricsSourceNames.SongPage(row.Candidate) is not null))))
+                || row.Candidate.DurationMilliseconds > 0))
             return;
 
         _artworkLoadCancellation = new CancellationTokenSource();
@@ -40,8 +39,7 @@ public sealed partial class CloudLyricsPanel
         var groups = rows
             .Where(static row => row.Artwork is null
                 || (row.Candidate.Source == CloudLyricsSource.MiguMusic
-                    && (row.Candidate.DurationMilliseconds <= 0
-                        || CloudLyricsSourceNames.SongPage(row.Candidate) is null)))
+                    && row.Candidate.DurationMilliseconds <= 0))
             .GroupBy(static row =>
                 row.Candidate.Source == CloudLyricsSource.MiguMusic
                     ? "migu-track:" + row.Candidate.Id

@@ -11,6 +11,8 @@ namespace MusicLoom.App;
 public sealed partial class MainWindow
 {
     private int _providerMatchLoadVersion;
+    private readonly HashSet<string> _pendingProviderArtwork =
+        new(StringComparer.OrdinalIgnoreCase);
     private StoredProviderMatch? _visibleQqMatch;
     private StoredProviderMatch? _visibleKugouMatch;
     private StoredProviderMatch? _visibleMiguMatch;
@@ -56,6 +58,9 @@ public sealed partial class MainWindow
             _visibleKugouMatch = kugou;
             _visibleMiguMatch = migu;
             RenderCloudMatchPanels();
+            _ = RestoreMissingCloudArtworkAsync(item, qq);
+            _ = RestoreMissingCloudArtworkAsync(item, kugou);
+            _ = RestoreMissingCloudArtworkAsync(item, migu);
         }
         catch (Exception exception)
         {
@@ -69,6 +74,91 @@ public sealed partial class MainWindow
                 RenderCloudMatchPanels();
             }
         }
+    }
+
+    private async Task RestoreMissingCloudArtworkAsync(
+        LibraryDisplayItem item, StoredProviderMatch? stored)
+    {
+        if (stored?.Candidate is not CloudLyricsCandidate candidate
+            || stored.Suppressed
+            || !string.IsNullOrWhiteSpace(candidate.CoverUrl))
+            return;
+        string requestKey = item.Entry.SourcePath + "\u001F"
+            + (int)candidate.Source + "\u001F" + candidate.Id;
+        if (!_pendingProviderArtwork.Add(requestKey)) return;
+        try
+        {
+            using CloudLyricsClient client = new();
+            string? artwork = await client.ResolveArtworkAsync(candidate);
+            if (artwork is null && candidate.Source == CloudLyricsSource.MiguMusic)
+            {
+                CloudLyricsCandidate enriched =
+                    await client.EnrichMiguCandidateAsync(candidate);
+                artwork = await client.ResolveArtworkAsync(enriched);
+            }
+            if (artwork is null && (candidate.Source is
+                CloudLyricsSource.QqMusic or CloudLyricsSource.KugouMusic)
+                && !string.IsNullOrWhiteSpace(candidate.Title))
+            {
+                // Older saved rows may have no album MID or album ID.
+                // Match the *same provider song identifier*, not merely
+                // a similarly titled release or a local library image.
+                IReadOnlyList<CloudLyricsCandidate> results =
+                    await client.SearchAsync(candidate.Source,
+                        candidate.Artist + " " + candidate.Title);
+                CloudLyricsCandidate? same = results.FirstOrDefault(found =>
+                    candidate.Source == CloudLyricsSource.QqMusic
+                        ? !string.IsNullOrWhiteSpace(candidate.SongMid)
+                          && string.Equals(found.SongMid, candidate.SongMid,
+                              StringComparison.Ordinal)
+                        : !string.IsNullOrWhiteSpace(candidate.Hash)
+                          && string.Equals(found.Hash, candidate.Hash,
+                              StringComparison.OrdinalIgnoreCase));
+                if (same is not null)
+                    artwork = same.CoverUrl
+                        ?? await client.ResolveArtworkAsync(same);
+            }
+            if (artwork is null) return;
+
+            SqliteProviderMatchStore store = new(DatabasePath);
+            if (!await store.FillMissingCoverAsync(item.Entry.SourcePath,
+                    candidate.Source, candidate.Id, artwork))
+                return;
+            if (!ReferenceEquals(_selectedLibraryItem, item)) return;
+            StoredProviderMatch? current = candidate.Source switch
+            {
+                CloudLyricsSource.QqMusic => _visibleQqMatch,
+                CloudLyricsSource.KugouMusic => _visibleKugouMatch,
+                CloudLyricsSource.MiguMusic => _visibleMiguMatch,
+                _ => null,
+            };
+            if (current?.Candidate is not CloudLyricsCandidate displayed
+                || current.Suppressed || displayed.Id != candidate.Id)
+                return;
+            StoredProviderMatch hydrated = current with
+            {
+                Candidate = displayed with { CoverUrl = artwork },
+            };
+            switch (candidate.Source)
+            {
+                case CloudLyricsSource.QqMusic:
+                    _visibleQqMatch = hydrated;
+                    break;
+                case CloudLyricsSource.KugouMusic:
+                    _visibleKugouMatch = hydrated;
+                    break;
+                case CloudLyricsSource.MiguMusic:
+                    _visibleMiguMatch = hydrated;
+                    break;
+            }
+            RenderCloudMatchPanels();
+        }
+        catch (Exception error)
+        {
+            AppDiagnostics.LogException(
+                "Could not recover selected provider album artwork.", error);
+        }
+        finally { _pendingProviderArtwork.Remove(requestKey); }
     }
 
     private async Task ConfirmCloudMatchAsync(CloudLyricsSource provider)
