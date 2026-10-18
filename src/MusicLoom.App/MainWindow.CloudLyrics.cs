@@ -457,7 +457,7 @@ public sealed partial class MainWindow
                                 out StoredProviderMatch? existing)
                             && (existing.Suppressed || existing.IsMatched))
                             continue;
-                        qqPrefetch.Prefetch(ProviderSearchKey(next),
+                        _ = qqPrefetch.Prefetch(ProviderSearchKey(next),
                             next.Artist + " " + next.Title);
                     }
                 }
