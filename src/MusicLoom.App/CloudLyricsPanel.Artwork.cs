@@ -30,7 +30,7 @@ public sealed partial class CloudLyricsPanel
             };
         if (rows.All(static row => row.Artwork is not null
             && (row.Candidate.Source != CloudLyricsSource.MiguMusic
-                || row.Candidate.DurationMilliseconds > 0))
+                || row.Candidate.DurationMilliseconds > 0)))
             return;
 
         _ = LoadArtworkAsync(rows, _artworkLoadCancellation.Token);
