@@ -145,6 +145,10 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         {
             Title = FirstNonempty(ProviderProtocol.Text(item, "name", "title"), track.Title),
             Album = FirstNonempty(ProviderProtocol.Text(item, "album", "albumName"), track.Album),
+            AlbumId = FirstNonempty(ProviderProtocol.Text(item, "albumId", "albumID"),
+                ProviderProtocol.Text(ProviderProtocol.First(
+                    ProviderProtocol.Get(item, "albums")), "id"), track.AlbumId),
+            ExternalUrl = FirstNonempty(MiguSingerPage(item), track.ExternalUrl),
             SongId = FirstNonempty(ProviderProtocol.Text(item, "songId", "id"), track.SongId),
             DurationMilliseconds = FirstPositive(
                 ReadDurationMilliseconds(item), track.DurationMilliseconds),
@@ -381,6 +385,8 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
         }
         album = FirstNonempty(album,
             ProviderProtocol.Text(item, "albumName", "album"));
+        albumId = FirstNonempty(albumId,
+            ProviderProtocol.Text(item, "albumId", "albumID"));
         string artist = string.Join("/", ProviderProtocol.Array(
             ProviderProtocol.Get(item, "singers"))
             .Select(static s => ProviderProtocol.Text(s, "name"))
@@ -401,7 +407,7 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
             ProviderProtocol.Text(item, "name", "songName", "title"),
             artist, album,
             duration,
-            art, null,
+            art, MiguSingerPage(item),
             contentId.Length == 0 ? null : contentId,
             copyrightId.Length == 0 ? null : copyrightId,
             songId.Length == 0 ? null : songId,
@@ -413,6 +419,21 @@ public sealed class MiguProviderClient : IExternalMusicProvider, IDisposable
                 ProviderProtocol.Text(item, "previewUrl", "auditionUrl")),
             StreamUrl: TrustedGuestUrl(
                 ProviderProtocol.Text(item, "listenUrl", "playUrl")));
+    }
+
+    private static string? MiguSingerPage(JsonElement song)
+    {
+        JsonElement singer = ProviderProtocol.First(
+            ProviderProtocol.Get(song, "singers"));
+        if (singer.ValueKind != JsonValueKind.Object)
+            singer = ProviderProtocol.First(ProviderProtocol.Get(song, "singerList"));
+        string id = FirstNonempty(
+            ProviderProtocol.Text(singer, "id", "singerId"),
+            ProviderProtocol.Text(song, "singerId"));
+        return id.Length is > 0 and <= 32
+            && id.All(char.IsAsciiDigit)
+            && id.Any(static c => c != '0')
+            ? "https://music.migu.cn/v5/#/singerDetail?id=" + id : null;
     }
 
     private static int FirstPositive(int preferred, int fallback) =>

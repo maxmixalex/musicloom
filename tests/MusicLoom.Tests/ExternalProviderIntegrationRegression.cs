@@ -83,67 +83,53 @@ internal static class ExternalProviderIntegrationRegression
 
     private static void TestMiguSongPageLinks()
     {
-        CloudLyricsCandidate track = new(CloudLyricsSource.MiguMusic,
-            "content-123", "Title", "Singer", "Album", 0,
+        CloudLyricsCandidate song = new(CloudLyricsSource.MiguMusic,
+            "some-content", "歌曲", "歌手", "专辑", 185000,
+            AlbumId: "600927015009001074",
             ProviderSongId: "1004665871",
             CopyrightId: "600929000001520013");
-        Uri? page = CloudLyricsSourceNames.SongPage(track);
-        Assert(page?.AbsoluteUri
-            == "https://music.migu.cn/v5/#/song/1004665871"
-            && page.AbsolutePath == "/v5/"
-            && page.Fragment == "#/song/1004665871",
-            "A genuine Migu songId must be carried in the v5 SPA fragment.");
-
-        Assert(CloudLyricsSourceNames.SongPage(track with
-            { CopyrightId = "AB12CD3456" }) == page,
-            "Changing copyrightId cannot redirect a v5 song detail route.");
-        Assert(CloudLyricsSourceNames.SongPage(track with
-            { ExternalUrl = "https://music.migu.cn/v3/music/song/600929000001520013" })
-            == page,
-            "Old redirected v3 URLs must not override a real songId route.");
-        Assert(CloudLyricsSourceNames.SongPage(track with
-            { ExternalUrl = "https://music.migu.cn/v5/" }) == page
-            && CloudLyricsSourceNames.SongPage(track with
-            { ExternalUrl = "https://migu.cn.evil.example/track" }) == page,
-            "Generic home URLs or spoofed hosts cannot replace a song route.");
-        Assert(CloudLyricsSourceNames.SongPage(track with
-            { ProviderSongId = null, ContentId = "1004665871" })
-            ?.Fragment == "#/song/1004665871",
-            "The documented community contentId fallback remains available.");
-        Assert(CloudLyricsSourceNames.SongPage(track with
-            { ProviderSongId = "not-a-song", ContentId = "content-123" }) is null,
-            "Neither copyrightId nor arbitrary candidate IDs are v5 song IDs.");
-        Assert(CloudLyricsSourceNames.SongPage(track with
-            { ProviderSongId = null, ContentId = null,
-              ExternalUrl = "https://music.migu.cn/v5/#/song/1004665871" })
-            ?.Fragment == "#/song/1004665871",
-            "A previously saved valid first-party v5 song link is retained.");
-        Assert(CloudLyricsSourceNames.SongPage(track with
+        Assert(CloudLyricsSourceNames.SongPage(song) is null,
+            "Unverified Migu song deep link must never be advertised.");
+        Assert(CloudLyricsSourceNames.BrowsePage(song)?.AbsoluteUri
+            == "https://music.migu.cn/v5/#/albumDetail?albumId=600927015009001074&playlistType=5",
+            "Migu album navigates using the first-party confirmed v5 route.");
+        Assert(CloudLyricsSourceNames.BrowsePage(song with
+        {
+            AlbumId = null,
+            ExternalUrl = "https://music.migu.cn/v5/#/singerDetail?id=116",
+        })?.AbsoluteUri == "https://music.migu.cn/v5/#/singerDetail?id=116",
+            "No album: open the actual performer page.");
+        Assert(CloudLyricsSourceNames.SingerPage(song with
+        {
+            ExternalUrl = "https://migu.cn.evil.example/v5/#/singerDetail?id=116",
+        }) is null, "Singer deep links must reject spoofed hosts.");
+        Assert(CloudLyricsSourceNames.AlbumPage(song with
+            { AlbumId = "invalid/../id" }) is null
+            && CloudLyricsSourceNames.AlbumPage(song with
+            { AlbumId = "00000000000" }) is null,
+            "Never fabricate an album URL from invalid identifiers.");
+        Assert(CloudLyricsSourceNames.BrowsePage(song with
+        {
+            AlbumId = null,
+            ExternalUrl = "https://music.migu.cn/v5/#/song/1004665871",
+        })?.Fragment == "#/musicLibrary",
+            "Outdated/unverified v5 single-track routes must fall back to library.");
+        Assert(CloudLyricsSourceNames.BrowsePage(song with
             { Source = CloudLyricsSource.QqMusic }) is null,
-            "Migu song links may not leak to another provider.");
+            "Do not link a non-Migu track to Migu.");
     }
 
     private static void TestMiguSearchFallback()
     {
         CloudLyricsCandidate incomplete = new(CloudLyricsSource.MiguMusic,
-            "content-ABC", "song title", "artist name", "", 0,
-            CopyrightId: "AB12CD3456");
-        Assert(CloudLyricsSourceNames.SongPage(incomplete) is null,
-            "copyrightId without songId/contentId cannot resolve v5 song page.");
+            "content-ABC", "song title", "artist name", "", 0);
         Uri? library = CloudLyricsSourceNames.BrowsePage(incomplete);
-        Assert(library?.Host == "music.migu.cn"
-            && library.AbsolutePath == "/v5/"
-            && library.Fragment.StartsWith(
-                "#/musicLibrary?keyword=", StringComparison.Ordinal)
-            && library.Fragment.Contains("song%20title",
-                StringComparison.OrdinalIgnoreCase),
-            "Without a real songId the fallback points to the v5 library, "
-            + "not a redirected v3 song or search page.");
-        Assert(CloudLyricsSourceNames.SearchPage(incomplete with
-            { Source = CloudLyricsSource.QqMusic }) is null
-            && CloudLyricsSourceNames.BrowsePage(incomplete with
-            { Title = " " }) is null,
-            "Other providers and empty titles cannot generate Migu search links.");
+        Assert(library?.AbsoluteUri
+            == "https://music.migu.cn/v5/#/musicLibrary",
+            "Fallback opens the known first-party library, not fake search URLs.");
+        Assert(CloudLyricsSourceNames.BrowsePage(incomplete with
+            { Title = "", ExternalUrl = null }) is null,
+            "Cannot browse an unidentified Migu song.");
     }
 
     private static async Task TestLegacyDbAndMiguAsync()

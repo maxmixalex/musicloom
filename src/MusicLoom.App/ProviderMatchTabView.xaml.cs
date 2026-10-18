@@ -246,9 +246,11 @@ public sealed partial class ProviderMatchTabView : UserControl
             Busy: busy));
         if (candidate?.Source == CloudLyricsSource.MiguMusic)
             CurrentMatchOpenLinkText.Text =
-                CloudLyricsSourceNames.SongPage(candidate) is null
-                    ? _translate("Search on Migu Music", "在咪咕音乐上搜索")
-                    : _translate("Open on Migu Music", "在咪咕音乐上打开");
+                CloudLyricsSourceNames.AlbumPage(candidate) is not null
+                    ? _translate("Open album on Migu Music", "在咪咕音乐上打开专辑")
+                    : CloudLyricsSourceNames.SingerPage(candidate) is not null
+                        ? _translate("Open artist on Migu Music", "在咪咕音乐上打开歌手")
+                        : _translate("Browse Migu Music", "前往咪咕乐库");
     }
 
     private static Uri? SongPage(CloudLyricsCandidate candidate)

@@ -77,9 +77,9 @@ public sealed partial class MainWindow
             (LibrarySortBox.SelectedItem as ComboBoxItem)?.Tag?.ToString()
             switch
             {
-                "title" => L("Title", "歌名"),
+                "title" => L("Title", "歌曲名"),
                 "album" => L("Album", "专辑"),
-                _ => L("Artist", "歌手"),
+                _ => L("Artist", "艺术家"),
             };
         bool descending =
             (LibrarySortDirectionBox.SelectedItem as ComboBoxItem)

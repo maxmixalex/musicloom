@@ -38,64 +38,54 @@ public static class CloudLyricsSourceNames
         _ => "unavailable",
     };
 
-    /// <summary>
-    /// Migu's old /v3/music/song/{copyrightId} pages now redirect to the
-    /// generic /v5 home, discarding the target track. The live web player
-    /// uses a hash-router song page keyed by SONG ID, not copyrightId.
-    /// </summary>
-    public static Uri? SongPage(CloudLyricsCandidate candidate)
-    {
-        if (candidate.Source != CloudLyricsSource.MiguMusic) return null;
+    // Only v5 album and singer deep links have verifiable web routes.
+    // A music stream's songId/copyrightId must not be presented as a
+    // working single-track HTML page: v3 links redirect to the v5 root,
+    // and no stable v5 song view has passed real browser validation.
+    public static Uri? SongPage(CloudLyricsCandidate candidate) => null;
 
-        // A previously saved provider URL is honored only if it already
-        // points into the specific v5 song route. Reject old v3 redirects,
-        // generic /v5 home pages and first-party streaming/cover URLs.
-        if (Uri.TryCreate(candidate.ExternalUrl, UriKind.Absolute, out Uri? url)
-            && url.Scheme == Uri.UriSchemeHttps && url.IsDefaultPort
-            && url.UserInfo.Length == 0
-            && url.Host.Equals("music.migu.cn",
-                StringComparison.OrdinalIgnoreCase)
-            && url.AbsolutePath.TrimEnd('/').Equals("/v5",
-                StringComparison.OrdinalIgnoreCase)
-            && url.Fragment.StartsWith("#/song/", StringComparison.Ordinal)
-            && ValidWebSongId(url.Fragment["#/song/".Length..].Split('?')[0]))
-            return url;
+    private static bool ValidNumericId(string? id) =>
+        id is { Length: >= 1 and <= 32 }
+        && id.All(char.IsAsciiDigit)
+        && id.Any(static digit => digit != '0');
 
-        string? songId = ValidWebSongId(candidate.ProviderSongId)
-            ? candidate.ProviderSongId
-            // A community v5 client uses the contentId when songId is
-            // absent. Never use copyrightId for this new web route.
-            : ValidWebSongId(candidate.ContentId)
-                ? candidate.ContentId : null;
-        return songId is null ? null : new Uri(
-            "https://music.migu.cn/v5/#/song/" + songId);
-    }
+    public static Uri? AlbumPage(CloudLyricsCandidate candidate) =>
+        candidate.Source == CloudLyricsSource.MiguMusic
+        && ValidNumericId(candidate.AlbumId)
+            ? new Uri("https://music.migu.cn/v5/#/albumDetail?albumId="
+                + candidate.AlbumId + "&playlistType=5")
+            : null;
 
-    private static bool ValidWebSongId(string? id) =>
-        id is { Length: >= 6 and <= 32 }
-        && id.All(static c => char.IsAsciiDigit(c))
-        && id.Any(static c => c != '0');
-
-    /// <summary>
-    /// When no songId or contentId exists, navigate to the public v5 music
-    /// library instead of a broken v3 search endpoint. The hash keyword is
-    /// advisory; the website might still require manual search.
-    /// </summary>
-    public static Uri? SearchPage(CloudLyricsCandidate candidate)
+    public static Uri? SingerPage(CloudLyricsCandidate candidate)
     {
         if (candidate.Source != CloudLyricsSource.MiguMusic
-            || string.IsNullOrWhiteSpace(candidate.Title))
+            || !Uri.TryCreate(candidate.ExternalUrl, UriKind.Absolute,
+                out Uri? uri)
+            || uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort
+            || uri.UserInfo.Length > 0
+            || !uri.Host.Equals("music.migu.cn",
+                StringComparison.OrdinalIgnoreCase)
+            || uri.AbsolutePath.TrimEnd('/') != "/v5"
+            || !uri.Fragment.StartsWith("#/singerDetail?id=",
+                StringComparison.Ordinal))
             return null;
-        string query = string.Join(" ", new[]
-        {
-            candidate.Artist?.Trim(), candidate.Title.Trim(),
-        }.Where(static part => !string.IsNullOrWhiteSpace(part)));
-        return new Uri("https://music.migu.cn/v5/#/musicLibrary?keyword="
-            + Uri.EscapeDataString(query));
+
+        string id = uri.Fragment["#/singerDetail?id=".Length..];
+        return ValidNumericId(id)
+            ? new Uri("https://music.migu.cn/v5/#/singerDetail?id=" + id)
+            : null;
     }
 
+    // The library is a real first-party navigation target. Do not assert
+    // that an unverified keyword fragment automatically submits search.
+    public static Uri? SearchPage(CloudLyricsCandidate candidate) =>
+        candidate.Source == CloudLyricsSource.MiguMusic
+        && !string.IsNullOrWhiteSpace(candidate.Title)
+            ? new Uri("https://music.migu.cn/v5/#/musicLibrary")
+            : null;
+
     public static Uri? BrowsePage(CloudLyricsCandidate candidate) =>
-        SongPage(candidate) ?? SearchPage(candidate);
+        AlbumPage(candidate) ?? SingerPage(candidate) ?? SearchPage(candidate);
 }
 
 /// <summary>

@@ -457,12 +457,13 @@ public sealed partial class MainWindow
             CloudCandidateRow migu = new(
                 new CloudLyricsCandidate(CloudLyricsSource.MiguMusic,
                     "content-123", "Migu candidate", "Artist", "Album", 0,
+                    AlbumId: "600927015009001074",
                     ProviderSongId: "1004665871",
                     CopyrightId: "600929000001520013"),
                 "Preview", "在咪咕音乐上打开", "在咪咕音乐中搜索");
             Assert(migu.DisplayMetadata == "#content-123"
                 && !migu.DisplayMetadata.Contains("·", StringComparison.Ordinal)
-                && migu.ExternalLabel == "在咪咕音乐上打开",
+                && migu.ExternalLabel == "在咪咕音乐上打开专辑",
                 "Migu: missing duration omits the meaningless dot and dash.");
             recycled.DataContext = migu;
             await Task.Delay(70);
@@ -479,11 +480,11 @@ public sealed partial class MainWindow
                 + $"in the actual shared WinUI card (id='{renderedId.Text}', duration='{renderedDuration.Text}')");
             Assert(providerLink.Visibility == Visibility.Visible
                 && providerLink.NavigateUri?.AbsoluteUri ==
-                    "https://music.migu.cn/v5/#/song/1004665871"
+                    "https://music.migu.cn/v5/#/albumDetail?albumId=600927015009001074&playlistType=5"
                 && providerLink.Content is StackPanel miguLink
                 && miguLink.Children[0] is TextBlock miguText
-                && miguText.Text == "在咪咕音乐上打开",
-                "Migu: v5 song detail link retains the real songId in the SPA fragment.");
+                && miguText.Text == "在咪咕音乐上打开专辑",
+                "Migu: verified v5 album route replaces unverified single-song link.");
             int durationNotifications = 0;
             migu.PropertyChanged += (_, args) =>
             {
@@ -531,10 +532,9 @@ public sealed partial class MainWindow
                 && candidateMetadata.ColumnDefinitions[0].Width.IsStar
                 && providerLink.NavigateUri?.Host == "music.migu.cn"
                 && providerLink.NavigateUri.AbsolutePath == "/v5/"
-                && providerLink.NavigateUri.Fragment.StartsWith(
-                    "#/musicLibrary?keyword=", StringComparison.Ordinal)
+                && providerLink.NavigateUri.Fragment == "#/musicLibrary"
                 && providerLink.Visibility == Visibility.Visible
-                && noCopyright.ExternalLabel == "在咪咕音乐上搜索",
+                && noCopyright.ExternalLabel == "前往咪咕乐库",
                 "Migu: long IDs ellipsize with full-ID tooltip while duration "
                 + "stays visible and missing songId opens v5 library search.");
 

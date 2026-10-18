@@ -107,7 +107,12 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
             when Candidate.Hash is not { Length: >= 16 and <= 64 } hash
                 || !hash.All(UriHexDigit) => _searchLabel,
         CloudLyricsSource.MiguMusic
-            when CloudLyricsSourceNames.SongPage(Candidate) is null => _searchLabel,
+            when CloudLyricsSourceNames.AlbumPage(Candidate) is not null =>
+                "在咪咕音乐上打开专辑",
+        CloudLyricsSource.MiguMusic
+            when CloudLyricsSourceNames.SingerPage(Candidate) is not null =>
+                "在咪咕音乐上打开歌手",
+        CloudLyricsSource.MiguMusic => "前往咪咕乐库",
         _ => _linkLabel,
     };
     private static bool UriHexDigit(char c) =>
