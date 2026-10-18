@@ -285,6 +285,54 @@ public sealed partial class MainWindow
                     && view.UpdateButton.IsEnabled,
                     provider + ": original NetEase match card and remote artwork visible");
 
+                if (fixture.Kind != MatchProviderKind.Netease)
+                {
+                    CloudLyricsSource source = fixture.Kind switch
+                    {
+                        MatchProviderKind.QqMusic => CloudLyricsSource.QqMusic,
+                        MatchProviderKind.KugouMusic => CloudLyricsSource.KugouMusic,
+                        _ => CloudLyricsSource.MiguMusic,
+                    };
+                    PlanEntry local = new(
+                        @"C:\Music\Deadman.mp3", @"D:\Music\Deadman.mp3",
+                        PlanEntryStatus.Unchanged, new TrackMetadata(
+                            Artist: "蔡徐坤", AlbumArtist: "蔡徐坤",
+                            Album: "Deadman", HasEmbeddedArt: false,
+                            Title: "Deadman"));
+                    CloudLyricsCandidate same = new(
+                        source, fixture.Id, "Deadman", "蔡徐坤",
+                        "Deadman", 235000);
+                    StoredProviderMatch automatic = new(
+                        local.SourcePath, source, same,
+                        Suppressed: false, Confirmed: false);
+                    view.ShowCloudState(automatic, selected: true,
+                        busy: false, localEntry: local);
+                    Assert(view.ConfirmButton.Visibility == Visibility.Collapsed,
+                        provider + ": exact automatic match does NOT demand "
+                        + "human confirmation despite confirmed=false");
+                    StoredProviderMatch needsReview = automatic with
+                    {
+                        Candidate = same with
+                        {
+                            Album = "Deadman (Live)",
+                        },
+                    };
+                    view.ShowCloudState(needsReview, selected: true,
+                        busy: false, localEntry: local);
+                    Assert(view.ConfirmButton.Visibility == Visibility.Visible
+                        && view.ConfirmButton.IsEnabled,
+                        provider + ": suspicious album mismatch shows "
+                        + "the inherited NetEase confirm action");
+                    view.ShowCloudState(needsReview with
+                    {
+                        Confirmed = true,
+                    }, selected: true, busy: false, localEntry: local);
+                    Assert(view.ConfirmButton.Visibility == Visibility.Collapsed,
+                        provider + ": explicit confirmation hides review");
+                    // Return to original fixture for recycled-cover tests.
+                    view.Present(matched);
+                }
+
                 // Regression: reloading metadata with the same song ID and
                 // a temporarily empty cover URL MUST keep the loaded image.
                 view.Present(matched with { CoverUrl = null });
