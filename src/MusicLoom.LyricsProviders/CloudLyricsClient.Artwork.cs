@@ -216,8 +216,9 @@ public sealed partial class CloudLyricsClient
 
         if (candidate.Source == CloudLyricsSource.QqMusic)
         {
-            string? cover = await ResolveQqAlbumArtworkAsync(candidate.AlbumId, ct);
-            if (cover is not null) return cover;
+            string? resolvedCover = await ResolveQqAlbumArtworkAsync(
+                candidate.AlbumId, ct);
+            if (resolvedCover is not null) return resolvedCover;
             // Older QQ Lite search records may have neither album MID
             // nor valid album ID. The guest web search can return an
             // album MID for the same song without any account.
