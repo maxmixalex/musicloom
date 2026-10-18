@@ -19,13 +19,49 @@ public sealed partial class CloudLyricsPanel
     private void BeginArtworkLoading(CloudCandidateRow[] rows)
     {
         CancelArtworkLoad();
+        _artworkLoadCancellation = new CancellationTokenSource();
+        foreach (CloudCandidateRow row in rows)
+            row.ArtworkFailed += failed =>
+            {
+                if (!_disposed
+                    && ReferenceEquals(CandidatesList.ItemsSource, rows))
+                    _ = RecoverFailedArtworkAsync(failed, rows,
+                        _artworkLoadCancellation.Token);
+            };
         if (rows.All(static row => row.Artwork is not null
             && (row.Candidate.Source != CloudLyricsSource.MiguMusic
                 || row.Candidate.DurationMilliseconds > 0))
             return;
 
-        _artworkLoadCancellation = new CancellationTokenSource();
         _ = LoadArtworkAsync(rows, _artworkLoadCancellation.Token);
+    }
+
+    private async Task RecoverFailedArtworkAsync(
+        CloudCandidateRow row, CloudCandidateRow[] activeRows,
+        CancellationToken ct)
+    {
+        try
+        {
+            // A previous cached URL failed to decode: request fresh album
+            // metadata instead of silently leaving an empty result card.
+            // Only one retry per row prevents permanent 404 loops.
+            string? recovered = await _client.ResolveArtworkAsync(
+                row.Candidate, ct);
+            if (recovered is null
+                || string.Equals(recovered, row.FailedArtworkUrl,
+                    StringComparison.OrdinalIgnoreCase))
+                return;
+            ct.ThrowIfCancellationRequested();
+            if (!_disposed
+                && ReferenceEquals(CandidatesList.ItemsSource, activeRows))
+                row.ApplyArtwork(recovered);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error)
+        {
+            AppDiagnostics.LogException(
+                "Could not recover failed album artwork image.", error);
+        }
     }
 
     private async Task LoadArtworkAsync(

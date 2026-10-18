@@ -119,6 +119,9 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
         c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
 
     public BitmapImage? Artwork { get; private set; }
+    public string? FailedArtworkUrl { get; private set; }
+    private bool _recoveryAttempted;
+    public event Action<CloudCandidateRow>? ArtworkFailed;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -177,11 +180,23 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
         }
 
         Candidate = Candidate with { CoverUrl = address };
-        Artwork = new BitmapImage
+        BitmapImage bitmap = new() { DecodePixelWidth = 112 };
+        bitmap.ImageFailed += (_, _) =>
         {
-            DecodePixelWidth = 112,
-            UriSource = uri,
+            if (!ReferenceEquals(Artwork, bitmap)) return;
+            FailedArtworkUrl = address;
+            Artwork = null;
+            Candidate = Candidate with { CoverUrl = null };
+            PropertyChanged?.Invoke(this,
+                new PropertyChangedEventArgs(nameof(Artwork)));
+            if (!_recoveryAttempted)
+            {
+                _recoveryAttempted = true;
+                ArtworkFailed?.Invoke(this);
+            }
         };
+        Artwork = bitmap;
+        bitmap.UriSource = uri;
         PropertyChanged?.Invoke(this,
             new PropertyChangedEventArgs(nameof(Artwork)));
     }

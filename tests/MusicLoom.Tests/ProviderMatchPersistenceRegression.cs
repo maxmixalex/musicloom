@@ -43,6 +43,29 @@ internal static class ProviderMatchPersistenceRegression
                 throw new InvalidOperationException(
                     "Provider match metadata was lost or cross-contaminated.");
 
+            // Repairing only the missing KuGou artwork must preserve
+            // confirmation and must never overwrite another provider.
+            const string restoredCover =
+                "https://imge.kugou.com/stdmusic/300/restored.jpg";
+            if (!store.FillMissingCoverAsync(path, CloudLyricsSource.KugouMusic,
+                    kugou.Id, restoredCover).GetAwaiter().GetResult()
+                || store.FillMissingCoverAsync(path, CloudLyricsSource.QqMusic,
+                    qq.Id, restoredCover).GetAwaiter().GetResult()
+                || store.FillMissingCoverAsync(path, CloudLyricsSource.KugouMusic,
+                    "other-id", restoredCover).GetAwaiter().GetResult()
+                || store.FillMissingCoverAsync(path, CloudLyricsSource.KugouMusic,
+                    kugou.Id, "https://imge.kugou.com/second.jpg")
+                    .GetAwaiter().GetResult())
+                throw new InvalidOperationException(
+                    "Missing-artwork compare-and-update changed another match.");
+            StoredProviderMatch? repaired =
+                store.GetAsync(path, CloudLyricsSource.KugouMusic)
+                    .GetAwaiter().GetResult();
+            if (repaired?.Candidate?.CoverUrl != restoredCover
+                || repaired.Confirmed || repaired.Candidate.Id != kugou.Id)
+                throw new InvalidOperationException(
+                    "Cover recovery overwrote provider match identity or confirmation.");
+
             store.ConfirmAsync(path, CloudLyricsSource.KugouMusic)
                 .GetAwaiter().GetResult();
             if (store.GetAsync(path, CloudLyricsSource.KugouMusic)
@@ -64,11 +87,17 @@ internal static class ProviderMatchPersistenceRegression
                 path, CloudLyricsSource.QqMusic).GetAwaiter().GetResult();
             if (empty is not { Suppressed: true, Candidate: null }
                 || store.GetAsync(path, CloudLyricsSource.KugouMusic)
-                   .GetAwaiter().GetResult()?.Candidate != kugou
+                   .GetAwaiter().GetResult()?.Candidate !=
+                       kugou with { CoverUrl = restoredCover }
                 || lyrics.GetLibraryAsync(path).GetAwaiter().GetResult()?.Text
                    != canonical.Text)
                 throw new InvalidOperationException(
                     "QQ explicit empty state erased KuGou or canonical lyrics.");
+
+            if (store.FillMissingCoverAsync(path, CloudLyricsSource.QqMusic,
+                    qq.Id, restoredCover).GetAwaiter().GetResult())
+                throw new InvalidOperationException(
+                    "Late artwork recovery revived an explicitly cleared match.");
 
             SqliteProviderMatchStore reopened = new(db);
             if (reopened.GetAsync(path, CloudLyricsSource.QqMusic)
