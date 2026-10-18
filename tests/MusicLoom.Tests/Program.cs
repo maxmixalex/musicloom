@@ -32,6 +32,7 @@ List<(string Name, Action Test)> tests =
     ("Scanning resolves canonical embedded/local/NetEase lyrics", LibraryLyricsIndexerRegression.Run),
     ("NetEase candidate ranking balances duration and metadata", NeteaseCandidateRanking),
     ("Auto-matching skips already checked unchanged audio", AutoMatchEligibilityRegression.Run),
+    ("QQ metadata search prefetch deduplicates requests and bounds concurrency", ProviderMetadataSearchPrefetchRegression.Run),
     ("Match confirmation and clearing immediately reconcile row status", MatchActionStatusRegression.Run),
     ("Clipboard busy errors use bounded asynchronous retries", ClipboardAccessRetryRegression.Run),
     ("Library layout keeps legacy artist/album behavior", Layout),

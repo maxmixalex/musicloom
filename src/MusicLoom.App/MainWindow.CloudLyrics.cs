@@ -373,6 +373,10 @@ public sealed partial class MainWindow
             .Select(char.ToLowerInvariant)
             .ToArray());
 
+    private static string ProviderSearchKey(LibraryDisplayItem item) =>
+        CanonicalMatchKey(item.Artist) + "\u001F"
+        + CanonicalMatchKey(item.Title);
+
     private static bool ExactProviderMetadataMatch(
         LibraryDisplayItem item, CloudLyricsCandidate candidate)
     {
@@ -427,11 +431,36 @@ public sealed partial class MainWindow
             var knownLyrics = await cache.LoadLibrarySnapshotAsync(cancellation.Token);
             using KugouAudioRecognitionClient kugouRecognizer = new();
             KugouPcmWindowDecoder pcmDecoder = new();
+            await using ProviderMetadataSearchPrefetch? qqPrefetch =
+                source == CloudLyricsSource.QqMusic
+                    ? new((query, token) =>
+                        client.SearchAsync(source, query, token),
+                        cancellation.Token, maxConcurrency: 4)
+                    : null;
 
             for (int i = 0; i < snapshot.Length; i++)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
                 LibraryDisplayItem item = snapshot[i];
+                if (qqPrefetch is not null)
+                {
+                    for (int ahead = i;
+                         ahead < Math.Min(snapshot.Length, i + 12); ahead++)
+                    {
+                        LibraryDisplayItem next = snapshot[ahead];
+                        if (string.IsNullOrWhiteSpace(next.Title)
+                            || string.IsNullOrWhiteSpace(next.Artist))
+                            continue;
+                        if (knownMatches.TryGetValue(next.Entry.SourcePath,
+                                out var existingSources)
+                            && existingSources.TryGetValue(source,
+                                out StoredProviderMatch? existing)
+                            && (existing.Suppressed || existing.IsMatched))
+                            continue;
+                        qqPrefetch.Prefetch(ProviderSearchKey(next),
+                            next.Artist + " " + next.Title);
+                    }
+                }
                 SetProgress(i, snapshot.Length);
                 SetOperationStatus(
                     source == CloudLyricsSource.KugouMusic
@@ -527,9 +556,14 @@ public sealed partial class MainWindow
                             || string.IsNullOrWhiteSpace(item.Artist))
                             continue;
 
-                        var found = await client.SearchAsync(source,
-                            item.Artist + " " + item.Title,
-                            cancellation.Token);
+                        IReadOnlyList<CloudLyricsCandidate> found =
+                            qqPrefetch is not null
+                                ? await qqPrefetch.GetAsync(
+                                    ProviderSearchKey(item),
+                                    item.Artist + " " + item.Title)
+                                : await client.SearchAsync(source,
+                                    item.Artist + " " + item.Title,
+                                    cancellation.Token);
                         CloudLyricsCandidate[] strict = found
                             .Where(candidate =>
                                 ExactProviderMetadataMatch(item, candidate))
