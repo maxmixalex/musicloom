@@ -140,7 +140,7 @@
           </Grid>
 
           <!-- One aligned toolbar: search, progressive filters/sort, then counts. -->
-          <Grid x:Name="LibraryToolbarRow" Grid.Row="1" Margin="0,16,0,8" ColumnSpacing="12">
+          <Grid x:Name="LibraryToolbarRow" Grid.Row="1" Margin="0,16,0,8" ColumnSpacing="10">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto"/>
               <ColumnDefinition Width="Auto"/>
@@ -148,29 +148,30 @@
               <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <Grid x:Name="LibrarySearchRegion" Grid.Column="0" Width="340"
-                  HorizontalAlignment="Left" ColumnSpacing="6"
+                  HorizontalAlignment="Left" ColumnSpacing="5"
                   VerticalAlignment="Center">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
-              <Button x:Name="LibrarySearchButton" Width="32" Height="32"
+              <Button x:Name="LibrarySearchButton" Width="30" Height="30"
                       Padding="0" Background="Transparent" BorderThickness="0"
                       Click="LibrarySearchButton_Click"
                       ToolTipService.ToolTip="Focus library search">
-                <SymbolIcon Symbol="Find"/>
+                <Viewbox Width="14" Height="14"><SymbolIcon Symbol="Find"/></Viewbox>
               </Button>
               <TextBox x:Name="LibrarySearchBox" Grid.Column="1"
-                       MinWidth="140" HorizontalAlignment="Stretch"
+                       Height="30" MinWidth="140" HorizontalAlignment="Stretch"
                        PlaceholderText="Search title, artist, album or path"
                        TextChanged="LibrarySearchBox_TextChanged"/>
             </Grid>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
                         VerticalAlignment="Center" HorizontalAlignment="Left">
-              <Button x:Name="LibraryFacetsButton" Padding="12,8" MinWidth="94">
-                  <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+              <Button x:Name="LibraryFacetsButton" Height="30" Padding="8,3" MinWidth="0">
+                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Viewbox Width="14" Height="14"><SymbolIcon x:Name="LibraryFilterIcon" Symbol="Filter"/></Viewbox>
-                    <TextBlock x:Name="LibraryFacetsLabel" Text="Filters" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="LibraryFacetsLabel" Text="Filters" FontSize="12"
+                                VerticalAlignment="Center"/>
                   </StackPanel>
                 <Button.Flyout>
                   <Flyout Placement="Bottom">
@@ -257,10 +258,11 @@
                 </Button.Flyout>
               </Button>
               <Button x:Name="LibrarySortMenuButton"
-                      Padding="12,8" MinWidth="112">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                      Height="30" Padding="8,3" MinWidth="0">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                   <Viewbox Width="14" Height="14"><SymbolIcon x:Name="LibrarySortIcon" Symbol="Sort"/></Viewbox>
-                   <TextBlock x:Name="LibrarySortFieldText" Text="Artist" VerticalAlignment="Center"/>
+                   <TextBlock x:Name="LibrarySortFieldText" Text="Artist" FontSize="12"
+                              VerticalAlignment="Center"/>
                    <Viewbox x:Name="LibrarySortAscendingHost" Width="14" Height="14"><SymbolIcon x:Name="LibrarySortAscendingIcon" Symbol="Up"/></Viewbox>
                    <Viewbox x:Name="LibrarySortDescendingHost" Width="14" Height="14" Visibility="Collapsed">
                      <SymbolIcon x:Name="LibrarySortDescendingIcon" Symbol="Up" RenderTransformOrigin="0.5,0.5">
@@ -308,24 +310,24 @@
 
             </StackPanel>
             <StackPanel Grid.Column="3" Orientation="Horizontal"
-                        Spacing="12" VerticalAlignment="Center"
+                        Spacing="10" VerticalAlignment="Center"
                         HorizontalAlignment="Right">
               <StackPanel Orientation="Horizontal" Spacing="5">
                 <FontIcon x:Name="PendingSummaryIcon" Glyph="&#xE823;" FontSize="12"
                           Foreground="#CA7400" ToolTipService.ToolTip="Pending"/>
-                <TextBlock x:Name="PendingCountText" Text="0" FontWeight="SemiBold"/>
+                <TextBlock x:Name="PendingCountText" Text="0" FontSize="12" FontWeight="SemiBold"/>
               </StackPanel>
               <StackPanel Orientation="Horizontal" Spacing="5">
                 <FontIcon x:Name="WarningSummaryIcon" Glyph="&#xE7BA;" FontSize="12"
                           Foreground="#CA7400" ToolTipService.ToolTip="Warnings"/>
-                <TextBlock x:Name="WarningCountText" Text="0" FontWeight="SemiBold"/>
+                <TextBlock x:Name="WarningCountText" Text="0" FontSize="12" FontWeight="SemiBold"/>
               </StackPanel>
               <StackPanel Orientation="Horizontal" Spacing="5">
                 <FontIcon x:Name="ErrorSummaryIcon" Glyph="&#xEA39;" FontSize="12"
                           Foreground="#C42B1C" ToolTipService.ToolTip="Errors"/>
-                <TextBlock x:Name="ErrorCountText" Text="0" FontWeight="SemiBold"/>
+                <TextBlock x:Name="ErrorCountText" Text="0" FontSize="12" FontWeight="SemiBold"/>
               </StackPanel>
-              <TextBlock x:Name="LibraryVisibleCountText" Text="0 tracks"
+              <TextBlock x:Name="LibraryVisibleCountText" Text="0 tracks" FontSize="12"
                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>
           </Grid>

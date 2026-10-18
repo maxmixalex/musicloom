@@ -81,6 +81,19 @@ public sealed partial class MainWindow
                 && toolbarChildren[2] is StackPanel toolbarCounts
                 && toolbarCounts.Children.Contains(LibraryVisibleCountText)
                 && Grid.GetColumn(toolbarCounts) == 3;
+            Assert(LibrarySearchButton.Width == 30
+                && LibrarySearchButton.Height == 30
+                && LibrarySearchButton.Content is Viewbox
+                    { Width: 14, Height: 14,
+                      Child: SymbolIcon { Symbol: Symbol.Find } }
+                && LibrarySearchBox.Height == 30
+                && LibraryFacetsButton.Height == 30
+                && LibrarySortMenuButton.Height == 30
+                && LibraryFacetsButton.MinWidth == 0
+                && LibrarySortMenuButton.MinWidth == 0
+                && LibraryFacetsLabel.FontSize == 12
+                && LibrarySortFieldText.FontSize == 12,
+                "Library: compact 30px toolbar buttons/textbox with 14px native search icon");
             Assert(LibraryToolbarRow.ColumnDefinitions.Count == 4
                 && LibraryToolbarRow.ColumnDefinitions[0].Width.IsAuto
                 && LibraryToolbarRow.ColumnDefinitions[1].Width.IsAuto
