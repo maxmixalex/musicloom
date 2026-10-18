@@ -28,6 +28,8 @@
              Link="AppPresentation/LibraryMatchStatusResolver.cs" />
     <Compile Include="../../src/MusicLoom.App/ProviderMetadataSearchPrefetch.cs"
              Link="AppPresentation/ProviderMetadataSearchPrefetch.cs" />
+    <Compile Include="../../src/MusicLoom.App/BoundedMatchWorkQueue.cs"
+             Link="AppPresentation/BoundedMatchWorkQueue.cs" />
     <Compile Include="../../src/MusicLoom.App/ClipboardAccessRetry.cs"
              Link="AppPresentation/ClipboardAccessRetry.cs" />
     <Compile Include="../../src/MusicLoom.App/TomlSettingsStore.cs"

@@ -2054,15 +2054,35 @@ public sealed partial class MainWindow : Window
             LibraryPathSafety.ValidateStatePath(
                 settings, DatabasePath);
 
-            using NeteaseClient client = new();
-            CompositeFingerprintPcmDecoder decoder = new();
-            NeteaseTrackProvider recognizer = new(client, decoder);
+            using NeteaseClient lyricClient = new();
             SqliteLyricsCache lyricsCache = new(DatabasePath);
+            int concurrency = MatchingSettings.Normalize(
+                settings.Matching.MaxConcurrency);
+            await using BoundedMatchWorkQueue<TrackRecognitionResult> queue =
+                new(async (position, token) =>
+                {
+                    // Each worker has independent fingerprint client and
+                    // decoder. Neither the UI nor shared StateDocument is
+                    // mutated until TakeAsync commits results in order.
+                    using NeteaseClient recognizerClient = new();
+                    CompositeFingerprintPcmDecoder pcm = new();
+                    NeteaseTrackProvider recognizer =
+                        new(recognizerClient, pcm);
+                    return await RecognizeNeteaseWithMetadataFallbackAsync(
+                        recognizer, recognizerClient,
+                        candidates[position], token);
+                }, cancellation.Token, concurrency);
 
             for (int index = 0; index < candidates.Length; index++)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
                 PlanEntry entry = candidates[index];
+                // Bounded look-ahead keeps at most a small set of pending
+                // fingerprint jobs without a task for every library item.
+                for (int pending = index;
+                     pending < Math.Min(candidates.Length,
+                         index + concurrency * 2); pending++)
+                    queue.Prefetch(pending);
 
                 SetOperationStatus(
                     L(
@@ -2076,8 +2096,7 @@ public sealed partial class MainWindow : Window
                     // search is a conservative fallback, including on decoder
                     // or upstream fingerprint failure.
                     TrackRecognitionResult result =
-                        await RecognizeNeteaseWithMetadataFallbackAsync(
-                            recognizer, client, entry, cancellation.Token);
+                        await queue.TakeAsync(index);
 
                     FileInfo source = new(entry.SourcePath);
                     TrackMetadata metadata = entry.Metadata!;
@@ -2162,7 +2181,7 @@ public sealed partial class MainWindow : Window
                         try
                         {
                             LrcDocument? remote =
-                                await client.GetLyricsAsync(
+                                await lyricClient.GetLyricsAsync(
                                     songId,
                                     cancellation.Token);
                             await lyricsCache.SaveAsync(

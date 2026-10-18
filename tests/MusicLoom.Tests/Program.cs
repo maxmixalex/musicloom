@@ -33,6 +33,7 @@ List<(string Name, Action Test)> tests =
     ("NetEase candidate ranking balances duration and metadata", NeteaseCandidateRanking),
     ("Auto-matching skips already checked unchanged audio", AutoMatchEligibilityRegression.Run),
     ("QQ metadata search prefetch deduplicates requests and bounds concurrency", ProviderMetadataSearchPrefetchRegression.Run),
+    ("Four-source recognition respects concurrency and commits in order", BoundedMatchWorkQueueRegression.Run),
     ("Match confirmation and clearing immediately reconcile row status", MatchActionStatusRegression.Run),
     ("Clipboard busy errors use bounded asynchronous retries", ClipboardAccessRetryRegression.Run),
     ("Library layout keeps legacy artist/album behavior", Layout),
