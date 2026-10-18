@@ -3831,6 +3831,9 @@ public sealed partial class MainWindow : Window
                 .ToArray();
 
         _allLibraryItems.Clear();
+        // A rescan can replace every track while retaining the same count.
+        // Never apply a previous collection's provider review snapshot.
+        InvalidateLibraryFacetSnapshot();
         int artworkGeneration =
             ++_artworkGeneration;
 
