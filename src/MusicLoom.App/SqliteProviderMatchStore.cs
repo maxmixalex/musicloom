@@ -284,7 +284,8 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
     // Compare-and-update only its missing cover, never UPSERT all fields.
     public async Task<bool> FillMissingCoverAsync(
         string sourcePath, CloudLyricsSource provider, string trackId,
-        string coverUrl, CancellationToken ct = default)
+        string coverUrl, string? expectedCoverUrl = null,
+        CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(coverUrl);
         await using SqliteConnection db = await OpenAsync(ct);
@@ -294,9 +295,12 @@ internal sealed class SqliteProviderMatchStore(string databasePath)
                SET cover_url=$cover, updated_at=$updated
              WHERE source_path=$source AND provider=$provider
                AND track_id=$id AND suppressed=0
-               AND (cover_url IS NULL OR TRIM(cover_url)='');
+               AND (cover_url IS NULL OR TRIM(cover_url)=''
+                    OR ($previous IS NOT NULL AND cover_url=$previous));
             """;
         command.Parameters.AddWithValue("$cover", coverUrl);
+        command.Parameters.AddWithValue("$previous",
+            expectedCoverUrl is null ? DBNull.Value : expectedCoverUrl);
         command.Parameters.AddWithValue("$updated",
             DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("$source", sourcePath);

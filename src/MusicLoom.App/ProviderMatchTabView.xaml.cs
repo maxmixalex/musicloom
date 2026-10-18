@@ -54,6 +54,7 @@ public sealed partial class ProviderMatchTabView : UserControl
     public event EventHandler? ConfirmRequested;
     public event EventHandler? ClearRequested;
     public event EventHandler? UpdateRequested;
+    internal event Action<string, string>? ArtworkLoadFailed;
 
     internal Image ArtworkImage => CurrentMatchArtworkImage;
     internal FontIcon ArtworkPlaceholder => CurrentMatchArtworkPlaceholder;
@@ -209,12 +210,21 @@ public sealed partial class ProviderMatchTabView : UserControl
         // The ORIGINAL NetEase card accepted HTTP as well as HTTPS cover
         // URLs. Old persisted NetEase records can have an HTTP URL; the
         // previous shared renderer rejected those and displayed nothing.
-        ArtworkImage.Source = new BitmapImage
+        BitmapImage bitmap = new() { DecodePixelWidth = 108 };
+        bitmap.ImageFailed += (_, _) =>
         {
-            DecodePixelWidth = 108,
-            UriSource = artwork,
+            if (!ReferenceEquals(ArtworkImage.Source, bitmap)
+                || !Equals(_displayedArtworkUri, artwork))
+                return;
+            ArtworkImage.Source = null;
+            ArtworkPlaceholder.Visibility = Visibility.Visible;
+            _displayedArtworkUri = null;
+            if (_displayedMatchId is string songId)
+                ArtworkLoadFailed?.Invoke(songId, artwork.AbsoluteUri);
         };
         _displayedArtworkUri = artwork;
+        ArtworkImage.Source = bitmap;
+        bitmap.UriSource = artwork;
         ArtworkPlaceholder.Visibility = Visibility.Collapsed;
     }
 

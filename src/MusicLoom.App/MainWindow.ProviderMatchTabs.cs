@@ -65,6 +65,12 @@ public sealed partial class MainWindow
             await RefreshCloudMatchLyricsAsync(CloudLyricsSource.KugouMusic);
 
         WireExternalMatchTab(MiguMatchPanel, CloudLyricsSource.MiguMusic);
+        QqMatchPanel.ArtworkLoadFailed += (id, url) =>
+            RecoverFailedMatchCover(CloudLyricsSource.QqMusic, id, url);
+        KugouMatchPanel.ArtworkLoadFailed += (id, url) =>
+            RecoverFailedMatchCover(CloudLyricsSource.KugouMusic, id, url);
+        MiguMatchPanel.ArtworkLoadFailed += (id, url) =>
+            RecoverFailedMatchCover(CloudLyricsSource.MiguMusic, id, url);
     }
 
     private void WireExternalMatchTab(

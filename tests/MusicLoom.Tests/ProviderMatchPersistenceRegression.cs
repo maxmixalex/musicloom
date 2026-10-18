@@ -62,7 +62,10 @@ internal static class ProviderMatchPersistenceRegression
                 store.GetAsync(path, CloudLyricsSource.KugouMusic)
                     .GetAwaiter().GetResult();
             if (repaired?.Candidate?.CoverUrl != restoredCover
-                || repaired.Confirmed || repaired.Candidate.Id != kugou.Id)
+                || repaired.Confirmed || repaired.Candidate.Id != kugou.Id
+                || !store.FillMissingCoverAsync(path, CloudLyricsSource.KugouMusic,
+                    kugou.Id, "https://imge.kugou.com/replaced.jpg",
+                    expectedCoverUrl: restoredCover).GetAwaiter().GetResult())
                 throw new InvalidOperationException(
                     "Cover recovery overwrote provider match identity or confirmation.");
 
@@ -88,7 +91,8 @@ internal static class ProviderMatchPersistenceRegression
             if (empty is not { Suppressed: true, Candidate: null }
                 || store.GetAsync(path, CloudLyricsSource.KugouMusic)
                    .GetAwaiter().GetResult()?.Candidate !=
-                       kugou with { CoverUrl = restoredCover }
+                       (kugou with
+                        { CoverUrl = "https://imge.kugou.com/replaced.jpg" })
                 || lyrics.GetLibraryAsync(path).GetAwaiter().GetResult()?.Text
                    != canonical.Text)
                 throw new InvalidOperationException(

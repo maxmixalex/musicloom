@@ -13,6 +13,8 @@ public sealed partial class MainWindow
     private int _providerMatchLoadVersion;
     private readonly HashSet<string> _pendingProviderArtwork =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _failedProviderArtworkAttempts =
+        new(StringComparer.OrdinalIgnoreCase);
     private StoredProviderMatch? _visibleQqMatch;
     private StoredProviderMatch? _visibleKugouMatch;
     private StoredProviderMatch? _visibleMiguMatch;
@@ -77,11 +79,16 @@ public sealed partial class MainWindow
     }
 
     private async Task RestoreMissingCloudArtworkAsync(
-        LibraryDisplayItem item, StoredProviderMatch? stored)
+        LibraryDisplayItem item, StoredProviderMatch? stored,
+        string? failedCoverUrl = null)
     {
         if (stored?.Candidate is not CloudLyricsCandidate candidate
             || stored.Suppressed
-            || !string.IsNullOrWhiteSpace(candidate.CoverUrl))
+            || (failedCoverUrl is null
+                && !string.IsNullOrWhiteSpace(candidate.CoverUrl))
+            || (failedCoverUrl is not null
+                && !string.Equals(candidate.CoverUrl, failedCoverUrl,
+                    StringComparison.OrdinalIgnoreCase)))
             return;
         string requestKey = item.Entry.SourcePath + "\u001F"
             + (int)candidate.Source + "\u001F" + candidate.Id;
@@ -89,7 +96,9 @@ public sealed partial class MainWindow
         try
         {
             using CloudLyricsClient client = new();
-            string? artwork = await client.ResolveArtworkAsync(candidate);
+            CloudLyricsCandidate lookup = failedCoverUrl is null
+                ? candidate : candidate with { CoverUrl = null };
+            string? artwork = await client.ResolveArtworkAsync(lookup);
             if (artwork is null && candidate.Source == CloudLyricsSource.MiguMusic)
             {
                 CloudLyricsCandidate enriched =
@@ -118,11 +127,15 @@ public sealed partial class MainWindow
                     artwork = same.CoverUrl
                         ?? await client.ResolveArtworkAsync(same);
             }
-            if (artwork is null) return;
+            if (artwork is null
+                || string.Equals(artwork, failedCoverUrl,
+                    StringComparison.OrdinalIgnoreCase))
+                return;
 
             SqliteProviderMatchStore store = new(DatabasePath);
             if (!await store.FillMissingCoverAsync(item.Entry.SourcePath,
-                    candidate.Source, candidate.Id, artwork))
+                    candidate.Source, candidate.Id, artwork,
+                    expectedCoverUrl: failedCoverUrl))
                 return;
             if (!ReferenceEquals(_selectedLibraryItem, item)) return;
             StoredProviderMatch? current = candidate.Source switch
@@ -159,6 +172,26 @@ public sealed partial class MainWindow
                 "Could not recover selected provider album artwork.", error);
         }
         finally { _pendingProviderArtwork.Remove(requestKey); }
+    }
+
+    private void RecoverFailedMatchCover(
+        CloudLyricsSource source, string songId, string failedUrl)
+    {
+        if (_selectedLibraryItem is not LibraryDisplayItem item)
+            return;
+        StoredProviderMatch? current = source switch
+        {
+            CloudLyricsSource.QqMusic => _visibleQqMatch,
+            CloudLyricsSource.KugouMusic => _visibleKugouMatch,
+            CloudLyricsSource.MiguMusic => _visibleMiguMatch,
+            _ => null,
+        };
+        if (current?.Candidate?.Id != songId) return;
+        string attemptedKey = item.Entry.SourcePath + "\u001F"
+            + (int)source + "\u001F" + songId + "\u001F" + failedUrl;
+        if (!_failedProviderArtworkAttempts.Add(attemptedKey))
+            return; // A bad CDN image must never cause a retry loop.
+        _ = RestoreMissingCloudArtworkAsync(item, current, failedUrl);
     }
 
     private async Task ConfirmCloudMatchAsync(CloudLyricsSource provider)
