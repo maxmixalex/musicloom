@@ -31,17 +31,25 @@ public sealed class CloudMatchAcceptedEventArgs : EventArgs
 internal sealed class CloudCandidateRow : INotifyPropertyChanged
 {
     public CloudCandidateRow(CloudLyricsCandidate candidate,
-        string previewTooltip, string linkLabel, string searchLabel)
+        string previewTooltip, string linkLabel, string searchLabel,
+        string? albumLabel = null, string? artistLabel = null,
+        string? browseLabel = null)
     {
         Candidate = candidate;
         PreviewTooltip = previewTooltip;
         _linkLabel = linkLabel;
         _searchLabel = searchLabel;
+        _albumLabel = albumLabel ?? linkLabel;
+        _artistLabel = artistLabel ?? linkLabel;
+        _browseLabel = browseLabel ?? searchLabel;
         ApplyArtwork(candidate.CoverUrl);
     }
 
     private readonly string _linkLabel;
     private readonly string _searchLabel;
+    private readonly string _albumLabel;
+    private readonly string _artistLabel;
+    private readonly string _browseLabel;
     public CloudLyricsCandidate Candidate { get; private set; }
     public string PreviewTooltip { get; }
     public bool PreviewIsPlaying { get; private set; }
@@ -108,11 +116,11 @@ internal sealed class CloudCandidateRow : INotifyPropertyChanged
                 || !hash.All(UriHexDigit) => _searchLabel,
         CloudLyricsSource.MiguMusic
             when CloudLyricsSourceNames.AlbumPage(Candidate) is not null =>
-                "在咪咕音乐上打开专辑",
+                _albumLabel,
         CloudLyricsSource.MiguMusic
             when CloudLyricsSourceNames.SingerPage(Candidate) is not null =>
-                "在咪咕音乐上打开歌手",
-        CloudLyricsSource.MiguMusic => "前往咪咕乐库",
+                _artistLabel,
+        CloudLyricsSource.MiguMusic => _browseLabel,
         _ => _linkLabel,
     };
     private static bool UriHexDigit(char c) =>
@@ -459,7 +467,10 @@ public sealed partial class CloudLyricsPanel : UserControl, IDisposable
                         candidate.Source == CloudLyricsSource.MiguMusic
                             ? L("Open in Migu Music", "在咪咕音乐上打开")
                             : L("Open in ", "在") + name + L("", "中打开"),
-                        L("Search in ", "在") + name + L(" search", "中搜索"));
+                        L("Search in ", "在") + name + L(" search", "中搜索"),
+                        L("Open album on Migu Music", "在咪咕音乐上打开专辑"),
+                        L("Open artist on Migu Music", "在咪咕音乐上打开歌手"),
+                        L("Browse Migu Music", "前往咪咕乐库"));
                 })
                 .ToArray();
             CandidatesList.ItemsSource = ranked;

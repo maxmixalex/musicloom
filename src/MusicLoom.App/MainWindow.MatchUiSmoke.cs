@@ -460,7 +460,8 @@ public sealed partial class MainWindow
                     AlbumId: "600927015009001074",
                     ProviderSongId: "1004665871",
                     CopyrightId: "600929000001520013"),
-                "Preview", "在咪咕音乐上打开", "在咪咕音乐中搜索");
+                "Preview", "在咪咕音乐上打开", "在咪咕音乐中搜索",
+                "在咪咕音乐上打开专辑", "在咪咕音乐上打开歌手", "前往咪咕乐库");
             Assert(migu.DisplayMetadata == "#content-123"
                 && !migu.DisplayMetadata.Contains("·", StringComparison.Ordinal)
                 && migu.ExternalLabel == "在咪咕音乐上打开专辑",
@@ -516,7 +517,8 @@ public sealed partial class MainWindow
                 new CloudLyricsCandidate(CloudLyricsSource.MiguMusic,
                     "100000123456789012345678901234567890",
                     "Missing copyright", "Singer", "Album", 257000),
-                "Preview", "在咪咕音乐上打开", "在咪咕音乐上搜索");
+                "Preview", "在咪咕音乐上打开", "在咪咕音乐上搜索",
+                "在咪咕音乐上打开专辑", "在咪咕音乐上打开歌手", "前往咪咕乐库");
             recycled.DataContext = noCopyright;
             await Task.Delay(90);
             Grid candidateMetadata = recycled.FindName("CandidateMetadataRow")
