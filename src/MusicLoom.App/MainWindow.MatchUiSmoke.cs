@@ -457,6 +457,7 @@ public sealed partial class MainWindow
             CloudCandidateRow migu = new(
                 new CloudLyricsCandidate(CloudLyricsSource.MiguMusic,
                     "content-123", "Migu candidate", "Artist", "Album", 0,
+                    ProviderSongId: "1004665871",
                     CopyrightId: "600929000001520013"),
                 "Preview", "在咪咕音乐上打开", "在咪咕音乐中搜索");
             Assert(migu.DisplayMetadata == "#content-123"
@@ -478,11 +479,11 @@ public sealed partial class MainWindow
                 + $"in the actual shared WinUI card (id='{renderedId.Text}', duration='{renderedDuration.Text}')");
             Assert(providerLink.Visibility == Visibility.Visible
                 && providerLink.NavigateUri?.AbsoluteUri ==
-                    "https://music.migu.cn/v3/music/song/600929000001520013"
+                    "https://music.migu.cn/v5/#/song/1004665871"
                 && providerLink.Content is StackPanel miguLink
                 && miguLink.Children[0] is TextBlock miguText
                 && miguText.Text == "在咪咕音乐上打开",
-                "Migu: song detail link is rendered using real copyrightId.");
+                "Migu: v5 song detail link retains the real songId in the SPA fragment.");
             int durationNotifications = 0;
             migu.PropertyChanged += (_, args) =>
             {
@@ -528,11 +529,14 @@ public sealed partial class MainWindow
                 && Grid.GetColumn(renderedDuration) == 1
                 && candidateMetadata.ColumnDefinitions[1].Width.IsAuto
                 && candidateMetadata.ColumnDefinitions[0].Width.IsStar
-                && providerLink.NavigateUri?.Host == "m.music.migu.cn"
+                && providerLink.NavigateUri?.Host == "music.migu.cn"
+                && providerLink.NavigateUri.AbsolutePath == "/v5/"
+                && providerLink.NavigateUri.Fragment.StartsWith(
+                    "#/musicLibrary?keyword=", StringComparison.Ordinal)
                 && providerLink.Visibility == Visibility.Visible
                 && noCopyright.ExternalLabel == "在咪咕音乐上搜索",
                 "Migu: long IDs ellipsize with full-ID tooltip while duration "
-                + "stays visible and missing copyrightId has a real provider search link.");
+                + "stays visible and missing songId opens v5 library search.");
 
             CloudCandidateRow missingKugouHash = new(
                 new CloudLyricsCandidate(CloudLyricsSource.KugouMusic,

@@ -38,39 +38,49 @@ public static class CloudLyricsSourceNames
         _ => "unavailable",
     };
 
+    /// <summary>
+    /// Migu's old /v3/music/song/{copyrightId} pages now redirect to the
+    /// generic /v5 home, discarding the target track. The live web player
+    /// uses a hash-router song page keyed by SONG ID, not copyrightId.
+    /// </summary>
     public static Uri? SongPage(CloudLyricsCandidate candidate)
     {
-        if (candidate.Source != CloudLyricsSource.MiguMusic)
-            return null;
+        if (candidate.Source != CloudLyricsSource.MiguMusic) return null;
 
-        // An explicit provider link takes priority only when it belongs to
-        // Migu and uses a secure, credential-free URL.
-        if (Uri.TryCreate(candidate.ExternalUrl, UriKind.Absolute, out Uri? uri)
-            && uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort
-            && uri.UserInfo.Length == 0
-            && (uri.Host.Equals("migu.cn", StringComparison.OrdinalIgnoreCase)
-                || uri.Host.EndsWith(".migu.cn",
-                    StringComparison.OrdinalIgnoreCase)))
-            return uri;
+        // A previously saved provider URL is honored only if it already
+        // points into the specific v5 song route. Reject old v3 redirects,
+        // generic /v5 home pages and first-party streaming/cover URLs.
+        if (Uri.TryCreate(candidate.ExternalUrl, UriKind.Absolute, out Uri? url)
+            && url.Scheme == Uri.UriSchemeHttps && url.IsDefaultPort
+            && url.UserInfo.Length == 0
+            && url.Host.Equals("music.migu.cn",
+                StringComparison.OrdinalIgnoreCase)
+            && url.AbsolutePath.TrimEnd('/').Equals("/v5",
+                StringComparison.OrdinalIgnoreCase)
+            && url.Fragment.StartsWith("#/song/", StringComparison.Ordinal)
+            && ValidWebSongId(url.Fragment["#/song/".Length..].Split('?')[0]))
+            return url;
 
-        // Anonymous Migu search normally returns copyrightId but no page
-        // URL. This is the site's *actual* song-detail route, not an audio
-        // CDN or a guessed songId/contentId mapping.
-        string? copyrightId = candidate.CopyrightId;
-        // Migu also issues alphanumeric copyright IDs. A contentId is not
-        // interchangeable with a copyrightId, so never synthesize one.
-        if (copyrightId is { Length: >= 6 and <= 64 }
-            && copyrightId.All(static c => char.IsAsciiLetterOrDigit(c)
-                || c is '-' or '_')
-            && copyrightId.Any(static c => c is >= '1' and <= '9'
-                || c is >= 'A' and <= 'Z' or >= 'a' and <= 'z'))
-            return new Uri("https://music.migu.cn/v3/music/song/"
-                + Uri.EscapeDataString(copyrightId));
-        return null;
+        string? songId = ValidWebSongId(candidate.ProviderSongId)
+            ? candidate.ProviderSongId
+            // A community v5 client uses the contentId when songId is
+            // absent. Never use copyrightId for this new web route.
+            : ValidWebSongId(candidate.ContentId)
+                ? candidate.ContentId : null;
+        return songId is null ? null : new Uri(
+            "https://music.migu.cn/v5/#/song/" + songId);
     }
 
-    // Some anonymous search records have no copyrightId. Show a real
-    // first-party search action rather than inventing a broken detail URL.
+    private static bool ValidWebSongId(string? id) =>
+        id is { Length: >= 6 and <= 32 }
+        && id.All(static c => char.IsAsciiDigit(c))
+        && id.Any(static c => c != '0');
+
+    /// <summary>
+    /// When no songId or contentId exists, navigate to the public v5 music
+    /// library instead of a broken v3 search endpoint. The hash keyword is
+    /// advisory; the website might still require manual search.
+    /// </summary>
     public static Uri? SearchPage(CloudLyricsCandidate candidate)
     {
         if (candidate.Source != CloudLyricsSource.MiguMusic
@@ -80,7 +90,7 @@ public static class CloudLyricsSourceNames
         {
             candidate.Artist?.Trim(), candidate.Title.Trim(),
         }.Where(static part => !string.IsNullOrWhiteSpace(part)));
-        return new Uri("https://m.music.migu.cn/v3/search?keyword="
+        return new Uri("https://music.migu.cn/v5/#/musicLibrary?keyword="
             + Uri.EscapeDataString(query));
     }
 
