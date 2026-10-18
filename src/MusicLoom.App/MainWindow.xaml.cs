@@ -3136,9 +3136,10 @@ public sealed partial class MainWindow : Window
                 L("Warning", "警告");
             TrackSyncLogText.Text =
                 warning is null
-                    ? L(
-                        "The NetEase match differs from the local title or artist.",
-                        "网易云匹配与本地记录的歌曲名或艺术家不一致。")
+                    ? GetProviderReviewDescription(item.Entry)
+                        ?? L(
+                            "The NetEase match differs from the local title or artist.",
+                            "网易云匹配与本地记录的歌曲名或艺术家不一致。")
                     : FormatTrackMatchWarning(
                         warning);
         }
@@ -4214,7 +4215,11 @@ public sealed partial class MainWindow : Window
 
     private string GetLibraryDisplayKind(
         PlanEntry entry) =>
-        LibraryMatchStatusResolver.GetKind(entry, _state);
+        LibraryMatchStatusResolver.GetKind(entry, _state,
+            _libraryFacetLoaded
+                && _libraryFacetMatches.TryGetValue(entry.SourcePath,
+                    out Dictionary<CloudLyricsSource, StoredProviderMatch>? rows)
+                    ? rows : null);
 
     private void ReconcileMatchActionRows(
         IReadOnlyList<LibraryDisplayItem> candidates)
@@ -4233,7 +4238,8 @@ public sealed partial class MainWindow : Window
             LibraryMatchStatusResolver.Reconcile(
                 candidates.Select(static item => item.Entry),
                 _state,
-                settings);
+                settings,
+                _libraryFacetLoaded ? _libraryFacetMatches : null);
         if (_plan is LibraryPlan currentPlan)
         {
             _plan = new LibraryPlan(

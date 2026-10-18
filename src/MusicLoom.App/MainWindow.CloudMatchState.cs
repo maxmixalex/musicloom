@@ -33,9 +33,10 @@ public sealed partial class MainWindow
     private void RenderCloudMatchPanels()
     {
         bool selected = _selectedLibraryItem is not null;
-        QqMatchPanel.ShowCloudState(_visibleQqMatch, selected, _busy);
-        KugouMatchPanel.ShowCloudState(_visibleKugouMatch, selected, _busy);
-        MiguMatchPanel.ShowCloudState(_visibleMiguMatch, selected, _busy);
+        var localEntry = _selectedLibraryItem?.Entry;
+        QqMatchPanel.ShowCloudState(_visibleQqMatch, selected, _busy, localEntry);
+        KugouMatchPanel.ShowCloudState(_visibleKugouMatch, selected, _busy, localEntry);
+        MiguMatchPanel.ShowCloudState(_visibleMiguMatch, selected, _busy, localEntry);
     }
 
     private async Task RefreshCloudMatchTabsAsync(LibraryDisplayItem item)

@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using MusicLoom.LyricsProviders;
+using MusicLoom.Core.Scanning;
 
 namespace MusicLoom.App;
 
@@ -238,7 +239,8 @@ public sealed partial class ProviderMatchTabView : UserControl
 
 
     internal void ShowCloudState(
-        StoredProviderMatch? record, bool selected, bool busy)
+        StoredProviderMatch? record, bool selected, bool busy,
+        PlanEntry? localEntry = null)
     {
         CloudLyricsCandidate? candidate = record?.Candidate;
         Present(new MatchTabPresentation(
@@ -250,8 +252,8 @@ public sealed partial class ProviderMatchTabView : UserControl
             Album: candidate?.Album,
             CoverUrl: candidate?.CoverUrl,
             ExternalLink: candidate is null ? null : SongPage(candidate),
-            NeedsConfirmation: record?.IsMatched == true
-                && record.Confirmed == false,
+            NeedsConfirmation: ProviderMatchReviewPolicy.NeedsReview(
+                localEntry, record),
             CanUpdateLyrics: record?.IsMatched == true,
             Busy: busy));
         if (candidate?.Source == CloudLyricsSource.MiguMusic)

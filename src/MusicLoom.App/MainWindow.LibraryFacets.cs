@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using MusicLoom.Core.Lyrics;
 using MusicLoom.Core.State;
+using MusicLoom.Core.Synchronization;
 using MusicLoom.LyricsProviders;
 
 namespace MusicLoom.App;
@@ -119,8 +120,9 @@ public sealed partial class MainWindow
 
     private void EnsureLibraryFacetSnapshot()
     {
-        if (_libraryFacetLoading || _allLibraryItems.Count == 0
-            || !AnyLibraryFacetActive())
+        // Warnings must be visible even with NO provider facet selected:
+        // auto matches are an independent source of the library status icon.
+        if (_libraryFacetLoading || _allLibraryItems.Count == 0)
             return;
         if (_libraryFacetItemCount == _allLibraryItems.Count
             && DateTimeOffset.UtcNow - _libraryFacetFetchedAt
@@ -166,7 +168,9 @@ public sealed partial class MainWindow
             _libraryFacetLyrics = lyrics;
             _libraryFacetMatches = matches;
             _libraryFacetLoaded = true;
-            // Keep the selection when the snapshot arrives asynchronously.
+            // Preserve the existing ListView objects and song selection.
+            // Only status and counters change after provider review is known.
+            RefreshProviderReviewStatuses();
             if (LibraryLyricsFacetBox is not null)
                 ApplyLibraryFilter();
         }
@@ -183,6 +187,53 @@ public sealed partial class MainWindow
                 EnsureLibraryFacetSnapshot();
             }
         }
+    }
+
+    private void RefreshProviderReviewStatuses()
+    {
+        foreach (LibraryDisplayItem item in _allLibraryItems)
+        {
+            // A real sync error or in-progress transfer outranks review.
+            if (item.Kind is "error" or "syncing")
+                continue;
+            _libraryFacetMatches.TryGetValue(item.Entry.SourcePath,
+                out Dictionary<CloudLyricsSource, StoredProviderMatch>? providers);
+            string kind = LibraryMatchStatusResolver.GetKind(
+                item.Entry, _state, providers);
+            // A manually queued output change remains pending when there
+            // are no review warnings. Never advertise that output was synced.
+            if (kind == "synced"
+                && _manualPendingSources.Contains(item.Entry.SourcePath))
+                kind = "pending";
+            if (item.Kind != kind)
+                item.SetStatus(kind, StatusLabel(kind));
+        }
+        RefreshLiveSyncCounters();
+        if (_selectedLibraryItem is LibraryDisplayItem selected)
+            RefreshTrackSyncTab(selected);
+    }
+
+    private string? GetProviderReviewDescription(PlanEntry entry)
+    {
+        if (!_libraryFacetLoaded
+            || !_libraryFacetMatches.TryGetValue(entry.SourcePath,
+                out Dictionary<CloudLyricsSource, StoredProviderMatch>? rows))
+            return null;
+        string[] review = rows.Values
+            .Where(match => ProviderMatchReviewPolicy.NeedsReview(entry, match))
+            .Select(match => match.Provider switch
+            {
+                CloudLyricsSource.QqMusic => L("QQ Music", "QQ音乐"),
+                CloudLyricsSource.KugouMusic => L("KuGou Music", "酷狗音乐"),
+                CloudLyricsSource.MiguMusic => L("Migu Music", "咪咕音乐"),
+                _ => match.Provider.ToString(),
+            }).Distinct().ToArray();
+        return review.Length == 0 ? null
+            : L("Review required for ", "以下自动匹配需要确认：")
+                + string.Join(IsChinese ? "、" : ", ", review)
+                + L(". The source album, title or artist differs from the provider; "
+                    + "the music file and destination sync state are unchanged.",
+                    "。歌曲名、艺术家或专辑信息存在差异；音乐文件和实际同步结果均未改变。");
     }
 
     private bool MatchesLibraryFacets(LibraryDisplayItem item)
@@ -207,48 +258,52 @@ public sealed partial class MainWindow
             if (!result) return false;
         }
 
-        if (!MatchesNeteaseFacet(path, FacetValue(LibraryNeteaseFacetBox)))
+        if (!MatchesNeteaseFacet(item.Entry,
+                FacetValue(LibraryNeteaseFacetBox)))
             return false;
-        return MatchesProviderFacet(path, CloudLyricsSource.QqMusic,
+        return MatchesProviderFacet(item.Entry, CloudLyricsSource.QqMusic,
                 FacetValue(LibraryQqFacetBox))
-            && MatchesProviderFacet(path, CloudLyricsSource.KugouMusic,
+            && MatchesProviderFacet(item.Entry, CloudLyricsSource.KugouMusic,
                 FacetValue(LibraryKugouFacetBox))
-            && MatchesProviderFacet(path, CloudLyricsSource.MiguMusic,
+            && MatchesProviderFacet(item.Entry, CloudLyricsSource.MiguMusic,
                 FacetValue(LibraryMiguFacetBox));
 
     }
 
-    private bool MatchesNeteaseFacet(string path, string filter)
+    private bool MatchesNeteaseFacet(PlanEntry entry, string filter)
     {
         if (filter == "all") return true;
         TrackState? state = null;
         if (_state is not null)
-            _state.Tracks.TryGetValue(path, out state);
+            _state.Tracks.TryGetValue(entry.SourcePath, out state);
         bool suppressed = state?.NeteaseMatchSuppressed == true;
         bool matched = state?.NeteaseSongId is not null && !suppressed;
+        bool needsReview = matched && state is not null
+            && SyncExecutor.DetectMatchWarning(entry, state) is not null;
         return filter switch
         {
             "matched" => matched,
-            "confirmed" => matched && state?.NeteaseMatchConfirmed == true,
-            "unconfirmed" => matched && state?.NeteaseMatchConfirmed != true,
+            "confirmed" => matched && !needsReview,
+            "unconfirmed" => needsReview,
             "missing" => !matched && !suppressed,
             "empty" => suppressed,
             _ => true,
         };
     }
 
-    private bool MatchesProviderFacet(string path,
+    private bool MatchesProviderFacet(PlanEntry entry,
         CloudLyricsSource source, string filter)
     {
         if (filter == "all") return true;
         StoredProviderMatch? match = null;
-        if (_libraryFacetMatches.TryGetValue(path, out var providers))
+        if (_libraryFacetMatches.TryGetValue(entry.SourcePath, out var providers))
             providers.TryGetValue(source, out match);
+        bool needsReview = ProviderMatchReviewPolicy.NeedsReview(entry, match);
         return filter switch
         {
             "matched" => match?.IsMatched == true,
-            "confirmed" => match?.IsMatched == true && match.Confirmed,
-            "unconfirmed" => match?.IsMatched == true && !match.Confirmed,
+            "confirmed" => match?.IsMatched == true && !needsReview,
+            "unconfirmed" => needsReview,
             "missing" => match?.IsMatched != true && match?.Suppressed != true,
             "empty" => match?.Suppressed == true,
             _ => true,
@@ -286,8 +341,8 @@ public sealed partial class MainWindow
                 choice.Content = (choice.Tag?.ToString()) switch
                 {
                     "matched" => L($"{english} matched", $"{chinese}已匹配"),
-                    "confirmed" => L($"{english} confirmed", $"{chinese}已确认"),
-                    "unconfirmed" => L($"{english} needs confirmation",
+                    "confirmed" => L($"{english} needs no review", $"{chinese}无需确认"),
+                    "unconfirmed" => L($"{english} needs review",
                                       $"{chinese}待确认"),
                     "missing" => L($"{english} not matched", $"{chinese}未匹配"),
                     "empty" => L($"{english} match cleared", $"{chinese}匹配已置空"),
