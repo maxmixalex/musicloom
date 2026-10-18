@@ -3061,6 +3061,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private string? GetAllMatchReviewDescription(PlanEntry entry)
+    {
+        TrackSyncWarning? netease = GetStoredMatchWarning(entry);
+        string? external = GetProviderReviewDescription(entry);
+        if (netease is null) return external;
+        string original = FormatTrackMatchWarning(netease);
+        return external is null ? original
+            : original + Environment.NewLine + external;
+    }
+
     private void RefreshTrackSyncTab(
         LibraryDisplayItem? item)
     {
@@ -3091,7 +3101,7 @@ public sealed partial class MainWindow : Window
             // newly discovered suspicious provider match is now a review
             // warning. Do not display "Synced" beside the amber warning.
             string? review = item.Kind == "warning" && !latest.IsError
-                ? GetProviderReviewDescription(item.Entry) : null;
+                ? GetAllMatchReviewDescription(item.Entry) : null;
             TrackSyncStateText.Text = review is null
                 ? latest.Status : L("Warning", "警告");
             TrackSyncTimeText.Text = L(
@@ -3133,20 +3143,10 @@ public sealed partial class MainWindow : Window
         }
         else if (item.Kind == "warning")
         {
-            TrackSyncWarning? warning =
-                GetStoredMatchWarning(
-                    item.Entry);
-
-            TrackSyncStateText.Text =
-                L("Warning", "警告");
-            TrackSyncLogText.Text =
-                warning is null
-                    ? GetProviderReviewDescription(item.Entry)
-                        ?? L(
-                            "The NetEase match differs from the local title or artist.",
-                            "网易云匹配与本地记录的歌曲名或艺术家不一致。")
-                    : FormatTrackMatchWarning(
-                        warning);
+            TrackSyncStateText.Text = L("Warning", "警告");
+            TrackSyncLogText.Text = GetAllMatchReviewDescription(item.Entry)
+                ?? L("A match needs manual review.",
+                    "存在需要人工复核的匹配。");
         }
         else if (item.Kind == "syncing")
         {
