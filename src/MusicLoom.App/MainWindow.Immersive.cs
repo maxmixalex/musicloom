@@ -17,7 +17,6 @@ namespace MusicLoom.App;
 public sealed partial class MainWindow
 {
     private bool _immersiveActive;
-    private bool _immersiveTransitioning;
     private int _immersiveLoadVersion;
     private int _immersiveArtworkVersion;
     private int _remotePlaybackLyricsVersion;
@@ -161,9 +160,10 @@ public sealed partial class MainWindow
     private async void ImmersiveOpenButton_Click(
         object sender, RoutedEventArgs e)
     {
-        if (_immersiveActive || _immersiveTransitioning)
+        if (_immersiveActive)
+        {
             return;
-        _immersiveTransitioning = true;
+        }
 
         try
         {
@@ -187,7 +187,6 @@ public sealed partial class MainWindow
             }
 
             PrepareImmersiveConnectedAnimation(exiting: false);
-            ImmersiveView.SetSurroundingOpacity(0);
             _immersiveActive = true;
             ImmersiveWindowBorder.TrySetImmersive(this, immersive: true);
             // The WinUI title and OS window title must both survive an
@@ -201,36 +200,31 @@ public sealed partial class MainWindow
             UpdatePlayerProgress();
             UpdatePlayerVisualState();
             ImmersiveView.Focus(FocusState.Programmatic);
-            Task? loadLyrics = null;
             if (_playingLibraryItem is LibraryDisplayItem playing)
-                loadLyrics = UpdateImmersiveTrackAsync(playing);
+            {
+                Task loading = UpdateImmersiveTrackAsync(playing);
+                StartImmersiveConnectedAnimation(exiting: false);
+                await loading;
+            }
             else if (_playingCloudPreviewCandidate is not null
                 || _playingPreviewCandidate is not null)
+            {
                 UpdateImmersiveRemoteTrack();
+                StartImmersiveConnectedAnimation(exiting: false);
+            }
             else
             {
-                // Never borrow a selected local track when playing remotely.
+                // A selected library item is NOT the currently playing
+                // source. Never borrow its art/lyrics for remote or idle.
                 ImmersiveView.SetTrack(
                     L("Nothing playing", "尚未播放"),
                     string.Empty, string.Empty, null, []);
                 ImmersiveView.SetNavigationAvailable(false);
-                _ = ImmersiveView.ApplyArtworkColorsAsync(null);
+                await ImmersiveView.ApplyArtworkColorsAsync(null);
             }
-
-            StartImmersiveConnectedAnimation(exiting: false);
-            // The connected artwork sprite is independent of these fades;
-            // title, lyrics, controls, ordinary navigation and backdrop
-            // crossfade together over the same 560 ms interval.
-            Navigation.Opacity = 0;
-            ImmersiveView.SetSurroundingOpacity(1);
-            await Task.Delay(ImmersiveCoverTransitionDuration);
-            _immersiveTransitioning = false;
-            if (loadLyrics is not null)
-                await loadLyrics;
         }
         catch (Exception error)
         {
-            _immersiveTransitioning = false;
             CloseImmersivePlayer();
             HandleUiException(
                 L("Could not open immersive player.", "无法进入沉浸式播放器。"),
@@ -238,27 +232,20 @@ public sealed partial class MainWindow
         }
     }
 
-    private async void CloseImmersivePlayer()
+    private void CloseImmersivePlayer()
     {
-        if (!_immersiveActive || _immersiveTransitioning)
+        if (!_immersiveActive)
+        {
             return;
-        _immersiveTransitioning = true;
+        }
+
         PrepareImmersiveConnectedAnimation(exiting: true);
         ++_immersiveLoadVersion;
         ++_immersiveArtworkVersion;
         _immersiveActive = false;
         ImmersiveWindowBorder.TrySetImmersive(this, immersive: false);
-        ImmersiveHost.IsHitTestVisible = false;
-        StartImmersiveConnectedAnimation(exiting: true);
-        // Keep the host on screen until ALL non-cover layers have faded;
-        // collapsing it earlier produces an abrupt hard cut on exit.
-        Navigation.Opacity = 1;
-        ImmersiveView.SetSurroundingOpacity(0);
-        await Task.Delay(ImmersiveCoverTransitionDuration);
         ImmersiveHost.Visibility = Visibility.Collapsed;
-        ImmersiveHost.IsHitTestVisible = true;
-        Navigation.Opacity = 1;
-        _immersiveTransitioning = false;
+        StartImmersiveConnectedAnimation(exiting: true);
         AppTitleBar.RequestedTheme = _previousImmersiveTitleTheme;
         AppTitleBar.Background = _previousImmersiveTitleBackground;
         AppTitleBar.Foreground = _previousImmersiveTitleForeground;
@@ -347,12 +334,9 @@ public sealed partial class MainWindow
                 cover = PlayerArtworkImage.Source;
         }
         ImmersiveView.SetMode(_lyricsDisplayMode);
-        if (updatePalette)
-            ImmersiveView.BeginLyricsTransition();
-        ImmersiveView.SetTrackHeader(title, artist, album, cover);
-        if (_remotePlaybackLyrics is not null || !updatePalette)
-            ImmersiveView.SetLyrics(BuildLyricLines(
-                _remotePlaybackLyrics?.ToString(), _lyricsDisplayMode));
+        ImmersiveView.SetTrack(title, artist, album, cover,
+            BuildLyricLines(_remotePlaybackLyrics?.ToString(),
+                _lyricsDisplayMode));
         ImmersiveView.SetNavigationAvailable(false, remoteSource: true);
         _activePlaybackLyric?.IsActive = false;
         _activePlaybackLyric = null;
@@ -416,9 +400,8 @@ public sealed partial class MainWindow
         int version = ++_immersiveLoadVersion;
         if (updatePalette)
         {
-            ImmersiveView.BeginLyricsTransition();
-            ImmersiveView.SetTrackHeader(
-                item.Title, item.Artist, item.Album, item.Artwork);
+            ImmersiveView.SetTrack(
+                item.Title, item.Artist, item.Album, item.Artwork, []);
         }
         ImmersiveView.SetNavigationAvailable(_playbackQueue.Length > 1);
         // Changing lyric language should not blank/reflow the artwork or

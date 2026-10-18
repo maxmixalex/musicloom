@@ -27,9 +27,6 @@
       PaneDisplayMode="Auto"
       Background="Transparent"
       SelectionChanged="Navigation_SelectionChanged">
-    <NavigationView.OpacityTransition>
-      <ScalarTransition Duration="0:0:0.56"/>
-    </NavigationView.OpacityTransition>
     <NavigationView.MenuItems>
       <NavigationViewItem x:Name="LibraryNav" Content="Library" Tag="library">
         <NavigationViewItem.Icon><SymbolIcon Symbol="Audio" /></NavigationViewItem.Icon>
